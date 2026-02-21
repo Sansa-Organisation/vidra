@@ -10,7 +10,7 @@ The **Model Context Protocol (MCP)** gives any AI assistant (like Claude Desktop
 
 ```bash
 vidra mcp
-# or without installation: bunx @sansavision/vidra mcp
+# or without installation: bunx @sansavision/vidra@latest mcp
 ```
 
 ### How to Connect (Claude Desktop Example)
@@ -26,7 +26,7 @@ To add Vidra to Claude Desktop, open your MCP configuration file (`~/Library/App
       "command": "bunx",
       "args": [
         "--bun",
-        "@sansavision/vidra",
+        "@sansavision/vidra@latest",
         "mcp"
       ]
     }
