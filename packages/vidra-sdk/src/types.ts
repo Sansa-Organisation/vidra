@@ -1,23 +1,25 @@
-// Core geometric and structural types generated out of Vidra IR
-export type Color = {
+// ─── Vidra SDK — Core Types ─────────────────────────────────────────
+// These types are a 1:1 mirror of the Rust `vidra-ir` crate output.
+
+export interface Color {
     r: number;
     g: number;
     b: number;
     a: number;
-};
+}
 
-export type Point2D = {
+export interface Point2D {
     x: number;
     y: number;
-};
+}
 
-export type Transform2D = {
+export interface Transform2D {
     position: Point2D;
     scale: Point2D;
     rotation: number;
     opacity: number;
     anchor: Point2D;
-};
+}
 
 export type BlendMode =
     | "Normal"
@@ -28,32 +30,31 @@ export type BlendMode =
     | "Lighten"
     | "Add";
 
-// Asset system
 export type AssetType = "Image" | "Video" | "Audio" | "Font";
 
 export type AssetId = string;
 
-export type Asset = {
+export interface Asset {
     id: AssetId;
     asset_type: AssetType;
     path: string;
     name: string | null;
-};
+}
 
-export type AssetRegistry = {
+export interface AssetRegistry {
     assets: Record<AssetId, Asset>;
-};
+}
 
 export type LayerId = string;
 
 export type ShapeType =
-    | { Rectangle: { width: number; height: number; radius: number } }
+    | { Rect: { width: number; height: number; radius: number } }
     | { Circle: { radius: number } }
-    | { Ellipse: { radius_x: number; radius_y: number } };
+    | { Ellipse: { rx: number; ry: number } };
 
-export type Duration = {
+export interface Duration {
     seconds: number;
-};
+}
 
 export type LayerContent =
     | { Text: { text: string; font_family: string; font_size: number; color: Color } }
@@ -62,6 +63,8 @@ export type LayerContent =
     | { Audio: { asset_id: AssetId; trim_start: Duration; trim_end: Duration | null; volume: number } }
     | { Shape: { shape: ShapeType; fill: Color | null; stroke: Color | null; stroke_width: number } }
     | { Solid: { color: Color } }
+    | { TTS: { text: string; voice: string; volume: number } }
+    | { AutoCaption: { asset_id: AssetId; font_family: string; font_size: number; color: Color } }
     | "Empty";
 
 export type AnimatableProperty =
@@ -72,48 +75,59 @@ export type AnimatableProperty =
     | "Rotation"
     | "Opacity";
 
-export type Easing = "Linear" | "EaseIn" | "EaseOut" | "EaseInOut" | "Step";
+export type Easing =
+    | "Linear"
+    | "EaseIn"
+    | "EaseOut"
+    | "EaseInOut"
+    | "CubicIn"
+    | "CubicOut"
+    | "CubicInOut"
+    | "Step";
 
-export type Keyframe = {
+export interface Keyframe {
     time: Duration;
     value: number;
     easing: Easing;
-};
+}
 
-export type Animation = {
+export interface Animation {
     property: AnimatableProperty;
     keyframes: Keyframe[];
     delay: Duration;
-};
+}
 
-export type Layer = {
+export type LayerEffect =
+    | { Blur: { radius: number } }
+    | { DropShadow: { offset_x: number; offset_y: number; blur: number; color: Color } };
+
+export interface LayerIR {
     id: LayerId;
     content: LayerContent;
     transform: Transform2D;
     blend_mode: BlendMode;
     animations: Animation[];
+    effects: LayerEffect[];
     visible: boolean;
-    children: Layer[];
-};
+    children: LayerIR[];
+}
 
-export type SceneId = string;
-
-export type Scene = {
-    id: SceneId;
+export interface SceneIR {
+    id: string;
     duration: Duration;
-    layers: Layer[];
-};
+    layers: LayerIR[];
+}
 
-export type ProjectSettings = {
+export interface ProjectSettings {
     width: number;
     height: number;
     fps: number;
     background: Color;
-};
+}
 
-export type Project = {
+export interface ProjectIR {
     id: string;
     settings: ProjectSettings;
     assets: AssetRegistry;
-    scenes: Scene[];
-};
+    scenes: SceneIR[];
+}

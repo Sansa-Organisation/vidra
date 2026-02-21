@@ -1,22 +1,40 @@
 {
-    "name": "@vidra/sdk",
+    "name": "@sansavision/vidra-sdk",
     "version": "0.1.0",
-    "description": "TypeScript SDK for Vidra — Programmable video infrastructure",
+    "description": "TypeScript SDK for Vidra — Build programmatic videos with a fluent API",
     "main": "dist/index.js",
     "types": "dist/index.d.ts",
     "type": "module",
+    "exports": {
+        ".": {
+            "import": "./dist/index.js",
+            "types": "./dist/index.d.ts"
+        }
+    },
+    "files": [
+        "dist",
+        "README.md"
+    ],
     "scripts": {
         "build": "tsc",
-        "test": "node test.js"
+        "test": "node --loader ts-node/esm test.ts || node test.js",
+        "example": "node --loader ts-node/esm examples/demo.ts"
     },
     "keywords": [
         "video",
         "generative",
-        "framework"
+        "framework",
+        "vidra",
+        "motion-graphics",
+        "programmatic-video"
     ],
-    "author": "Vidra Team",
+    "author": "Sansa Vision",
     "license": "MIT",
     "devDependencies": {
+        "@types/node": "^25.3.0",
         "typescript": "^5.0.0"
+    },
+    "publishConfig": {
+        "access": "restricted"
     }
 }

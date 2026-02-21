@@ -1,6 +1,6 @@
 ---
 type: feature
-status: open
+status: closed
 priority: p1
 ---
 
