@@ -15,14 +15,65 @@
             align-items: center;
             justify-content: center;
             min-height: 100vh;
-            gap: 24px;
+            gap: 20px;
             padding: 24px;
         }
         h1 {
-            font-size: 1.5rem;
+            font-size: 1.4rem;
             font-weight: 600;
             color: #58a6ff;
         }
+        .tabs {
+            display: flex;
+            gap: 0;
+            border-radius: 8px 8px 0 0;
+            overflow: hidden;
+            width: 640px;
+            max-width: 100%;
+        }
+        .tab {
+            flex: 1;
+            padding: 10px 16px;
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-bottom: none;
+            cursor: pointer;
+            font-size: 13px;
+            color: #8b949e;
+            text-align: center;
+            transition: all 0.2s;
+        }
+        .tab:first-child { border-radius: 8px 0 0 0; }
+        .tab:last-child { border-radius: 0 8px 0 0; }
+        .tab.active {
+            background: #1c2128;
+            color: #58a6ff;
+            font-weight: 600;
+            border-bottom-color: #1c2128;
+        }
+        .tab:hover:not(.active) { background: #1c2128; color: #c9d1d9; }
+        .editor-container {
+            width: 640px;
+            max-width: 100%;
+            position: relative;
+        }
+        textarea {
+            width: 100%;
+            height: 220px;
+            background: #1c2128;
+            color: #e6edf3;
+            border: 1px solid #30363d;
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            padding: 12px;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 12.5px;
+            line-height: 1.5;
+            resize: vertical;
+            tab-size: 2;
+        }
+        textarea:focus { outline: none; border-color: #58a6ff; }
+        .hidden { display: none !important; }
         .player-container {
             border: 2px solid #30363d;
             border-radius: 12px;
@@ -30,56 +81,66 @@
             background: #000;
             box-shadow: 0 8px 32px rgba(0,0,0,0.4);
         }
-        canvas {
-            display: block;
-            max-width: 100%;
-            height: auto;
-        }
+        canvas { display: block; max-width: 100%; height: auto; }
         .controls {
             display: flex;
-            gap: 12px;
+            gap: 10px;
             align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
         }
         button {
             background: #21262d;
             color: #e6edf3;
             border: 1px solid #30363d;
-            padding: 8px 20px;
+            padding: 8px 18px;
             border-radius: 8px;
             cursor: pointer;
-            font-size: 14px;
-            transition: all 0.2s;
+            font-size: 13px;
+            transition: all 0.15s;
         }
         button:hover { background: #30363d; border-color: #58a6ff; }
         button:active { transform: scale(0.97); }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
+        button.primary {
+            background: #238636;
+            border-color: #2ea043;
+        }
+        button.primary:hover { background: #2ea043; }
         .info {
-            font-size: 13px;
+            font-size: 12px;
             color: #8b949e;
-            font-family: monospace;
-        }
-        #status {
-            color: #58a6ff;
-            font-weight: 600;
-        }
-        textarea {
-            width: 640px;
-            max-width: 100%;
-            height: 200px;
-            background: #161b22;
-            color: #e6edf3;
-            border: 1px solid #30363d;
-            border-radius: 8px;
-            padding: 12px;
             font-family: 'JetBrains Mono', monospace;
-            font-size: 13px;
-            resize: vertical;
+            text-align: center;
+        }
+        #status { color: #58a6ff; font-weight: 600; }
+        .badge {
+            display: inline-block;
+            background: #1f6feb20;
+            color: #58a6ff;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            margin-left: 4px;
         }
     </style>
 </head>
 <body>
     <h1>🎬 Vidra WASM Player</h1>
 
-    <textarea id="source">project(1920, 1080, 60) {
+    <!-- Tab Switcher -->
+    <div class="tabs">
+        <div class="tab active" data-tab="vidra" onclick="switchTab('vidra')">
+            📄 VidraScript <span class="badge">DSL</span>
+        </div>
+        <div class="tab" data-tab="sdk" onclick="switchTab('sdk')">
+            🟦 JavaScript SDK <span class="badge">JS</span>
+        </div>
+    </div>
+
+    <div class="editor-container">
+        <!-- VidraScript Editor -->
+        <textarea id="vidraSource">project(1920, 1080, 60) {
     scene("intro", 3s) {
         layer("bg") {
             solid(#1a1a2e)
@@ -106,8 +167,43 @@
     }
 }</textarea>
 
+        <!-- SDK JavaScript Editor -->
+        <textarea id="sdkSource" class="hidden">// Build videos with the fluent TypeScript/JS API!
+// Available: Project, Scene, Layer, Easing, hex, rgba
+
+const project = new Project(1920, 1080, 60)
+    .background("#0d1117");
+
+const intro = new Scene("intro", 3.0);
+intro.addLayers(
+    new Layer("bg").solid("#1a1a2e"),
+    new Layer("title")
+        .text("Built with JS SDK!", "Inter", 100, "#ffffff")
+        .position(960, 480)
+        .animate("opacity", 0, 1, 1.5, Easing.EaseOut),
+    new Layer("subtitle")
+        .text("No VidraScript needed ✨", "Inter", 48, "#58a6ff")
+        .position(960, 600)
+        .animate("opacity", 0, 1, 1.0, Easing.EaseOut, 0.5)
+        .animate("positionY", 640, 600, 1.0, Easing.CubicOut, 0.5),
+);
+project.addScene(intro);
+
+const outro = new Scene("outro", 2.0);
+outro.addLayers(
+    new Layer("bg2").solid("#161b22"),
+    new Layer("end")
+        .text("@sansavision/vidra-player", "Inter", 50, "#00ff88")
+        .position(960, 540),
+);
+project.addScene(outro);
+
+// Return the project (this is what gets rendered)
+return project;</textarea>
+    </div>
+
     <div class="controls">
-        <button id="loadBtn">📝 Compile</button>
+        <button id="loadBtn" class="primary">📝 Compile</button>
         <button id="playBtn" disabled>▶ Play</button>
         <button id="pauseBtn" disabled>⏸ Pause</button>
         <button id="stopBtn" disabled>⏹ Stop</button>
@@ -124,12 +220,19 @@
     </div>
 
     <script type="module">
+        // ── Import WASM engine ────────────────────────────────────
         import init, {
             parse_and_compile,
             render_frame,
             get_project_info,
         } from "../wasm/vidra_wasm.js";
 
+        // ── Import SDK classes (bundled into the player) ──────────
+        import {
+            Project, Scene, Layer, Easing, hex, rgba,
+        } from "../dist/sdk.js";
+
+        // ── State ─────────────────────────────────────────────────
         const canvas = document.getElementById("canvas");
         const ctx = canvas.getContext("2d");
         const statusEl = document.getElementById("status");
@@ -142,35 +245,58 @@
         let playing = false;
         let animId = 0;
         let lastTime = 0;
+        let activeTab = "vidra";
 
-        // ── Init WASM ────────────────────────────────────────────
+        // ── Tab switching ─────────────────────────────────────────
+        window.switchTab = (tab) => {
+            activeTab = tab;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+
+            document.getElementById('vidraSource').classList.toggle('hidden', tab !== 'vidra');
+            document.getElementById('sdkSource').classList.toggle('hidden', tab !== 'sdk');
+        };
+
+        // ── Init WASM ─────────────────────────────────────────────
         await init();
         statusEl.textContent = "Ready";
 
-        // ── Controls ─────────────────────────────────────────────
+        // ── Controls ──────────────────────────────────────────────
         document.getElementById("loadBtn").onclick = () => {
-            const source = document.getElementById("source").value;
             try {
-                irJson = parse_and_compile(source);
-                info = JSON.parse(get_project_info(irJson));
+                if (activeTab === "vidra") {
+                    // VidraScript mode → compile via WASM
+                    const source = document.getElementById("vidraSource").value;
+                    irJson = parse_and_compile(source);
+                } else {
+                    // SDK mode → execute JS, get Project, extract IR
+                    const code = document.getElementById("sdkSource").value;
+                    const buildFn = new Function(
+                        "Project", "Scene", "Layer", "Easing", "hex", "rgba",
+                        code
+                    );
+                    const project = buildFn(Project, Scene, Layer, Easing, hex, rgba);
+                    irJson = project.toJSONString(false);
+                }
 
-                // Scale canvas to fit (max 640px wide)
+                info = JSON.parse(get_project_info(irJson));
                 const scale = Math.min(640 / info.width, 1);
                 canvas.width = info.width;
                 canvas.height = info.height;
                 canvas.style.width = `${info.width * scale}px`;
                 canvas.style.height = `${info.height * scale}px`;
 
-                metaEl.textContent = `${info.width}x${info.height} @ ${info.fps}fps | ${info.totalFrames} frames | ${info.totalDuration.toFixed(1)}s`;
+                metaEl.textContent = `${info.width}×${info.height} @ ${info.fps}fps | ${info.totalFrames} frames | ${info.totalDuration.toFixed(1)}s`;
 
                 currentFrame = 0;
                 drawFrame();
-                statusEl.textContent = "Compiled ✓";
+                statusEl.textContent = `Compiled ✓ (${activeTab === 'vidra' ? 'VidraScript' : 'JS SDK'})`;
                 document.getElementById("playBtn").disabled = false;
                 document.getElementById("pauseBtn").disabled = false;
                 document.getElementById("stopBtn").disabled = false;
             } catch (e) {
                 statusEl.textContent = "Error: " + e;
+                console.error(e);
             }
         };
 
@@ -196,12 +322,11 @@
             statusEl.textContent = "Stopped ⏹";
         };
 
-        // ── Render Loop ──────────────────────────────────────────
+        // ── Render Loop ───────────────────────────────────────────
         function tick() {
             if (!playing || !info) return;
             const now = performance.now();
             const frameDuration = 1000 / info.fps;
-
             if (now - lastTime >= frameDuration) {
                 drawFrame();
                 currentFrame++;
@@ -217,8 +342,7 @@
                 const rgba = render_frame(irJson, currentFrame);
                 const imageData = new ImageData(
                     new Uint8ClampedArray(rgba),
-                    info.width,
-                    info.height
+                    info.width, info.height
                 );
                 ctx.putImageData(imageData, 0, 0);
                 frameEl.textContent = currentFrame;

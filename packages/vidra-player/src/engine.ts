@@ -99,6 +99,34 @@ export class VidraEngine {
         return this.info;
     }
 
+    /**
+     * Load a Project built with the `@sansavision/vidra-sdk` builder API.
+     *
+     * Accepts any object that has either:
+     * - `.toJSONString()` → returns IR JSON string
+     * - `.toJSON()` → returns IR object (will be JSON.stringify'd)
+     *
+     * @example
+     * ```ts
+     * import { Project, Scene, Layer } from "@sansavision/vidra-player";
+     * const project = new Project(1920, 1080, 60);
+     * project.addScene(new Scene("s1", 3).addLayer(new Layer("bg").solid("#1a1a2e")));
+     * engine.loadProject(project);
+     * ```
+     */
+    loadProject(project: { toJSONString?: () => string; toJSON?: () => unknown }): ProjectInfo {
+        let irJson: string;
+        if (typeof project.toJSONString === "function") {
+            irJson = project.toJSONString();
+        } else if (typeof project.toJSON === "function") {
+            irJson = JSON.stringify(project.toJSON());
+        } else {
+            // Last resort — try to stringify the entire object
+            irJson = JSON.stringify(project);
+        }
+        return this.loadIR(irJson);
+    }
+
     /** Load an image asset into the WASM renderer cache. */
     async loadImageAsset(assetId: string, url: string): Promise<void> {
         const response = await fetch(url);
