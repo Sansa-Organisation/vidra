@@ -1,0 +1,13 @@
+project(1920, 1080, 60) {
+    scene("main", 3s) {
+        layer("bg") {
+            solid(#111111)
+        }
+        layer("title") {
+            text("Performance Test", font: "Inter", size: 120, color: #ffffff)
+            position(960, 540)
+            animation(scaleX, from: 0.5, to: 1.0, duration: 1s, easing: easeOut)
+            animation(scaleY, from: 0.5, to: 1.0, duration: 1s, easing: easeOut)
+        }
+    }
+}

@@ -1,0 +1,17 @@
+project(3840, 2160, 60) {
+    scene("main", 5s) {
+        layer("bg1") {
+            solid(#ff0055)
+            animation(opacity, from: 0.0, to: 1.0, duration: 2s, easing: easeOut)
+        }
+        layer("bg2") {
+            solid(#0099ff)
+            animation(opacity, from: 0.0, to: 1.0, duration: 3s, easing: easeInOut)
+        }
+        layer("text1") {
+            text("4K High Quality Render", font: "Inter", size: 240, color: #ffffff)
+            position(1920, 1080)
+            animation(positionY, from: 1800, to: 1080, duration: 2s, easing: cubicOut)
+        }
+    }
+}

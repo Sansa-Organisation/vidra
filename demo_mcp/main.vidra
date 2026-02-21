@@ -1,0 +1,37 @@
+project(1920, 1080, 60) {
+    scene("space", 4s) {
+        layer("bg") {
+            image("assets/nebula.png")
+            position(960, 540)
+            animation(scaleX, from: 1.2, to: 1.0, duration: 4s, easing: easeOut)
+            animation(scaleY, from: 1.2, to: 1.0, duration: 4s, easing: easeOut)
+        }
+        layer("title") {
+            text("PROMPTED BY MCP", font: "Inter", size: 100, color: #ffffff)
+            position(960, 540)
+            animation(opacity, from: 0.0, to: 1.0, duration: 2s, easing: easeOut)
+            animation(positionY, from: 600, to: 540, duration: 2s, easing: cubicOut)
+        }
+        layer("music") {
+            audio("assets/music.mp3", volume: 1.0)
+        }
+    }
+    
+    scene("crystal", 4s) {
+        layer("bg2") {
+            image("assets/logo.png")
+            position(960, 540)
+            animation(scaleX, from: 1.0, to: 1.1, duration: 4s, easing: linear)
+            animation(scaleY, from: 1.0, to: 1.1, duration: 4s, easing: linear)
+        }
+        layer("overlay") {
+            solid(#000000)
+            animation(opacity, from: 0.7, to: 0.2, duration: 2s, easing: easeOut)
+        }
+        layer("text2") {
+            text("THE FUTURE OF VIDEO", font: "Inter", size: 140, color: #00ffff)
+            position(960, 540)
+            animation(opacity, from: 0.0, to: 1.0, duration: 1s, easing: easeInOut)
+        }
+    }
+}
