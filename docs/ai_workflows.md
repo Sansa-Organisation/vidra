@@ -10,7 +10,40 @@ The **Model Context Protocol (MCP)** gives any AI assistant (like Claude Desktop
 
 ```bash
 vidra mcp
+# or without installation: bunx @sansavision/vidra mcp
 ```
+
+### How to Connect (Claude Desktop Example)
+
+You do not run this command manually and type into it. Instead, you register it with your AI client (like Claude Desktop or Cursor). The AI will run the server in the background and talk to it via JSON-RPC over `stdio`.
+
+To add Vidra to Claude Desktop, open your MCP configuration file (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS) and add:
+
+```json
+{
+  "mcpServers": {
+    "vidra": {
+      "command": "bunx",
+      "args": [
+        "--bun",
+        "@sansavision/vidra",
+        "mcp"
+      ]
+    }
+  }
+}
+```
+
+Restart Claude, and it will now automatically understand the `vidra` tools.
+
+### What to ask your LLM
+
+You can now use conversational prompts to generate and edit video:
+* *"Create a new Vidra project in the `promo_video` folder. Make it 1080p and 60fps."*
+* *"Change the `hero_text` layer's font to 'Inter' and color to red."*
+* *"Generate a storyboard for a cinematic sci-fi intro."*
+* *"Add a TTS layer to my second scene that says 'Welcome to the future' using the `en-US-Journey-F` voice."*
+* *"Render a preview of my current project and give me the link."*
 
 ### Supported Tools
 
