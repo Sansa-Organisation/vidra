@@ -20,7 +20,9 @@
     "scripts": {
         "build": "tsc",
         "build:wasm": "cd ../.. && wasm-pack build crates/vidra-wasm --target web --out-dir ../../packages/vidra-player/wasm",
-        "build:all": "npm run build:wasm && npm run build"
+        "build:all": "npm run build:wasm && npm run build",
+        "demo": "npm run build && npx -y serve . --cors -l 3456",
+        "dev": "npm run demo"
     },
     "keywords": [
         "video",

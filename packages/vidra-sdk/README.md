@@ -1,76 +1,123 @@
-# @vidra/sdk
+# @sansavision/vidra-sdk
 
-The official TypeScript SDK for the **Vidra** Video Engine.
+The official TypeScript SDK for the **Vidra** video engine.
 
-Vidra is an AI-native, high-performance video infrastructure platform that allows you to define video compositions programmatically. This SDK lets you directly generate, configure, and serialize the Vidra Intermediate Representation (IR), which the `vidra` engine then natively compiles and renders via GPU hardware acceleration.
+Build video compositions programmatically using a fluent, chainable API. The SDK generates Vidra IR JSON and VidraScript DSL, which the engine compiles and renders via GPU acceleration.
 
 ## Installation
 
 ```bash
-npm install @vidra/sdk
+npm install @sansavision/vidra-sdk
 ```
 
-## Setup & Quickstart
+## Quick Start
 
-Import the core Builders and configure your project timeline dynamically using standard ES modules. 
-Then, serialize your project state directly to the filesystem for Vidra to ingest natively.
+```typescript
+import { Project, Scene, Layer, Easing } from "@sansavision/vidra-sdk";
 
-### 1. Build a simple Title
+// 1920x1080 @ 60fps
+const project = new Project(1920, 1080, 60);
 
-```javascript
-import { 
-  ProjectBuilder, 
-  SceneBuilder, 
-  LayerBuilder, 
-  AnimationBuilder, 
-  ColorUtils 
-} from "@vidra/sdk";
-import fs from "fs";
+const intro = new Scene("intro", 3.0);
+intro.addLayers(
+    new Layer("bg").solid("#1a1a2e"),
+    new Layer("title")
+        .text("Hello, Vidra!", "Inter", 100, "#ffffff")
+        .position(960, 540)
+        .animate("opacity", 0, 1, 1.5, Easing.EaseOut),
+    new Layer("subtitle")
+        .text("Built with TypeScript", "Inter", 40, "#58a6ff")
+        .position(960, 640)
+        .animate("opacity", 0, 1, 1.0, Easing.EaseOut, 0.5)
+        .animate("positionY", 680, 640, 1.0, Easing.CubicOut, 0.5),
+);
+project.addScene(intro);
 
-// Initialize Project (1080p @ 30fps)
-const project = new ProjectBuilder(1920, 1080, 30)
-  .background(ColorUtils.hex("#1a1a1a"));
+// Output as VidraScript
+console.log(project.toVidraScript());
 
-// Initialize a 5-second scene named "main"
-const scene = new SceneBuilder("main", 5.0);
+// Output as IR JSON
+console.log(project.toJSONString());
 
-// Add a Text Layer
-const titleText = new LayerBuilder("title", {
-  Text: {
-    text: "Vidra Generated Programmatically",
-    font_family: "Inter",
-    font_size: 110,
-    color: ColorUtils.rgba(255, 255, 255, 255)
-  }
-})
-  .position(960, 540)
-  // Animate the opacity fading in across 2 seconds
-  .addAnimation(
-    new AnimationBuilder("Opacity")
-      .addKeyframe(0.0, 0.0, "Linear")
-      .addKeyframe(2.0, 1.0, "EaseOut")
-      .build()
-  );
-
-// Compile the Scene
-scene.addLayer(titleText.build());
-project.addScene(scene.build());
-
-// Dump the generated Vidra IR to disk
-fs.writeFileSync("output.json", JSON.stringify(project.build(), null, 2));
+// Render directly to MP4 (requires vidra CLI installed)
+await project.render("output.mp4");
 ```
 
-### 2. Rendering Output
+## Output Modes
 
-Pass the generated `output.json` directly into the fast `vidra` compiler native CLI:
+| Method | Description |
+|--------|-------------|
+| `project.toJSON()` | Returns the IR as a JavaScript object |
+| `project.toJSONString()` | Returns the IR as a JSON string |
+| `project.toVidraScript()` | Returns a valid `.vidra` DSL string |
+| `project.render("out.mp4")` | Writes a temp `.vidra` file and shells to `vidra render` |
 
-```bash
-vidra render output.json --output ./final_video.mp4
+## Layer Content Types
+
+```typescript
+// Solid color
+new Layer("bg").solid("#1a1a2e")
+
+// Text
+new Layer("title").text("Hello!", "Inter", 100, "#ffffff")
+
+// Image (requires asset registration)
+new Layer("photo").image("photo-01")
+
+// Video
+new Layer("clip").video("clip-01", 0, 10) // trimStart=0, trimEnd=10
+
+// Audio
+new Layer("music").audio("bgm-01", 0.8) // volume=0.8
+
+// Shape
+new Layer("box").shape("rect", { width: 400, height: 200, radius: 12, fill: "#ff0000" })
+new Layer("dot").shape("circle", { radius: 50, fill: "#00ff00" })
+
+// Text-to-Speech
+new Layer("narration").tts("Welcome to Vidra", "en-US")
+```
+
+## Transforms & Animations
+
+```typescript
+new Layer("hero")
+    .text("Animate me!", "Inter", 80, "#ffffff")
+    .position(960, 540)      // x, y
+    .scale(1.5)              // uniform scale
+    .scale(2, 1)             // x, y scale
+    .rotation(45)            // degrees
+    .opacity(0.8)            // 0..1
+    .anchor(0.5, 0.5)        // normalized anchor point
+    .animate("opacity", 0, 1, 1.0, Easing.EaseOut)
+    .animate("positionY", 600, 540, 0.8, Easing.CubicOut, 0.2) // with delay
+```
+
+### Available Easings
+
+`Easing.Linear` · `Easing.EaseIn` · `Easing.EaseOut` · `Easing.EaseInOut` · `Easing.CubicIn` · `Easing.CubicOut` · `Easing.CubicInOut` · `Easing.Step`
+
+## Effects
+
+```typescript
+new Layer("blurred").solid("#000").blur(8)
+new Layer("shadow").text("Drop", "Inter", 60, "#fff")
+    .dropShadow(4, 4, 10, "#000000")
+```
+
+## Assets
+
+```typescript
+project.addAsset("Image", "bg-img", "/assets/background.png", "Background");
+project.addAsset("Video", "clip-01", "/assets/intro.mp4", "Intro Clip");
+project.addAsset("Audio", "bgm", "/assets/music.mp3", "Background Music");
 ```
 
 ## Features
 
-- **Object-Oriented API:** Exposes clean Builder patterns for Projects, Scenes, Layers, and Animations. 
-- **Type-safe Typescript:** Full TS intellisense auto-completion mirroring mapping to the native `vidra-core` Rust structs.
-- **Dependency-Free JSON Rendering:** The SDK outputs raw, standardized JSON payload configs so it is `Platform Agnostic` (NodeJS, V8 Isolates, Browser edge-workers such as Cloudflare Workers natively compatible).
-- **Fully Supports Vidra IR:** Includes primitives to bind media tracks such as `Image`, `Text`, `Video`, `Audio`, `Shape`, and internal `Assets`.
+- **Fluent API**: Chainable methods — `new Layer("x").text(...).position(...).animate(...)`
+- **Type-safe**: Full TypeScript types for all IR structs
+- **Zero dependencies**: Pure TypeScript, no runtime dependencies
+- **Dual output**: Generate both VidraScript DSL and IR JSON
+- **Direct rendering**: Call `.render()` to produce MP4 via the Vidra CLI
+- **Browser compatible**: Works in Node.js *and* the browser (via `@sansavision/vidra-player`)

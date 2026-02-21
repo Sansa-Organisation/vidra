@@ -20,7 +20,7 @@
 
 <br />
 
-[Getting Started](#-getting-started) · [Features](#-features) · [Architecture](#-architecture) · [VidraScript](#-vidrascript) · [MCP Server](#-mcp-server) · [Contributing](#-contributing)
+[Getting Started](#-getting-started) · [Features](#-features) · [Architecture](#-architecture) · [VidraScript](#-vidrascript) · [TypeScript SDK](#-typescript-sdk) · [Browser Player](#-browser-player) · [MCP Server](#-mcp-server) · [Contributing](#-contributing)
 
 <br />
 
@@ -138,21 +138,26 @@ crates/
 ├── vidra-render    # GPU rendering pipeline (wgpu), effects, compositing
 ├── vidra-encode    # FFmpeg-based encoding (H.264, H.265, ProRes, VP9, AV1)
 ├── vidra-lsp       # Language Server Protocol for editor integration
+├── vidra-wasm      # WebAssembly module — browser rendering (CPU)
 └── vidra-cli       # CLI application, MCP server, auth, receipts
+
+packages/
+├── vidra-sdk       # @sansavision/vidra-sdk — TypeScript builder API
+└── vidra-player    # @sansavision/vidra-player — WASM browser player
 ```
 
 ### The Vidra Pipeline
 
 ```
-VidraScript / SDK / MCP
+VidraScript / TypeScript SDK / MCP
          ↓
-    [ Parser + Checker ]
-         ↓
-    [ Compiler → IR ]
-         ↓
-    [ GPU Render Pipeline ]
-         ↓
-    [ Encoder → .mp4 / .mov / .webm ]
+    [ Parser + Checker ] ───── or ───── [ SDK → IR JSON ]
+         ↓                                    ↓
+    [ Compiler → IR ] ◀──────────────────────┘
+         ↓                    ↓
+    [ GPU Render ]      [ WASM Render ]
+         ↓                    ↓
+    [ .mp4 / .mov ]     [ <canvas> 60fps ]
 ```
 
 Every input surface compiles to the same **Vidra IR** — a queryable, composable, deterministic scene graph. The [IR specification](docs/ir-spec.md) is open and documented.
@@ -175,6 +180,67 @@ VidraScript is Vidra's domain-specific language for video composition:
 | **Brand Refs** | `color: @brand.primary` |
 | **AI Nodes** | `tts("Hello", "en-US")` / `autocaption(@narration)` |
 | **Conditionals** | `if (show_cta) { layer("cta") { ... } }` |
+
+---
+
+## 🟦 TypeScript SDK
+
+Build videos programmatically using the fluent TypeScript API (`@sansavision/vidra-sdk`):
+
+```typescript
+import { Project, Scene, Layer, Easing } from "@sansavision/vidra-sdk";
+
+const project = new Project(1920, 1080, 60);
+const scene = new Scene("intro", 3.0);
+
+scene.addLayers(
+    new Layer("bg").solid("#1a1a2e"),
+    new Layer("title")
+        .text("Hello!", "Inter", 100, "#ffffff")
+        .position(960, 540)
+        .animate("opacity", 0, 1, 1.0, Easing.EaseOut),
+);
+project.addScene(scene);
+
+// Output options
+project.toVidraScript();      // → VidraScript DSL string
+project.toJSON();             // → IR JSON object
+await project.render("out.mp4"); // → render to file via CLI
+```
+
+---
+
+## 🌐 Browser Player
+
+Render Vidra videos at 60fps in the browser using the WASM player (`@sansavision/vidra-player`):
+
+```bash
+# Run the demo
+cd packages/vidra-player
+npm install && npm run demo
+# → http://localhost:3456/examples/demo.html
+```
+
+The demo supports two modes:
+- **VidraScript tab** — write `.vidra` DSL, compile via WASM
+- **JavaScript SDK tab** — use the fluent `Project`/`Scene`/`Layer` API directly
+
+```typescript
+import { VidraEngine, Project, Scene, Layer } from "@sansavision/vidra-player";
+
+const engine = new VidraEngine(canvas);
+await engine.init();
+
+// Mode 1: VidraScript
+engine.loadSource('project(1920, 1080, 60) { ... }');
+
+// Mode 2: SDK Project object
+const project = new Project(1920, 1080, 60);
+// ... build scenes ...
+engine.loadProject(project);
+
+engine.play();
+```
 
 ---
 
