@@ -1,6 +1,6 @@
 {
     "name": "@sansavision/vidra-linux-x64-musl",
-    "version": "0.1.4",
+    "version": "0.1.5",
     "description": "Native binaries for linux x64 (musl)",
     "license": "MIT",
     "private": false,

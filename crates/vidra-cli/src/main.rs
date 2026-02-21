@@ -96,7 +96,18 @@ enum Commands {
     /// Start the Language Server
     Lsp,
 
-    /// Start the Model Context Protocol Server
+    /// Start the Model Context Protocol Server (JSON-RPC)
+    /// 
+    /// This command starts an MCP stdio server. Do not run this manually.
+    /// Configure your AI assistant (e.g. Claude Desktop, Cursor) with:
+    /// 
+    /// { "command": "bunx", "args": ["--bun", "@sansavision/vidra@latest", "mcp"] }
+    ///
+    /// Available tools for LLMs:
+    /// - vidra-create_project
+    /// - vidra-add_scene
+    /// - vidra-render_preview
+    /// - vidra-edit_layer
     Mcp,
 
     /// Inspect the render tree of a VidraScript file

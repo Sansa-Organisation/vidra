@@ -94,7 +94,7 @@ async fn handle_request(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
         "tools/list" => {
             let tools = vec![
                 serde_json::json!({
-                    "name": "vidra.create_project",
+                    "name": "vidra-create_project",
                     "description": "Create a new Vidra project with specified parameters",
                     "inputSchema": {
                         "type": "object",
@@ -108,7 +108,7 @@ async fn handle_request(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                     }
                 }),
                 serde_json::json!({
-                    "name": "vidra.add_scene",
+                    "name": "vidra-add_scene",
                     "description": "Add a new scene to the project",
                     "inputSchema": {
                         "type": "object",
@@ -120,7 +120,7 @@ async fn handle_request(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                     }
                 }),
                 serde_json::json!({
-                    "name": "vidra.render_preview",
+                    "name": "vidra-render_preview",
                     "description": "Trigger a local preview render",
                     "inputSchema": {
                         "type": "object",
@@ -131,7 +131,7 @@ async fn handle_request(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                     }
                 }),
                 serde_json::json!({
-                    "name": "vidra.edit_layer",
+                    "name": "vidra-edit_layer",
                     "description": "Edit properties of a semantic layer path",
                     "inputSchema": {
                         "type": "object",
@@ -144,7 +144,7 @@ async fn handle_request(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                     }
                 }),
                 serde_json::json!({
-                    "name": "vidra.set_style",
+                    "name": "vidra-set_style",
                     "description": "Set style properties for a component or layer",
                     "inputSchema": {
                         "type": "object",
@@ -156,7 +156,7 @@ async fn handle_request(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                     }
                 }),
                 serde_json::json!({
-                    "name": "vidra.apply_brand_kit",
+                    "name": "vidra-apply_brand_kit",
                     "description": "Apply a brand kit to the project",
                     "inputSchema": {
                         "type": "object",
@@ -167,7 +167,7 @@ async fn handle_request(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                     }
                 }),
                 serde_json::json!({
-                    "name": "vidra.add_asset",
+                    "name": "vidra-add_asset",
                     "description": "Register a new media asset to the project",
                     "inputSchema": {
                         "type": "object",
@@ -180,7 +180,7 @@ async fn handle_request(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                     }
                 }),
                 serde_json::json!({
-                    "name": "vidra.list_templates",
+                    "name": "vidra-list_templates",
                     "description": "List available video templates",
                     "inputSchema": {
                         "type": "object",
@@ -188,7 +188,7 @@ async fn handle_request(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                     }
                 }),
                 serde_json::json!({
-                    "name": "vidra.share",
+                    "name": "vidra-share",
                     "description": "Generate a shareable link for a video file",
                     "inputSchema": {
                         "type": "object",
@@ -199,7 +199,7 @@ async fn handle_request(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                     }
                 }),
                 serde_json::json!({
-                    "name": "vidra.add_resource",
+                    "name": "vidra-add_resource",
                     "description": "Pull a resource from Vidra Commons",
                     "inputSchema": {
                         "type": "object",
@@ -210,7 +210,7 @@ async fn handle_request(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                     }
                 }),
                 serde_json::json!({
-                    "name": "vidra.list_resources",
+                    "name": "vidra-list_resources",
                     "description": "Search the resource library",
                     "inputSchema": {
                         "type": "object",
@@ -220,7 +220,7 @@ async fn handle_request(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                     }
                 }),
                 serde_json::json!({
-                    "name": "vidra.storyboard",
+                    "name": "vidra-storyboard",
                     "description": "Generate a visual storyboard from text",
                     "inputSchema": {
                         "type": "object",
@@ -290,50 +290,50 @@ async fn handle_request(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
 
 async fn execute_tool(name: &str, args: Value) -> String {
     match name {
-        "vidra.create_project" => {
+        "vidra-create_project" => {
             let pd_name = args.get("name").and_then(|v| v.as_str()).unwrap_or("project");
             format!("✅ Project '{}' created successfully.", pd_name)
         }
-        "vidra.add_scene" => {
+        "vidra-add_scene" => {
             let scene_name = args.get("name").and_then(|v| v.as_str()).unwrap_or("scene");
             format!("✅ Scene '{}' added.", scene_name)
         }
-        "vidra.render_preview" => {
+        "vidra-render_preview" => {
             let file = args.get("project_file").and_then(|v| v.as_str()).unwrap_or("main.vidra");
             format!("✅ Render preview started for '{}'.", file)
         }
-        "vidra.edit_layer" => {
+        "vidra-edit_layer" => {
             let path = args.get("layer_path").and_then(|v| v.as_str()).unwrap_or("layer");
             format!("✅ Edited layer at '{}'.", path)
         }
-        "vidra.set_style" => {
+        "vidra-set_style" => {
             let target = args.get("target_id").and_then(|v| v.as_str()).unwrap_or("target");
             format!("✅ Styles updated on '{}'.", target)
         }
-        "vidra.apply_brand_kit" => {
+        "vidra-apply_brand_kit" => {
             let kit = args.get("kit_name").and_then(|v| v.as_str()).unwrap_or("default");
             format!("✅ Brand kit '{}' applied to project context.", kit)
         }
-        "vidra.add_asset" => {
+        "vidra-add_asset" => {
             let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("asset");
             format!("✅ Asset '{}' registered.", id)
         }
-        "vidra.list_templates" => {
+        "vidra-list_templates" => {
             "✅ Available templates: social-post, lower-third, branded-intro".to_string()
         }
-        "vidra.share" => {
+        "vidra-share" => {
             let file = args.get("file").and_then(|v| v.as_str()).unwrap_or("preview.mp4");
             format!("✅ Share link for '{}': https://share.vidra.dev/p/a8f3c9e2", file)
         }
-        "vidra.add_resource" => {
+        "vidra-add_resource" => {
             let res = args.get("resource_id").and_then(|v| v.as_str()).unwrap_or("resource");
             format!("✅ Resource '{}' pulled from Vidra Commons.", res)
         }
-        "vidra.list_resources" => {
+        "vidra-list_resources" => {
             let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
             format!("✅ Search results for '{}': [1] neon-glow [2] youtube-intro", query)
         }
-        "vidra.storyboard" => {
+        "vidra-storyboard" => {
             let prompt = args.get("prompt").and_then(|v| v.as_str()).unwrap_or("default");
             format!("✅ Storyboard generated for prompt: '{}'", prompt)
         }
