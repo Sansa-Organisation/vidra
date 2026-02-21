@@ -3,12 +3,12 @@ project(1920, 1080, 60) {
         layer("bg") {
             solid(#222222)
         }
-        layer("crosshair_h") {
-            solid(#ff0000)
-            position(960, 540)
-        }
         layer("title") {
             text("CENTERED", font: "Inter", size: 120, color: #ffffff)
+            position(960, 540)
+        }
+        layer("marker") {
+            text("+", font: "Inter", size: 40, color: #ff0000)
             position(960, 540)
         }
     }
