@@ -1,6 +1,6 @@
 {
     "name": "@sansavision/vidra-win32-x64-msvc",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "Native binaries for win32 x64 (MSVC)",
     "license": "MIT",
     "private": false,
