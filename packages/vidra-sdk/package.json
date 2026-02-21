@@ -1,6 +1,6 @@
 {
     "name": "@sansavision/vidra-sdk",
-    "version": "0.1.2",
+    "version": "0.1.3",
     "description": "TypeScript SDK for Vidra — Build programmatic videos with a fluent API",
     "main": "dist/index.js",
     "types": "dist/index.d.ts",
