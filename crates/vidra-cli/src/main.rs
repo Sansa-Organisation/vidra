@@ -369,14 +369,21 @@ enum WorkspaceCommands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt()
+    let cli = Cli::parse();
+
+    let is_mcp_or_lsp = matches!(cli.command, Commands::Mcp | Commands::Lsp);
+
+    let subscriber = tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .init();
+        );
 
-    let cli = Cli::parse();
+    if is_mcp_or_lsp {
+        subscriber.with_writer(std::io::stderr).init();
+    } else {
+        subscriber.init();
+    }
 
     match cli.command {
         Commands::Render { file, output, targets, cloud } => cmd_render(file, output, targets, cloud),
