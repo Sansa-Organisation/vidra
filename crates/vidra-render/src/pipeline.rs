@@ -221,8 +221,7 @@ impl RenderPipeline {
             }
             if let Ok(layer_buf) = self.render_layer(&ctx, project, layer, local_f) {
                 let (dx, dy) = Self::compute_layer_position(&ctx, layer, local_f);
-                let cx = dx - (layer_buf.width as f64 * layer.transform.anchor.x).round() as i32;
-                let cy = dy - (layer_buf.height as f64 * layer.transform.anchor.y).round() as i32;
+                let (cx, cy) = Self::apply_anchor(dx, dy, &layer_buf, layer);
                 bounds.push(LayerBounds {
                     id: layer.id.to_string(),
                     x: cx,
@@ -255,8 +254,7 @@ impl RenderPipeline {
             }
             if let Ok(layer_buf) = self.render_layer(ctx, project, layer, local_frame) {
                 let (dx, dy) = Self::compute_layer_position(ctx, layer, local_frame);
-                let cx = dx - (layer_buf.width as f64 * layer.transform.anchor.x).round() as i32;
-                let cy = dy - (layer_buf.height as f64 * layer.transform.anchor.y).round() as i32;
+                let (cx, cy) = Self::apply_anchor(dx, dy, &layer_buf, layer);
                 self.compositor.composite(&mut canvas, &layer_buf, cx, cy, &layer.effects);
             }
         }
@@ -316,6 +314,33 @@ impl RenderPipeline {
         }
 
         opacity.clamp(0.0, 1.0)
+    }
+
+    /// Determine whether a layer's content has an intrinsic bounding box
+    /// (i.e., it's not a full-canvas fill). Only layers with intrinsic sizes
+    /// should have anchor-point offsets applied.
+    fn has_intrinsic_size(layer: &Layer) -> bool {
+        matches!(
+            layer.content,
+            LayerContent::Text { .. }
+                | LayerContent::Image { .. }
+                | LayerContent::Video { .. }
+                | LayerContent::Shape { .. }
+                | LayerContent::TTS { .. }
+                | LayerContent::AutoCaption { .. }
+        )
+    }
+
+    /// Apply anchor-point offset to the raw position.
+    /// For full-canvas layers (Solid, Empty, Audio), the position is returned unchanged.
+    fn apply_anchor(dx: i32, dy: i32, buf: &FrameBuffer, layer: &Layer) -> (i32, i32) {
+        if Self::has_intrinsic_size(layer) {
+            let cx = dx - (buf.width as f64 * layer.transform.anchor.x).round() as i32;
+            let cy = dy - (buf.height as f64 * layer.transform.anchor.y).round() as i32;
+            (cx, cy)
+        } else {
+            (dx, dy)
+        }
     }
 
     /// Render a single layer to its own FrameBuffer.
@@ -438,8 +463,7 @@ impl RenderPipeline {
             }
             let child_buf = self.render_layer(ctx, project, child, frame)?;
             let (dx, dy) = Self::compute_layer_position(ctx, child, frame);
-            let cx = dx - (child_buf.width as f64 * child.transform.anchor.x).round() as i32;
-            let cy = dy - (child_buf.height as f64 * child.transform.anchor.y).round() as i32;
+            let (cx, cy) = Self::apply_anchor(dx, dy, &child_buf, child);
             buf.composite_over(&child_buf, cx, cy);
         }
 
