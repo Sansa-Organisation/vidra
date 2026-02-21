@@ -32,3 +32,4 @@ The compiler correctly parses the audio layer and validates the existence of the
 Update the `vidra-encode` wrapper to:
 1. Initialize an audio stream (e.g., AAC) in exactly the same FFmpeg context alongside the H.264 video stream.
 2. Read the audio duration and buffer data from the IR's loaded `AssetId` and interleave the audio samples (`av_interleaved_write_frame`) in sync with the video PTS (Presentation Time Stamp).
+Closing Issue #003: Asset 'assets/sample.mp3' was identified as a silent audio track.
