@@ -165,7 +165,7 @@ impl TextRenderer {
 
         for ch in text.chars() {
             let (metrics, _) = font.rasterize(ch, font_size);
-            let ascent = metrics.height as i32 - metrics.ymin;
+            let ascent = metrics.height as i32 + metrics.ymin;
             let descent = -metrics.ymin;
             max_ascent = max_ascent.max(ascent);
             max_descent = max_descent.max(descent);
@@ -175,7 +175,7 @@ impl TextRenderer {
         // For empty lines, use font metrics from a space character
         if text.is_empty() {
             let (metrics, _) = font.rasterize(' ', font_size);
-            let ascent = metrics.height as i32 - metrics.ymin;
+            let ascent = metrics.height as i32 + metrics.ymin;
             let descent = -metrics.ymin;
             max_ascent = max_ascent.max(ascent);
             max_descent = max_descent.max(descent);
@@ -206,7 +206,7 @@ impl TextRenderer {
         for ch in text.chars() {
             let (metrics, bitmap) = font.rasterize(ch, font_size);
             let glyph_x = cursor_x + metrics.xmin;
-            let glyph_y = y_offset + line_ascent - (metrics.height as i32 - metrics.ymin);
+            let glyph_y = y_offset + line_ascent - (metrics.height as i32 + metrics.ymin);
 
             for gy in 0..metrics.height {
                 for gx in 0..metrics.width {
