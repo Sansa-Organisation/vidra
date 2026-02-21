@@ -1,6 +1,6 @@
 ---
 type: qol
-status: open
+status: closed
 priority: p2
 ---
 

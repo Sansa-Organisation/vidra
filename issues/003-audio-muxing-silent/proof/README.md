@@ -15,6 +15,8 @@ cd issues/003-audio-muxing-silent/proof
 
 # Use a real audio file with actual sound
 vidra render test.vidra --output result.mp4
+# or 
+/Users/mohamedahmed/Downloads/Projects/dev/vidra/target/release/vidra render test.vidra --output result.mp4
 
 # Confirm audio stream exists
 ffprobe result.mp4
