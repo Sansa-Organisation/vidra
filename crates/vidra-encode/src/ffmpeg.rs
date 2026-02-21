@@ -90,8 +90,8 @@ impl FfmpegEncoder {
                 let filter_name = format!("[a{}]", i);
 
                 filter_complex.push_str(&format!(
-                    "[{}:a]adelay={}|{}:all=1,volume={}{};",
-                    input_idx, delay_ms, delay_ms, track.volume, filter_name
+                    "[{}:a]adelay={}:all=1,volume={}{};",
+                    input_idx, delay_ms, track.volume, filter_name
                 ));
                 mix_inputs.push_str(&filter_name);
             }

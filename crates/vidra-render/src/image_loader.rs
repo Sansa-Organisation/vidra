@@ -8,12 +8,24 @@ use vidra_core::{PixelFormat, VidraError};
 
 /// Load an image file and convert it to a FrameBuffer.
 pub fn load_image(path: &Path) -> Result<FrameBuffer, VidraError> {
-    let img = image::open(path).map_err(|e| {
+    let img_bytes = std::fs::read(path).map_err(|e| {
         VidraError::asset(
-            format!("failed to load image '{}': {}", path.display(), e),
+            format!("failed to read image file '{}': {}", path.display(), e),
             path,
         )
     })?;
+    
+    let cursor = std::io::Cursor::new(img_bytes);
+    let img = image::ImageReader::new(cursor)
+        .with_guessed_format()
+        .map_err(|e| VidraError::asset(format!("failed to guess format for '{}': {}", path.display(), e), path))?
+        .decode()
+        .map_err(|e| {
+            VidraError::asset(
+                format!("failed to parse image '{}': {}", path.display(), e),
+                path,
+            )
+        })?;
 
     let rgba = img.to_rgba8();
     let (width, height) = rgba.dimensions();
