@@ -6,7 +6,9 @@ members = [
     "crates/vidra-render",
     "crates/vidra-encode",
     "crates/vidra-lang",
-    "crates/vidra-cli", "crates/vidra-lsp",
+    "crates/vidra-cli",
+    "crates/vidra-lsp",
+    "crates/vidra-wasm",
 ]
 
 [workspace.package]
@@ -25,7 +27,7 @@ anyhow = "1.0"
 tracing = "0.1"
 tokio = { version = "1.0", features = ["full"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-uuid = { version = "1.0", features = ["v4", "serde"] }
+uuid = { version = "1.0", features = ["v4", "serde", "js"] }
 image = "0.25"
 fontdue = "0.9"
 sha2 = "0.10"

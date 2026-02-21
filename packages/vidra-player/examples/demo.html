@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vidra WASM Player Demo</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            gap: 24px;
+            padding: 24px;
+        }
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #58a6ff;
+        }
+        .player-container {
+            border: 2px solid #30363d;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #000;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+        canvas {
+            display: block;
+            max-width: 100%;
+            height: auto;
+        }
+        .controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        button {
+            background: #21262d;
+            color: #e6edf3;
+            border: 1px solid #30363d;
+            padding: 8px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        button:hover { background: #30363d; border-color: #58a6ff; }
+        button:active { transform: scale(0.97); }
+        .info {
+            font-size: 13px;
+            color: #8b949e;
+            font-family: monospace;
+        }
+        #status {
+            color: #58a6ff;
+            font-weight: 600;
+        }
+        textarea {
+            width: 640px;
+            max-width: 100%;
+            height: 200px;
+            background: #161b22;
+            color: #e6edf3;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 12px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            resize: vertical;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎬 Vidra WASM Player</h1>
+
+    <textarea id="source">project(1920, 1080, 60) {
+    scene("intro", 3s) {
+        layer("bg") {
+            solid(#1a1a2e)
+        }
+        layer("title") {
+            text("Hello from WASM!", font: "Inter", size: 120, color: #ffffff)
+            position(960, 540)
+            animation(opacity, from: 0, to: 1, duration: 1.5s, easing: easeOut)
+        }
+        layer("subtitle") {
+            text("Real-time rendering in the browser", font: "Inter", size: 40, color: #58a6ff)
+            position(960, 650)
+            animation(opacity, from: 0, to: 1, duration: 1s, easing: easeOut)
+        }
+    }
+    scene("end", 2s) {
+        layer("bg2") {
+            solid(#0d1117)
+        }
+        layer("msg") {
+            text("Powered by WebAssembly", font: "Inter", size: 60, color: #00ff88)
+            position(960, 540)
+        }
+    }
+}</textarea>
+
+    <div class="controls">
+        <button id="loadBtn">📝 Compile</button>
+        <button id="playBtn" disabled>▶ Play</button>
+        <button id="pauseBtn" disabled>⏸ Pause</button>
+        <button id="stopBtn" disabled>⏹ Stop</button>
+    </div>
+
+    <div class="player-container">
+        <canvas id="canvas" width="640" height="360"></canvas>
+    </div>
+
+    <div class="info">
+        Status: <span id="status">Loading WASM...</span> |
+        Frame: <span id="frame">0</span> |
+        <span id="meta"></span>
+    </div>
+
+    <script type="module">
+        import init, {
+            parse_and_compile,
+            render_frame,
+            get_project_info,
+        } from "../wasm/vidra_wasm.js";
+
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+        const statusEl = document.getElementById("status");
+        const frameEl = document.getElementById("frame");
+        const metaEl = document.getElementById("meta");
+
+        let irJson = null;
+        let info = null;
+        let currentFrame = 0;
+        let playing = false;
+        let animId = 0;
+        let lastTime = 0;
+
+        // ── Init WASM ────────────────────────────────────────────
+        await init();
+        statusEl.textContent = "Ready";
+
+        // ── Controls ─────────────────────────────────────────────
+        document.getElementById("loadBtn").onclick = () => {
+            const source = document.getElementById("source").value;
+            try {
+                irJson = parse_and_compile(source);
+                info = JSON.parse(get_project_info(irJson));
+
+                // Scale canvas to fit (max 640px wide)
+                const scale = Math.min(640 / info.width, 1);
+                canvas.width = info.width;
+                canvas.height = info.height;
+                canvas.style.width = `${info.width * scale}px`;
+                canvas.style.height = `${info.height * scale}px`;
+
+                metaEl.textContent = `${info.width}x${info.height} @ ${info.fps}fps | ${info.totalFrames} frames | ${info.totalDuration.toFixed(1)}s`;
+
+                currentFrame = 0;
+                drawFrame();
+                statusEl.textContent = "Compiled ✓";
+                document.getElementById("playBtn").disabled = false;
+                document.getElementById("pauseBtn").disabled = false;
+                document.getElementById("stopBtn").disabled = false;
+            } catch (e) {
+                statusEl.textContent = "Error: " + e;
+            }
+        };
+
+        document.getElementById("playBtn").onclick = () => {
+            if (!irJson) return;
+            playing = true;
+            lastTime = performance.now();
+            statusEl.textContent = "Playing ▶";
+            tick();
+        };
+
+        document.getElementById("pauseBtn").onclick = () => {
+            playing = false;
+            cancelAnimationFrame(animId);
+            statusEl.textContent = "Paused ⏸";
+        };
+
+        document.getElementById("stopBtn").onclick = () => {
+            playing = false;
+            cancelAnimationFrame(animId);
+            currentFrame = 0;
+            drawFrame();
+            statusEl.textContent = "Stopped ⏹";
+        };
+
+        // ── Render Loop ──────────────────────────────────────────
+        function tick() {
+            if (!playing || !info) return;
+            const now = performance.now();
+            const frameDuration = 1000 / info.fps;
+
+            if (now - lastTime >= frameDuration) {
+                drawFrame();
+                currentFrame++;
+                if (currentFrame >= info.totalFrames) currentFrame = 0;
+                lastTime = now;
+            }
+            animId = requestAnimationFrame(tick);
+        }
+
+        function drawFrame() {
+            if (!irJson || !info) return;
+            try {
+                const rgba = render_frame(irJson, currentFrame);
+                const imageData = new ImageData(
+                    new Uint8ClampedArray(rgba),
+                    info.width,
+                    info.height
+                );
+                ctx.putImageData(imageData, 0, 0);
+                frameEl.textContent = currentFrame;
+            } catch (e) {
+                statusEl.textContent = "Render error: " + e;
+            }
+        }
+    </script>
+</body>
+</html>
