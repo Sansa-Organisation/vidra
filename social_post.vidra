@@ -1,0 +1,25 @@
+project(1080, 1920, 60) {
+    scene("main", 15s) {
+        layer("background") {
+            solid(#1A1A1A)
+        }
+
+        layer("text_content") {
+            text("Social Post Template", font: "Inter", size: 96, color: #FFFFFF)
+            position(540, 960)
+            
+            animate(ScaleX) {
+                0.0s -> 0.0 ~ EaseOut
+                1.0s -> 1.0
+                14.0s -> 1.0 ~ EaseIn
+                15.0s -> 0.0
+            }
+            animate(ScaleY) {
+                0.0s -> 0.0 ~ EaseOut
+                1.0s -> 1.0
+                14.0s -> 1.0 ~ EaseIn
+                15.0s -> 0.0
+            }
+        }
+    }
+}

@@ -1,0 +1,28 @@
+[project]
+name = "test_project"
+resolution = "1920x1080"
+fps = 60
+
+[brand]
+
+[sync]
+enabled = false
+auto_sync = true
+sync_source = false
+sync_assets = "on-demand"
+
+[render]
+target = "local"
+cloud_fallback = false
+targets = ["default"]
+
+[telemetry]
+level = "identified"
+
+[resources]
+registries = ["vidra-commons"]
+cache_dir = "~/.vidra/cache"
+cache_max_gb = 10
+
+[auth]
+vlt_path = "~/.vidra/vlt.token"

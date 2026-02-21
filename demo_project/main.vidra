@@ -1,0 +1,17 @@
+project {
+    width: 1920,
+    height: 1080,
+    fps: 60,
+    background: #111111,
+}
+
+scene {
+    duration: 5s,
+    // A simple text layer welcoming you to Vidra
+    "welcome_text": text {
+        content: "Welcome to Vidra!",
+        font: "Inter",
+        size: 96,
+        color: #FFFFFF,
+    } @ position(x: 960, y: 540)
+}

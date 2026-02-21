@@ -1,0 +1,50 @@
+// Vidra Demo — 30-second branded intro
+// This is the Phase 0 internal demo.
+
+project(1920, 1080, 30) {
+
+    scene("intro", 5s) {
+        layer("background") {
+            solid(#0A0A0F)
+        }
+        layer("title") {
+            text("Introducing Vidra", font: "Inter Bold", size: 72, color: #FFFFFF)
+            position(480, 400)
+            animation(opacity, from: 0, to: 1, duration: 2s, ease: easeInOut)
+        }
+        layer("subtitle") {
+            text("Video, compiled.", font: "Inter Light", size: 32, color: #888888)
+            position(720, 500)
+            animation(opacity, from: 0, to: 1, duration: 1s, delay: 1.5s, ease: easeOut)
+        }
+    }
+
+    scene("features", 5s) {
+        layer("bg") {
+            solid(#0F0F1A)
+        }
+        layer("feature-text") {
+            text("Programmable Video Engine", font: "Inter", size: 48, color: #4488FF)
+            position(520, 480)
+            animation(opacity, from: 0, to: 1, duration: 0.8s, ease: easeOut)
+        }
+    }
+
+    scene("closing", 5s) {
+        layer("bg") {
+            solid(#0A0A0F)
+        }
+        layer("logo-text") {
+            text("VIDRA", font: "Inter Black", size: 96, color: #FFFFFF)
+            position(780, 450)
+            animation(opacity, from: 0, to: 1, duration: 1.5s, ease: easeInOut)
+            animation(scale, from: 0.8, to: 1, duration: 2s, ease: cubicOut)
+        }
+        layer("tagline") {
+            text("One engine. Every interface. Any scale.", font: "Inter", size: 24, color: #666666)
+            position(580, 580)
+            animation(opacity, from: 0, to: 1, duration: 1s, delay: 1s, ease: easeIn)
+        }
+    }
+
+}

@@ -1,0 +1,13 @@
+project(1920, 1080, 30) {
+    scene("main", 2s) {
+        layer("bg") {
+            solid(@brand.bg)
+            position(960, 540)
+        }
+
+        layer("title") {
+            text("Brand Powered!", font: @brand.font, size: @brand.size, color: @brand.primary)
+            position(960, 500)
+        }
+    }
+}

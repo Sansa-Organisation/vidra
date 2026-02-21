@@ -1,0 +1,16 @@
+[package]
+name = "vidra-lang"
+description = "VidraScript parser and compiler — source → AST → IR"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+vidra-core = { workspace = true }
+vidra-ir = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+vidra-render = { workspace = true }

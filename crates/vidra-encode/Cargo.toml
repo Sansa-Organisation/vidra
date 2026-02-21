@@ -1,0 +1,12 @@
+[package]
+name = "vidra-encode"
+description = "Vidra encoding — frames to video files (H.264 via FFmpeg)"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+vidra-core = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }

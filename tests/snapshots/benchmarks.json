@@ -1,0 +1,26 @@
+[
+  {
+    "profile": "720p",
+    "width": 1280,
+    "height": 720,
+    "frames": 120,
+    "duration_ms": 1684.4821250000002,
+    "fps": 71.23851195512091
+  },
+  {
+    "profile": "1080p",
+    "width": 1920,
+    "height": 1080,
+    "frames": 120,
+    "duration_ms": 3092.583416,
+    "fps": 38.80251034754951
+  },
+  {
+    "profile": "4K",
+    "width": 3840,
+    "height": 2160,
+    "frames": 120,
+    "duration_ms": 13600.465041,
+    "fps": 8.823227708629643
+  }
+]

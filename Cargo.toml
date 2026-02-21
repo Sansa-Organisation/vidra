@@ -1,0 +1,39 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/vidra-core",
+    "crates/vidra-ir",
+    "crates/vidra-render",
+    "crates/vidra-encode",
+    "crates/vidra-lang",
+    "crates/vidra-cli", "crates/vidra-lsp",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Vidra Team"]
+license = "MIT"
+repository = "https://github.com/vidra-dev/vidra"
+
+[workspace.dependencies]
+# Shared dependencies across crates
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+anyhow = "1.0"
+tracing = "0.1"
+tokio = { version = "1.0", features = ["full"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+image = "0.25"
+fontdue = "0.9"
+sha2 = "0.10"
+
+# Internal crate dependencies
+vidra-core = { path = "crates/vidra-core" }
+vidra-ir = { path = "crates/vidra-ir" }
+vidra-render = { path = "crates/vidra-render" }
+vidra-encode = { path = "crates/vidra-encode" }
+vidra-lang = { path = "crates/vidra-lang" }
+vidra-lsp = { path = "crates/vidra-lsp" }

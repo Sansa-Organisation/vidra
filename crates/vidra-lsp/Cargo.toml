@@ -1,0 +1,16 @@
+[package]
+name = "vidra-lsp"
+description = "Language Server Protocol implementation for VidraScript"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+vidra-core = { workspace = true }
+vidra-lang = { workspace = true }
+tower-lsp = "0.20.0"
+tokio = { workspace = true }
+tracing = { workspace = true }
+dashmap = "6.1.0"
+serde_json = { workspace = true }

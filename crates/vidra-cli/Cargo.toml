@@ -1,0 +1,39 @@
+[package]
+name = "vidra-cli"
+description = "Vidra CLI — the command-line interface for the Vidra video engine"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "vidra"
+path = "src/main.rs"
+
+[dependencies]
+vidra-core = { workspace = true }
+vidra-ir = { workspace = true }
+vidra-lang = { workspace = true }
+vidra-render = { workspace = true }
+vidra-encode = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+clap = { version = "4.5", features = ["derive"] }
+serde.workspace = true
+serde_json.workspace = true
+tokio = { version = "1.49.0", features = ["io-std", "macros", "rt-multi-thread"] }
+axum = { version = "0.8.8", features = ["ws"] }
+notify = "8.2.0"
+tower-http = { version = "0.6.8", features = ["fs", "cors"] }
+futures = "0.3.32"
+image.workspace = true
+base64 = "0.22.1"
+parking_lot = "0.12.5"
+tokio-tungstenite = "0.28.0"
+vidra-lsp = { version = "0.1.0", path = "../vidra-lsp" }
+ed25519-dalek = { version = "2.1.1", features = ["rand_core"] }
+chrono = { version = "0.4.43", features = ["serde"] }
+toml = { version = "1.0.3", features = ["parse"] }
+md5 = "0.8.0"
+dirs = "6.0.0"

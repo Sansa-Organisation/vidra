@@ -1,0 +1,13 @@
+project(1920, 1080, 30) {
+    asset(video, "sample_vid", "./assets/sample.mp4")
+
+    scene("main", 5s) {
+        layer("bg") { 
+            solid(#000000) 
+        }
+        layer("vid") { 
+            video("sample_vid", trim_start: 1s, trim_end: 4s) 
+            position(960, 540)
+        }
+    }
+}

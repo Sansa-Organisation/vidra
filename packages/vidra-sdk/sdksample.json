@@ -1,0 +1,86 @@
+{
+  "id": "bd6b8bdf-d1ee-431a-b34b-5fea9308f302",
+  "settings": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "background": {
+      "r": 26,
+      "g": 26,
+      "b": 26,
+      "a": 255
+    }
+  },
+  "assets": {
+    "assets": {}
+  },
+  "scenes": [
+    {
+      "id": "intro",
+      "duration": {
+        "seconds": 5
+      },
+      "layers": [
+        {
+          "id": "title",
+          "content": {
+            "Text": {
+              "text": "Hello from Vidra SDK!",
+              "font_family": "Inter",
+              "font_size": 150,
+              "color": {
+                "r": 255,
+                "g": 255,
+                "b": 255,
+                "a": 255
+              }
+            }
+          },
+          "transform": {
+            "position": {
+              "x": 960,
+              "y": 540
+            },
+            "scale": {
+              "x": 1,
+              "y": 1
+            },
+            "rotation": 0,
+            "opacity": 1,
+            "anchor": {
+              "x": 0,
+              "y": 0
+            }
+          },
+          "blend_mode": "Normal",
+          "animations": [
+            {
+              "property": "Opacity",
+              "keyframes": [
+                {
+                  "time": {
+                    "seconds": 0
+                  },
+                  "value": 0,
+                  "easing": "Linear"
+                },
+                {
+                  "time": {
+                    "seconds": 2
+                  },
+                  "value": 1,
+                  "easing": "EaseOut"
+                }
+              ],
+              "delay": {
+                "seconds": 0
+              }
+            }
+          ],
+          "visible": true,
+          "children": []
+        }
+      ]
+    }
+  ]
+}

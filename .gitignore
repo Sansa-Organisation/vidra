@@ -1,0 +1,60 @@
+# ── Build Artifacts ───────────────────────────────────────────────────
+/target/
+**/*.rs.bk
+
+# ── OS Files ─────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# ── IDE / Editor ─────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.iml
+.fleet/
+
+# ── Environment ──────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ── Vidra Output ─────────────────────────────────────────────────────
+output/
+*.mp4
+*.mov
+*.webm
+*.avi
+storyboard.png
+
+# ── Render Receipts ──────────────────────────────────────────────────
+*.receipt.json
+
+# ── Auth Tokens ──────────────────────────────────────────────────────
+vlt.token
+*.token
+
+# ── Node (if TS SDK dev) ─────────────────────────────────────────────
+node_modules/
+dist/
+*.tsbuildinfo
+
+# ── Python (if Py SDK dev) ───────────────────────────────────────────
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+
+# ── Benchmark Baselines (tracked separately) ─────────────────────────
+bench-baseline.txt
+bench-output.txt
+
+# ── Coverage ─────────────────────────────────────────────────────────
+lcov.info
+coverage/
+tarpaulin-report.html
+
+# ── Misc ─────────────────────────────────────────────────────────────
+*.log

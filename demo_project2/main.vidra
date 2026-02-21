@@ -1,0 +1,9 @@
+project(1920x1080, 60) {
+    scene("main", 5s) {
+        // A simple text layer welcoming you to Vidra
+        layer("welcome_text") {
+            text("Welcome to Vidra!", font: "Inter", size: 96, color: #FFFFFF)
+            position(960, 540)
+        }
+    }
+}

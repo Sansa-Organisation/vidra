@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vidra Dev Player</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #0f172a;
+            color: #f8fafc;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 24px;
+        }
+        .player-container {
+            width: 100%;
+            max-width: 1280px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .canvas-container {
+            width: 100%;
+            aspect-ratio: 16/9;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        #video-canvas {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 16px;
+            background: #1e293b;
+            border-radius: 8px;
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+        input[type=range] {
+            flex-grow: 1;
+            height: 4px;
+            background: #334155;
+            border-radius: 4px;
+            appearance: none;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #3b82f6;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        .timecode {
+            font-variant-numeric: tabular-nums;
+            font-size: 14px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        }
+        #status {
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 14px;
+            background: #10b981;
+            color: #022c22;
+            font-weight: 600;
+        }
+        #status.disconnected {
+            background: #ef4444;
+            color: #450a0a;
+        }
+        #status.recompiling {
+            background: #f59e0b;
+            color: #451a03;
+        }
+        #error-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.8);
+            color: #ef4444;
+            display: none;
+            padding: 24px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            overflow-y: auto;
+        }
+        #hover-overlay {
+            position: absolute;
+            border: 2px solid #3b82f6;
+            background: rgba(59, 130, 246, 0.2);
+            pointer-events: none;
+            display: none;
+            z-index: 10;
+        }
+        #hover-label {
+            position: absolute;
+            top: -24px;
+            left: -2px;
+            background: #3b82f6;
+            color: white;
+            font-size: 12px;
+            font-family: monospace;
+            padding: 2px 6px;
+            border-radius: 4px 4px 4px 0;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Vidra Live Preview</h1>
+    
+    <div class="player-container">
+        <div class="canvas-container" id="canvas-container">
+            <img id="video-canvas" src="" alt="Waiting for frame..." />
+            <div id="hover-overlay"><div id="hover-label"></div></div>
+            <div id="error-overlay"></div>
+        </div>
+        
+        <div class="controls">
+            <button id="play-pause">Play</button>
+            <span class="timecode" id="timecode">00:00:00:00</span>
+            <input type="range" id="scrubber" min="0" max="100" value="0">
+            <span id="status">Connected</span>
+        </div>
+    </div>
+
+    <script>
+        let ws;
+        let isPlaying = false;
+        let currentFrame = 0;
+        let totalFrames = 100;
+        let fps = 30;
+        
+        let lastFrameRequested = -1;
+        let frameRateInterval;
+
+        let originalWidth = 1920;
+        let originalHeight = 1080;
+        let currentBounds = [];
+        let hoveredLayer = null;
+        let mouseX = -1;
+        let mouseY = -1;
+
+        const img = document.getElementById('video-canvas');
+        const scrubber = document.getElementById('scrubber');
+        const playPauseBtn = document.getElementById('play-pause');
+        const timecodeEl = document.getElementById('timecode');
+        const statusEl = document.getElementById('status');
+        const errorOverlay = document.getElementById('error-overlay');
+        const hoverOverlay = document.getElementById('hover-overlay');
+        const hoverLabel = document.getElementById('hover-label');
+        const canvasContainer = document.getElementById('canvas-container');
+
+        function connect() {
+            statusEl.textContent = 'Connecting...';
+            statusEl.className = 'recompiling';
+            
+            ws = new WebSocket('ws://' + location.host + '/ws');
+            ws.binaryType = 'blob';
+
+            ws.onopen = () => {
+                statusEl.textContent = 'Connected';
+                statusEl.className = '';
+                errorOverlay.style.display = 'none';
+                requestFrame(currentFrame);
+            };
+
+            ws.onclose = () => {
+                statusEl.textContent = 'Disconnected';
+                statusEl.className = 'disconnected';
+                setTimeout(connect, 1000);
+            };
+
+            ws.onmessage = (event) => {
+                if (typeof event.data === 'string') {
+                    const msg = JSON.parse(event.data);
+                    if (msg.type === 'METADATA') {
+                        totalFrames = msg.total_frames;
+                        fps = msg.fps;
+                        originalWidth = msg.width;
+                        originalHeight = msg.height;
+                        scrubber.max = totalFrames - 1;
+                        errorOverlay.style.display = 'none';
+                        if (currentFrame >= totalFrames) currentFrame = totalFrames - 1;
+                        requestFrame(currentFrame);
+                    } else if (msg.type === 'ERROR') {
+                        errorOverlay.textContent = msg.message;
+                        errorOverlay.style.display = 'block';
+                        statusEl.textContent = 'Error';
+                        statusEl.className = 'disconnected';
+                    } else if (msg.type === 'INSPECT_BOUNDS') {
+                        if (msg.frame === currentFrame) {
+                            currentBounds = msg.bounds;
+                            updateHoverState();
+                        }
+                    }
+                } else if (event.data instanceof Blob) {
+                    // Update image with the frame blob
+                    const url = URL.createObjectURL(event.data);
+                    img.src = url;
+                    // Pre-request next frame if playing
+                    if (isPlaying) {
+                        currentFrame = (currentFrame + 1) % totalFrames;
+                        updateTimecode();
+                        scrubber.value = currentFrame;
+                    }
+                }
+            };
+        }
+
+        function requestFrame(frame) {
+            if (ws.readyState === WebSocket.OPEN) {
+                lastFrameRequested = frame;
+                ws.send(JSON.stringify({ type: 'REQUEST_FRAME', frame: frame }));
+                ws.send(JSON.stringify({ type: 'REQUEST_BOUNDS', frame: frame }));
+            }
+        }
+
+        function playLoop() {
+            if (isPlaying) {
+                requestFrame(currentFrame);
+                setTimeout(playLoop, 1000 / fps);
+            }
+        }
+
+        playPauseBtn.onclick = () => {
+            isPlaying = !isPlaying;
+            playPauseBtn.textContent = isPlaying ? 'Pause' : 'Play';
+            if (isPlaying) {
+                playLoop();
+            }
+        };
+
+        scrubber.oninput = (e) => {
+            const frame = parseInt(e.target.value);
+            currentFrame = frame;
+            updateTimecode();
+            requestFrame(frame);
+        };
+
+        function updateTimecode() {
+            const totalSecs = currentFrame / fps;
+            const h = Math.floor(totalSecs / 3600).toString().padStart(2, '0');
+            const m = Math.floor((totalSecs % 3600) / 60).toString().padStart(2, '0');
+            const s = Math.floor(totalSecs % 60).toString().padStart(2, '0');
+            const f = Math.floor(currentFrame % fps).toString().padStart(2, '0');
+            timecodeEl.textContent = `${h}:${m}:${s}:${f}`;
+        }
+
+        canvasContainer.onmousemove = (e) => {
+            const rect = img.getBoundingClientRect();
+            const containerRatio = rect.width / rect.height;
+            const videoRatio = originalWidth / originalHeight;
+            let displayWidth, displayHeight, offsetX, offsetY;
+            
+            if (containerRatio > videoRatio) {
+                displayHeight = rect.height;
+                displayWidth = displayHeight * videoRatio;
+                offsetX = (rect.width - displayWidth) / 2;
+                offsetY = 0;
+            } else {
+                displayWidth = rect.width;
+                displayHeight = displayWidth / videoRatio;
+                offsetX = 0;
+                offsetY = (rect.height - displayHeight) / 2;
+            }
+
+            const scaleX = originalWidth / displayWidth;
+            const scaleY = originalHeight / displayHeight;
+
+            const clickX = e.clientX - rect.left - offsetX;
+            const clickY = e.clientY - rect.top - offsetY;
+
+            mouseX = clickX * scaleX;
+            mouseY = clickY * scaleY;
+            updateHoverState();
+        };
+
+        canvasContainer.onmouseleave = () => {
+            mouseX = -1;
+            mouseY = -1;
+            updateHoverState();
+        };
+
+        canvasContainer.onclick = () => {
+            if (hoveredLayer && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'GO_TO_SOURCE', id: hoveredLayer.id }));
+            }
+        };
+
+        function updateHoverState() {
+            if (mouseX < 0 || mouseY < 0 || isPlaying) {
+                hoverOverlay.style.display = 'none';
+                hoveredLayer = null;
+                canvasContainer.style.cursor = 'default';
+                return;
+            }
+
+            let found = null;
+            for (let i = currentBounds.length - 1; i >= 0; i--) {
+                const b = currentBounds[i];
+                if (mouseX >= b.x && mouseX <= b.x + b.width &&
+                    mouseY >= b.y && mouseY <= b.y + b.height) {
+                    found = b;
+                    break;
+                }
+            }
+
+            if (found) {
+                hoveredLayer = found;
+                hoverOverlay.style.display = 'block';
+                hoverLabel.textContent = found.id;
+                
+                const rect = img.getBoundingClientRect();
+                const videoRatio = originalWidth / originalHeight;
+                const containerRatio = rect.width / rect.height;
+                let displayWidth, displayHeight, offsetX, offsetY;
+                
+                if (containerRatio > videoRatio) {
+                    displayHeight = rect.height;
+                    displayWidth = displayHeight * videoRatio;
+                    offsetX = (rect.width - displayWidth) / 2;
+                    offsetY = 0;
+                } else {
+                    displayWidth = rect.width;
+                    displayHeight = displayWidth / videoRatio;
+                    offsetX = 0;
+                    offsetY = (rect.height - displayHeight) / 2;
+                }
+
+                const scaleX = displayWidth / originalWidth;
+                const scaleY = displayHeight / originalHeight;
+
+                hoverOverlay.style.left = (offsetX + found.x * scaleX) + 'px';
+                hoverOverlay.style.top = (offsetY + found.y * scaleY) + 'px';
+                hoverOverlay.style.width = (found.width * scaleX) + 'px';
+                hoverOverlay.style.height = (found.height * scaleY) + 'px';
+                canvasContainer.style.cursor = 'pointer';
+            } else {
+                hoveredLayer = null;
+                hoverOverlay.style.display = 'none';
+                canvasContainer.style.cursor = 'default';
+            }
+        }
+
+        connect();
+    </script>
+</body>
+</html>

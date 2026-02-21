@@ -1,0 +1,22 @@
+{
+    "name": "@vidra/sdk",
+    "version": "0.1.0",
+    "description": "TypeScript SDK for Vidra — Programmable video infrastructure",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "type": "module",
+    "scripts": {
+        "build": "tsc",
+        "test": "node test.js"
+    },
+    "keywords": [
+        "video",
+        "generative",
+        "framework"
+    ],
+    "author": "Vidra Team",
+    "license": "MIT",
+    "devDependencies": {
+        "typescript": "^5.0.0"
+    }
+}

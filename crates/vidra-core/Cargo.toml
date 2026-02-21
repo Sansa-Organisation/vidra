@@ -1,0 +1,15 @@
+[package]
+name = "vidra-core"
+description = "Core types and primitives for the Vidra video engine"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+sha2 = { workspace = true }
+toml = { version = "1.0.3", features = ["parse"] }

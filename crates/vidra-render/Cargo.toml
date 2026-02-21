@@ -1,0 +1,24 @@
+[package]
+name = "vidra-render"
+description = "Vidra rendering engine — IR to frames"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+vidra-core = { workspace = true }
+vidra-ir = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+image = { workspace = true }
+fontdue = { workspace = true }
+serde_json = { workspace = true }
+rayon = "1.11.0"
+dashmap = "6.1.0"
+wgpu = "0.20"
+pollster = "0.3"
+bytemuck = { version = "1.16", features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }
+

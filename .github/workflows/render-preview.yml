@@ -1,0 +1,73 @@
+name: Vidra Render Preview
+
+on:
+  pull_request:
+    paths:
+      - '**/*.vidra'
+      - '**/*.vidra.json'
+
+jobs:
+  render-preview:
+    name: Render & Visual Diff
+    runs-on: [self-hosted, linux, gpu-nvidia]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build Vidra CLI
+        run: cargo build --release -p vidra-cli
+
+      - name: Find changed .vidra files
+        id: changed
+        run: |
+          FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- '*.vidra' '*.vidra.json' | tr '\n' ' ')
+          echo "files=$FILES" >> $GITHUB_OUTPUT
+
+      - name: Render previews
+        run: |
+          mkdir -p pr-renders
+          for f in ${{ steps.changed.outputs.files }}; do
+            echo "🎬 Rendering $f..."
+            ./target/release/vidra render "$f" -o "pr-renders/$(basename $f .vidra).mp4" || true
+          done
+
+      - name: Generate visual diffs
+        run: |
+          mkdir -p pr-diffs
+          for f in ${{ steps.changed.outputs.files }}; do
+            base=$(basename "$f" .vidra)
+            if [ -f "baseline-frames/${base}_frame0.png" ] && [ -f "pr-renders/${base}.mp4" ]; then
+              # Extract first frame from new render
+              ffmpeg -i "pr-renders/${base}.mp4" -vframes 1 "pr-diffs/${base}_new.png" 2>/dev/null || true
+              # Simple pixel diff
+              if command -v compare &>/dev/null; then
+                compare "baseline-frames/${base}_frame0.png" "pr-diffs/${base}_new.png" "pr-diffs/${base}_diff.png" 2>/dev/null || true
+              fi
+            fi
+          done
+
+      - name: Comment on PR with renders
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const files = fs.readdirSync('pr-renders').filter(f => f.endsWith('.mp4'));
+            if (files.length === 0) return;
+
+            let body = '## 🎬 Vidra Render Preview\n\n';
+            body += `Rendered ${files.length} file(s) from this PR:\n\n`;
+            for (const f of files) {
+              body += `- \`${f}\` ✅\n`;
+            }
+            body += '\n*Rendered by Vidra CI*';
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });

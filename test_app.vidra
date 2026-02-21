@@ -1,0 +1,11 @@
+project(1920, 1080, 30) {
+    import "lib.vidra"
+    asset(font, "Roboto", "./fonts/Roboto-Regular.ttf")
+
+    scene("main", 5s) {
+        layer("btn1") {
+            Button(label_text: "Vidra Custom Font", color: #0000FF, text_font: "Roboto")
+            position(500, 500)
+        }
+    }
+}

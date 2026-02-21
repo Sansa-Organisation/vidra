@@ -1,0 +1,52 @@
+{
+  "name": "vidra-vscode",
+  "displayName": "Vidra Video Engine",
+  "description": "Language support for VidraScript, the programmable video language.",
+  "version": "0.1.0",
+  "publisher": "vidra-dev",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "vidra",
+        "aliases": [
+          "Vidra",
+          "vidra"
+        ],
+        "extensions": [
+          ".vidra"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "vidra",
+        "scopeName": "source.vidra",
+        "path": "./syntaxes/vidra.tmLanguage.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -b",
+    "watch": "tsc -b -w",
+    "package": "vsce package",
+    "dev": "npm run compile && node ./out/extension.js"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^8.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.1.0",
+    "@vscode/vsce": "^2.19.0"
+  }
+}
