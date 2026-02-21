@@ -58,3 +58,7 @@ tarpaulin-report.html
 
 # ── Misc ─────────────────────────────────────────────────────────────
 *.log
+
+# Issue proof outputs
+issues/*/proof/*.mp4
+issues/*/proof/mismatched.*

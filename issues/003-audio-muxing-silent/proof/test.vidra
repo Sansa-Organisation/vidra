@@ -1,0 +1,14 @@
+project(1920, 1080, 60) {
+    scene("audio_test", 3s) {
+        layer("bg") {
+            solid(#111111)
+        }
+        layer("label") {
+            text("Audio Muxing Test", font: "Inter", size: 80, color: #ffffff)
+            position(960, 540)
+        }
+        layer("music") {
+            audio("music.mp3", volume: 1.0)
+        }
+    }
+}

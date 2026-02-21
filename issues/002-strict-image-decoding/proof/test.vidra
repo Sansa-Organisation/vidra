@@ -1,0 +1,12 @@
+project(1920, 1080, 60) {
+    scene("format_test", 2s) {
+        layer("bg") {
+            image("mismatched.png")
+            position(960, 540)
+        }
+        layer("label") {
+            text("Image loaded from .png with JPEG bytes", font: "Inter", size: 48, color: #00ff00)
+            position(960, 100)
+        }
+    }
+}
