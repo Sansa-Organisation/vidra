@@ -1,0 +1,22 @@
+{
+    "name": "@sansavision/vidra-linux-x64-musl",
+    "version": "0.0.0",
+    "description": "Native binaries for linux x64 (musl)",
+    "license": "MIT",
+    "private": false,
+    "publishConfig": {
+        "access": "public",
+        "registry": "https://registry.npmjs.org"
+    },
+    "os": [
+        "linux"
+    ],
+    "cpu": [
+        "x64"
+    ],
+    "files": [
+        "bin/",
+        "README.md"
+    ],
+    "main": "README.md"
+}
