@@ -13,9 +13,9 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 TOOL_NAME="vidra"              # used in dist archive names
-VERSION="0.0.0"                    # set to your release version
+VERSION="0.1.0"                    # set to your release version
 
-DIST_DIR="$ROOT_DIR/../dist"       # or "$ROOT_DIR/dist" depending on your repo
+DIST_DIR="$ROOT_DIR/../../dist"       # or "$ROOT_DIR/dist" depending on your repo
 
 # Package directories (relative to this template)
 PKG_DARWIN_ARM64="$ROOT_DIR/npm/platform-packages/darwin-arm64"

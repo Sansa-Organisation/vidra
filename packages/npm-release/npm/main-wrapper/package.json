@@ -1,11 +1,11 @@
 {
     "name": "@sansavision/vidra",
-    "version": "0.0.0",
+    "version": "0.1.0",
     "description": "Native-binary wrapper (optionalDependencies distribution)",
     "private": false,
     "license": "MIT",
     "publishConfig": {
-        "access": "public",
+        "access": "restricted",
         "registry": "https://registry.npmjs.org"
     },
     "engines": {
@@ -15,11 +15,11 @@
         "vidra": "bin/vidra.js"
     },
     "optionalDependencies": {
-        "@sansavision/vidra-darwin-arm64": "0.0.0",
-        "@sansavision/vidra-darwin-x64": "0.0.0",
-        "@sansavision/vidra-linux-x64-musl": "0.0.0",
-        "@sansavision/vidra-linux-arm64-musl": "0.0.0",
-        "@sansavision/vidra-win32-x64-msvc": "0.0.0"
+        "@sansavision/vidra-darwin-arm64": "0.1.0",
+        "@sansavision/vidra-darwin-x64": "0.1.0",
+        "@sansavision/vidra-linux-x64-musl": "0.1.0",
+        "@sansavision/vidra-linux-arm64-musl": "0.1.0",
+        "@sansavision/vidra-win32-x64-msvc": "0.1.0"
     },
     "files": [
         "bin/",

@@ -1,11 +1,11 @@
 {
     "name": "@sansavision/vidra-win32-x64-msvc",
-    "version": "0.0.0",
+    "version": "0.1.0",
     "description": "Native binaries for win32 x64 (MSVC)",
     "license": "MIT",
     "private": false,
     "publishConfig": {
-        "access": "public",
+        "access": "restricted",
         "registry": "https://registry.npmjs.org"
     },
     "os": [

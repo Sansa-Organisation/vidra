@@ -1,11 +1,11 @@
 {
     "name": "@sansavision/vidra-darwin-arm64",
-    "version": "0.0.0",
+    "version": "0.1.0",
     "description": "Native binaries for darwin arm64",
     "license": "MIT",
     "private": false,
     "publishConfig": {
-        "access": "public",
+        "access": "restricted",
         "registry": "https://registry.npmjs.org"
     },
     "os": [
