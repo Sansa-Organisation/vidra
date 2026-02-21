@@ -3197,7 +3197,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vidra-cli"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "axum",
@@ -3229,7 +3229,7 @@ dependencies = [
 
 [[package]]
 name = "vidra-core"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "serde",
  "serde_json",
@@ -3241,7 +3241,7 @@ dependencies = [
 
 [[package]]
 name = "vidra-encode"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "thiserror 2.0.18",
  "tracing",
@@ -3250,7 +3250,7 @@ dependencies = [
 
 [[package]]
 name = "vidra-ir"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "serde",
  "serde_json",
@@ -3261,7 +3261,7 @@ dependencies = [
 
 [[package]]
 name = "vidra-lang"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "thiserror 2.0.18",
  "tracing",
@@ -3272,7 +3272,7 @@ dependencies = [
 
 [[package]]
 name = "vidra-lsp"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "dashmap 6.1.0",
  "serde_json",
@@ -3285,7 +3285,7 @@ dependencies = [
 
 [[package]]
 name = "vidra-render"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -3305,7 +3305,7 @@ dependencies = [
 
 [[package]]
 name = "vidra-wasm"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "fontdue",
  "getrandom 0.2.17",
