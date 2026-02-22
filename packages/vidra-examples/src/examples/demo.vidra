@@ -1,0 +1,30 @@
+project(1920, 1080, 60) {
+    scene("welcome", 3s) {
+        layer("bg") {
+            solid(#09090b)
+        }
+        layer("title") {
+            text("Vidra Studio", font: "Inter", size: 140, color: #ffffff)
+            position(960, 540)
+            animation(opacity, from: 0, to: 1, duration: 2s, easing: easeOut)
+            animation(scale, from: 0.9, to: 1.0, duration: 2s, easing: easeOutBack)
+        }
+    }
+    
+    scene("features", 4s) {
+        layer("bg2") {
+            solid(#18181b)
+        }
+        layer("headline") {
+            text("Showcase Your Engine", font: "Inter", size: 80, color: #3b82f6)
+            position(960, 400)
+            animation(positionY, from: 450, to: 400, duration: 1s, easing: easeOut)
+            animation(opacity, from: 0, to: 1, duration: 1s)
+        }
+        layer("sub") {
+            text("Drop an image layer to try the asset manager!", font: "Inter", size: 40, color: #94a3b8)
+            position(960, 600)
+            animation(opacity, from: 0, to: 1, duration: 1s, delay: 0.5s)
+        }
+    }
+}

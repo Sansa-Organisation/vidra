@@ -33,7 +33,7 @@ export type * from "./types.js";
 
 // ─── Color Utilities ────────────────────────────────────────────────
 
-export function rgba(r: number, g: number, b: number, a: number = 255): Color {
+export function rgba(r: number, g: number, b: number, a: number = 1.0): Color {
     return { r, g, b, a };
 }
 
@@ -41,20 +41,20 @@ export function hex(hexCode: string): Color {
     const clean = hexCode.replace("#", "");
     if (clean.length === 6) {
         return {
-            r: parseInt(clean.substring(0, 2), 16),
-            g: parseInt(clean.substring(2, 4), 16),
-            b: parseInt(clean.substring(4, 6), 16),
-            a: 255,
+            r: parseInt(clean.substring(0, 2), 16) / 255.0,
+            g: parseInt(clean.substring(2, 4), 16) / 255.0,
+            b: parseInt(clean.substring(4, 6), 16) / 255.0,
+            a: 1.0,
         };
     } else if (clean.length === 8) {
         return {
-            r: parseInt(clean.substring(0, 2), 16),
-            g: parseInt(clean.substring(2, 4), 16),
-            b: parseInt(clean.substring(4, 6), 16),
-            a: parseInt(clean.substring(6, 8), 16),
+            r: parseInt(clean.substring(0, 2), 16) / 255.0,
+            g: parseInt(clean.substring(2, 4), 16) / 255.0,
+            b: parseInt(clean.substring(4, 6), 16) / 255.0,
+            a: parseInt(clean.substring(6, 8), 16) / 255.0,
         };
     }
-    return { r: 0, g: 0, b: 0, a: 255 };
+    return { r: 0, g: 0, b: 0, a: 1.0 };
 }
 
 function colorToHex(c: Color): string {

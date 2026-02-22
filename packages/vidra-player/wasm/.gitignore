@@ -1,2 +1,1 @@
-# Only ignore the wasm-pack generated package.json (we use the parent one)
-package.json
+*

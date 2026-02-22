@@ -1,0 +1,1 @@
+setTimeout(() => { const ed = document.querySelector('.monaco-editor'); if(ed) console.log(ed.getBoundingClientRect(), window.getComputedStyle(ed).opacity, window.getComputedStyle(ed).visibility); else console.log('no editor'); }, 2000);

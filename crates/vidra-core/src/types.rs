@@ -77,6 +77,7 @@ pub enum Easing {
     CubicIn,
     CubicOut,
     CubicInOut,
+    EaseOutBack,
 }
 
 impl Default for Easing {
@@ -112,6 +113,12 @@ impl Easing {
                     let t1 = 2.0 * t - 2.0;
                     0.5 * t1 * t1 * t1 + 1.0
                 }
+            }
+            Easing::EaseOutBack => {
+                let c1 = 1.70158;
+                let c3 = c1 + 1.0;
+                let t1 = t - 1.0;
+                1.0 + c3 * (t1 * t1 * t1) + c1 * (t1 * t1)
             }
         }
     }

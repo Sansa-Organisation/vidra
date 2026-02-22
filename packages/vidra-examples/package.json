@@ -8,12 +8,20 @@
     "preview": "vite preview"
   },
   "devDependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
     "typescript": "~5.9.3",
     "vite": "^7.3.1",
     "vite-plugin-top-level-await": "^1.6.0",
     "vite-plugin-wasm": "^3.5.0"
   },
   "dependencies": {
-    "@sansavision/vidra-player": "file:../vidra-player"
+    "@google/genai": "^1.42.0",
+    "@sansavision/vidra-player": "file:../vidra-player",
+    "openai": "^6.22.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
   }
 }

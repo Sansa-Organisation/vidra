@@ -631,6 +631,7 @@ impl Compiler {
             "cubicIn" => Ok(vidra_core::types::Easing::CubicIn),
             "cubicOut" => Ok(vidra_core::types::Easing::CubicOut),
             "cubicInOut" => Ok(vidra_core::types::Easing::CubicInOut),
+            "easeOutBack" => Ok(vidra_core::types::Easing::EaseOutBack),
             _ => Err(VidraError::Compile(format!(
                 "unknown easing function: {}",
                 name
