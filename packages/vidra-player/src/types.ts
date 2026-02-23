@@ -112,10 +112,23 @@ export interface LayerIR {
     children: LayerIR[];
 }
 
+export type TransitionType =
+    | "Crossfade"
+    | { Slide: { direction: string } }
+    | { Push: { direction: string } }
+    | { Wipe: { direction: string } };
+
+export interface Transition {
+    effect: TransitionType;
+    duration: Duration;
+    easing: Easing;
+}
+
 export interface SceneIR {
     id: string;
     duration: Duration;
     layers: LayerIR[];
+    transition?: Transition;
 }
 
 export interface ProjectSettings {

@@ -3249,6 +3249,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "vidra-fx"
+version = "0.1.5"
+dependencies = [
+ "serde",
+ "thiserror 2.0.18",
+ "vidra-core",
+]
+
+[[package]]
 name = "vidra-ir"
 version = "0.1.5"
 dependencies = [

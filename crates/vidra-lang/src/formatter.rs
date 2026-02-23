@@ -71,7 +71,8 @@ impl Formatter {
     }
 
     fn format_scene(&mut self, scene: &SceneNode) {
-        self.push_line(&format!("scene(\"{}\", {}s) {{", scene.name, scene.duration));
+        let duration_str = self.format_value(&scene.duration);
+        self.push_line(&format!("scene(\"{}\", {}) {{", scene.name, duration_str));
         self.indent_level += 1;
         for item in &scene.items {
             self.format_layer_block_item(item);
@@ -103,6 +104,34 @@ impl Formatter {
                     self.indent_level -= 1;
                 }
                 self.push_line("}");
+            }
+            LayerBlockItem::Transition { transition_type, duration, easing, span: _ } => {
+                let mut ease_str = "".to_string();
+                if let Some(e) = easing {
+                    ease_str = format!(", ease: \"{}\"", e);
+                }
+                self.indent();
+                self.push_line(&format!("transition(\"{}\", {}{})", transition_type, self.format_value(duration), ease_str));
+            }
+            LayerBlockItem::AnimationStagger { args, animations, span: _ } => {
+                let args_str = args.iter().map(|arg| {
+                    format!("{}: {}", arg.name, self.format_value(&arg.value))
+                }).collect::<Vec<_>>().join(", ");
+                self.indent();
+                self.push(&format!("animate.stagger({}) {{\n", args_str));
+                self.indent_level += 1;
+                for prop in animations {
+                    self.format_property(prop);
+                }
+                self.indent_level -= 1;
+                self.push_line("}");
+            }
+            LayerBlockItem::ComponentUse { name, args, span: _ } => {
+                let args_str = args.iter().map(|arg| {
+                    format!("{}: {}", arg.name, self.format_value(&arg.value))
+                }).collect::<Vec<_>>().join(", ");
+                self.indent();
+                self.push_line(&format!("component(\"{}\", {})", name, args_str));
             }
         }
     }
@@ -224,6 +253,29 @@ impl Formatter {
                     self.push_line(&format!("{}({}, {})", name, args_str, kwargs_str));
                 }
             }
+            PropertyNode::AnimationGroup { animations, .. } => {
+                self.indent();
+                self.push("animate.group {\n");
+                self.indent_level += 1;
+                for prop in animations {
+                    self.format_property(prop);
+                }
+                self.indent_level -= 1;
+                self.push_line("}");
+            }
+            PropertyNode::AnimationSequence { animations, .. } => {
+                self.indent();
+                self.push("animate.sequence {\n");
+                self.indent_level += 1;
+                for prop in animations {
+                    self.format_property(prop);
+                }
+                self.indent_level -= 1;
+                self.push_line("}");
+            }
+            PropertyNode::Wait { duration, .. } => {
+                self.push_line(&format!("wait({})", self.format_value(duration)));
+            }
         }
     }
 
@@ -235,6 +287,13 @@ impl Formatter {
             ValueNode::Color(hex) => format!("#{}", hex),
             ValueNode::Identifier(name) => name.clone(),
             ValueNode::BrandReference(key) => format!("@brand.{}", key),
+            ValueNode::Array(items) => {
+                let items_str = items.iter()
+                    .map(|item| self.format_value(item))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("[{}]", items_str)
+            }
         }
     }
 }

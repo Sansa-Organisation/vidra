@@ -9,6 +9,7 @@ members = [
     "crates/vidra-cli",
     "crates/vidra-lsp",
     "crates/vidra-wasm",
+    "crates/vidra-fx",
 ]
 
 [workspace.package]
@@ -39,3 +40,4 @@ vidra-render = { path = "crates/vidra-render" }
 vidra-encode = { path = "crates/vidra-encode" }
 vidra-lang = { path = "crates/vidra-lang" }
 vidra-lsp = { path = "crates/vidra-lsp" }
+vidra-fx = { path = "crates/vidra-fx" }

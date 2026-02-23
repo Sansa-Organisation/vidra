@@ -11,6 +11,7 @@ pub struct ProjectNode {
     pub imports: Vec<ImportNode>,
     pub assets: Vec<AssetNode>,
     pub layout_rules: Vec<LayoutRulesNode>,
+    pub variables: Vec<VarDefNode>,
     pub scenes: Vec<SceneNode>,
     pub components: Vec<ComponentNode>,
     pub span: Span,
@@ -21,6 +22,14 @@ pub struct ProjectNode {
 pub struct ImportNode {
     /// Relative or absolute path to the module.
     pub path: String,
+    pub span: Span,
+}
+
+/// A variable definition (`@var name = value`)
+#[derive(Debug, Clone)]
+pub struct VarDefNode {
+    pub name: String,
+    pub value: ValueNode,
     pub span: Span,
 }
 
@@ -41,8 +50,8 @@ pub struct AssetNode {
 pub struct SceneNode {
     /// Scene name/ID.
     pub name: String,
-    /// Duration in seconds.
-    pub duration: f64,
+    /// Duration in seconds or logic evaluating to seconds.
+    pub duration: ValueNode,
     /// Items (layers and logic) in the scene.
     pub items: Vec<LayerBlockItem>,
     pub span: Span,
@@ -118,6 +127,22 @@ pub enum LayerBlockItem {
         then_branch: Vec<LayerBlockItem>,
         else_branch: Option<Vec<LayerBlockItem>>,
         span: Span,
+    },
+    Transition {
+        transition_type: String,
+        duration: ValueNode,
+        easing: Option<String>,
+        span: Span,
+    },
+    AnimationStagger {
+        args: Vec<NamedArg>,
+        animations: Vec<PropertyNode>,
+        span: Span,
+    },
+    ComponentUse {
+        name: String,
+        args: Vec<NamedArg>,
+        span: Span,
     }
 }
 
@@ -184,6 +209,7 @@ pub enum ValueNode {
     Color(String), // hex
     Identifier(String),
     BrandReference(String), // `@brand.key`
+    Array(Vec<ValueNode>),
 }
 
 /// A property assignment or animation on a layer.
@@ -206,6 +232,21 @@ pub enum PropertyNode {
         name: String,
         args: Vec<ValueNode>,
         named_args: Vec<NamedArg>,
+        span: Span,
+    },
+    /// `animate.group { ... }`
+    AnimationGroup {
+        animations: Vec<PropertyNode>,
+        span: Span,
+    },
+    /// `animate.sequence { ... }`
+    AnimationSequence {
+        animations: Vec<PropertyNode>,
+        span: Span,
+    },
+    /// `wait(duration)`
+    Wait {
+        duration: ValueNode,
         span: Span,
     },
 }

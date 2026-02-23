@@ -27,6 +27,7 @@ import type {
     Color,
     AssetType,
     LayerEffect,
+    TransitionType,
 } from "./types.js";
 
 export type * from "./types.js";
@@ -289,6 +290,15 @@ export class Scene {
         for (const l of layers) {
             this._scene.layers.push(l.build());
         }
+        return this;
+    }
+
+    setTransition(effect: TransitionType, durationSec: number, easing: EasingType = "Linear"): this {
+        this._scene.transition = {
+            effect,
+            duration: { seconds: durationSec },
+            easing,
+        };
         return this;
     }
 

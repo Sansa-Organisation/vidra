@@ -62,6 +62,7 @@ impl SceneBuilder {
                 id: SceneId(id.into()),
                 duration: Duration::from_seconds(duration),
                 layers: Vec::new(),
+                transition: None,
             },
         }
     }
@@ -95,6 +96,7 @@ impl LayerBuilder {
                 effects: Vec::new(),
                 visible: true,
                 children: Vec::new(),
+                mask: None,
             },
         }
     }

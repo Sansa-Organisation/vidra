@@ -13,10 +13,10 @@ This document tracks the ongoing implementation of the S-Tier feature roadmap fo
 ## Phase 2 — Power Users (🚧 Next Up)
 These features unlock creative depth using the existing architecture.
 
-- [ ] **Animation Groups & Stagger**
-  - [ ] Implement `animate.group` for parallel animations.
-  - [ ] Implement `animate.sequence` for sequential animations.
-  - [ ] Implement `animate.stagger` for applying offset animations across multiple layers.
+- [x] **Animation Groups & Stagger**
+  - [x] Implement `animate.group` for parallel animations.
+  - [x] Implement `animate.sequence` for sequential animations.
+  - [x] Implement `animate.stagger` for applying offset animations across multiple layers.
 - [ ] **Advanced Animation Types**
   - [ ] Spring Physics animations (stiffness, damping instead of fixed duration).
   - [ ] Expression-driven animations evaluated per frame.

@@ -35,7 +35,6 @@ struct RenderContext {
 
 pub struct WasmRenderer {
     font: Font,
-    font_cache: HashMap<String, Font>,
     image_cache: HashMap<String, FrameBuffer>,
 }
 
@@ -43,7 +42,6 @@ impl WasmRenderer {
     pub fn new() -> Self {
         Self {
             font: default_font(),
-            font_cache: HashMap::new(),
             image_cache: HashMap::new(),
         }
     }
@@ -71,19 +69,165 @@ impl WasmRenderer {
             fps: project.settings.fps,
         };
 
-        // Find which scene this frame belongs to
-        let mut frame_offset: u64 = 0;
-        for scene in &project.scenes {
-            let scene_frames = (scene.duration.as_seconds() * ctx.fps).ceil() as u64;
-            if global_frame < frame_offset + scene_frames {
-                let local_frame = global_frame - frame_offset;
-                return self.render_scene_frame(&ctx, project, scene, local_frame);
+        let mut current_global = 0u64;
+        let mut target_scenes = Vec::new();
+
+        for (i, scene) in project.scenes.iter().enumerate() {
+            let sf = (scene.duration.as_seconds() * ctx.fps).ceil() as u64;
+            let trans_f = if i > 0 {
+                if let Some(trans) = &scene.transition {
+                    let prev_sf = (project.scenes[i - 1].duration.as_seconds() * ctx.fps).ceil() as u64;
+                    let max_overlap = prev_sf.min(sf);
+                    let tf = (trans.duration.as_seconds() * ctx.fps).ceil() as u64;
+                    tf.min(max_overlap)
+                } else {
+                    0
+                }
+            } else {
+                0
+            };
+            
+            let start_f = current_global.saturating_sub(trans_f);
+            let end_f = start_f + sf;
+            
+            if global_frame >= start_f && global_frame < end_f {
+                let local_f = global_frame - start_f;
+                target_scenes.push((scene, local_f));
             }
-            frame_offset += scene_frames;
+            
+            current_global = end_f;
         }
 
-        // Past the end — return black
-        FrameBuffer::solid(ctx.width, ctx.height, &project.settings.background)
+        if target_scenes.is_empty() {
+            return FrameBuffer::solid(ctx.width, ctx.height, &project.settings.background);
+        }
+
+        if target_scenes.len() == 1 {
+            let (scene, local_f) = target_scenes[0];
+            self.render_scene_frame(&ctx, project, scene, local_f)
+        } else {
+            let (scene1, local_f1) = target_scenes[0];
+            let (scene2, local_f2) = target_scenes[1];
+            
+            let frame1 = self.render_scene_frame(&ctx, project, scene1, local_f1);
+            let frame2 = self.render_scene_frame(&ctx, project, scene2, local_f2);
+            
+            let trans = scene2.transition.as_ref().unwrap();
+            let trans_frames = (trans.duration.as_seconds() * ctx.fps).ceil() as f64;
+            let progress = local_f2 as f64 / trans_frames;
+            let eased_progress = trans.easing.apply(progress);
+
+            self.apply_transition(frame1, frame2, &trans.effect, eased_progress, ctx.width, ctx.height)
+        }
+    }
+
+    fn apply_transition(&self, frame1: FrameBuffer, frame2: FrameBuffer, effect: &vidra_ir::transition::TransitionType, progress: f64, width: u32, height: u32) -> FrameBuffer {
+        let mut out = frame1.clone();
+        
+        match effect {
+            vidra_ir::transition::TransitionType::Crossfade => {
+                for y in 0..height {
+                    for x in 0..width {
+                        let c1 = frame1.get_pixel(x, y).unwrap_or([0, 0, 0, 0]);
+                        let c2 = frame2.get_pixel(x, y).unwrap_or([0, 0, 0, 0]);
+                        
+                        let r = (c1[0] as f64 * (1.0 - progress) + c2[0] as f64 * progress) as u8;
+                        let g = (c1[1] as f64 * (1.0 - progress) + c2[1] as f64 * progress) as u8;
+                        let b = (c1[2] as f64 * (1.0 - progress) + c2[2] as f64 * progress) as u8;
+                        let a = (c1[3] as f64 * (1.0 - progress) + c2[3] as f64 * progress) as u8;
+                        
+                        out.set_pixel(x, y, [r, g, b, a]);
+                    }
+                }
+            }
+            vidra_ir::transition::TransitionType::Wipe { direction } => {
+                let offset_x = (width as f64 * progress) as u32;
+                let offset_y = (height as f64 * progress) as u32;
+                for y in 0..height {
+                    for x in 0..width {
+                        let show_frame2 = match direction.as_str() {
+                            "left" => x >= width - offset_x,
+                            "up" => y >= height - offset_y,
+                            "down" => y < offset_y,
+                            _ => x < offset_x, // right
+                        };
+                        if show_frame2 {
+                            out.set_pixel(x, y, frame2.get_pixel(x, y).unwrap_or([0, 0, 0, 0]));
+                        }
+                    }
+                }
+            }
+            vidra_ir::transition::TransitionType::Push { direction } => {
+                let offset_x = (width as f64 * progress) as u32;
+                let offset_y = (height as f64 * progress) as u32;
+                for y in 0..height {
+                    for x in 0..width {
+                        match direction.as_str() {
+                            "left" => {
+                                if x >= width - offset_x {
+                                    out.set_pixel(x, y, frame2.get_pixel(x - (width - offset_x), y).unwrap_or([0, 0, 0, 0]));
+                                } else {
+                                    out.set_pixel(x, y, frame1.get_pixel(x + offset_x, y).unwrap_or([0, 0, 0, 0]));
+                                }
+                            }
+                            "up" => {
+                                if y >= height - offset_y {
+                                    out.set_pixel(x, y, frame2.get_pixel(x, y - (height - offset_y)).unwrap_or([0, 0, 0, 0]));
+                                } else {
+                                    out.set_pixel(x, y, frame1.get_pixel(x, y + offset_y).unwrap_or([0, 0, 0, 0]));
+                                }
+                            }
+                            "down" => {
+                                if y < offset_y {
+                                    out.set_pixel(x, y, frame2.get_pixel(x, height - offset_y + y).unwrap_or([0, 0, 0, 0]));
+                                } else {
+                                    out.set_pixel(x, y, frame1.get_pixel(x, y - offset_y).unwrap_or([0, 0, 0, 0]));
+                                }
+                            }
+                            _ => { // right
+                                if x < offset_x {
+                                    out.set_pixel(x, y, frame2.get_pixel(width - offset_x + x, y).unwrap_or([0, 0, 0, 0]));
+                                } else {
+                                    out.set_pixel(x, y, frame1.get_pixel(x - offset_x, y).unwrap_or([0, 0, 0, 0]));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            vidra_ir::transition::TransitionType::Slide { direction } => {
+                let offset_x = (width as f64 * progress) as u32;
+                let offset_y = (height as f64 * progress) as u32;
+                for y in 0..height {
+                    for x in 0..width {
+                        match direction.as_str() {
+                            "left" => {
+                                if x >= width - offset_x {
+                                    out.set_pixel(x, y, frame2.get_pixel(x - (width - offset_x), y).unwrap_or([0, 0, 0, 0]));
+                                }
+                            }
+                            "up" => {
+                                if y >= height - offset_y {
+                                    out.set_pixel(x, y, frame2.get_pixel(x, y - (height - offset_y)).unwrap_or([0, 0, 0, 0]));
+                                }
+                            }
+                            "down" => {
+                                if y < offset_y {
+                                    out.set_pixel(x, y, frame2.get_pixel(x, height - offset_y + y).unwrap_or([0, 0, 0, 0]));
+                                }
+                            }
+                            _ => { // right
+                                if x < offset_x {
+                                    out.set_pixel(x, y, frame2.get_pixel(width - offset_x + x, y).unwrap_or([0, 0, 0, 0]));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        out
     }
 
     fn render_scene_frame(
@@ -99,9 +243,22 @@ impl WasmRenderer {
             if !layer.visible {
                 continue;
             }
-            if let Some(layer_buf) = self.render_layer(ctx, project, layer, local_frame) {
+            if let Some(mut layer_buf) = self.render_layer(ctx, project, layer, local_frame) {
                 let (dx, dy) = Self::compute_position(ctx, layer, local_frame);
                 let (cx, cy) = Self::apply_anchor(dx, dy, &layer_buf, layer);
+                
+                if let Some(mask_id) = &layer.mask {
+                    if let Some(mask_layer) = scene.layers.iter().find(|l| &l.id == mask_id) {
+                        if let Some(mask_buf) = self.render_layer(ctx, project, mask_layer, local_frame) {
+                            let (mdx, mdy) = Self::compute_position(ctx, mask_layer, local_frame);
+                            let (mcx, mcy) = Self::apply_anchor(mdx, mdy, &mask_buf, mask_layer);
+                            let rel_x = mcx - cx;
+                            let rel_y = mcy - cy;
+                            layer_buf.apply_mask(&mask_buf, rel_x, rel_y);
+                        }
+                    }
+                }
+                
                 canvas.composite_over(&layer_buf, cx, cy);
             }
         }
@@ -138,14 +295,63 @@ impl WasmRenderer {
                 if let Some(cached) = self.image_cache.get(id_str) {
                     cached.clone()
                 } else {
-                    // Draw a placeholder rectangle
+                    // Draw a fallback rectangle
                     FrameBuffer::solid(200, 200, &Color::rgba(0.5, 0.5, 0.5, 1.0))
                 }
             }
-            LayerContent::Empty => return None,
-            LayerContent::Audio { .. } => return None,
+            LayerContent::Shape { shape, fill, .. } => {
+                let fill_color = fill.unwrap_or(Color::WHITE);
+                match shape {
+                    vidra_core::types::ShapeType::Rect { width, height, .. } => {
+                        let mut c = fill_color;
+                        c.a *= opacity as f32;
+                        FrameBuffer::solid(*width as u32, *height as u32, &c)
+                    }
+                    vidra_core::types::ShapeType::Circle { radius } => {
+                        let size = (*radius * 2.0) as u32;
+                        let mut fb = FrameBuffer::new(size, size, vidra_core::frame::PixelFormat::Rgba8);
+                        let rgba = {
+                            let mut c = fill_color;
+                            c.a *= opacity as f32;
+                            c.to_rgba8()
+                        };
+                        let center = *radius;
+                        for y in 0..size {
+                            for x in 0..size {
+                                let dx = x as f64 - center;
+                                let dy = y as f64 - center;
+                                if dx * dx + dy * dy <= center * center {
+                                    fb.set_pixel(x, y, rgba);
+                                }
+                            }
+                        }
+                        fb
+                    }
+                    vidra_core::types::ShapeType::Ellipse { rx, ry } => {
+                        let w = (*rx * 2.0) as u32;
+                        let h = (*ry * 2.0) as u32;
+                        let mut fb = FrameBuffer::new(w, h, vidra_core::frame::PixelFormat::Rgba8);
+                        let rgba = {
+                            let mut c = fill_color;
+                            c.a *= opacity as f32;
+                            c.to_rgba8()
+                        };
+                        for y in 0..h {
+                            for x in 0..w {
+                                let dx = (x as f64 - *rx) / rx;
+                                let dy = (y as f64 - *ry) / ry;
+                                if dx * dx + dy * dy <= 1.0 {
+                                    fb.set_pixel(x, y, rgba);
+                                }
+                            }
+                        }
+                        fb
+                    }
+                }
+            }
+            LayerContent::Empty | LayerContent::Audio { .. } => return None,
             _ => {
-                // TTS, AutoCaption, Video, Shape — not yet implemented in WASM
+                // TTS, AutoCaption, Video — not yet implemented in WASM
                 FrameBuffer::solid(1, 1, &Color::TRANSPARENT)
             }
         };

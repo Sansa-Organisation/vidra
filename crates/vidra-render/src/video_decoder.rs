@@ -209,7 +209,7 @@ impl VideoDecoder {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             tracing::warn!("FFmpeg frame extraction warning: {}", stderr);
-            // Return a placeholder frame instead of failing hard
+            // Return a fallback frame instead of failing hard
             return Ok(FrameBuffer::solid(
                 target_width,
                 target_height,

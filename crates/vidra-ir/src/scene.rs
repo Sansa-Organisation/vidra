@@ -27,6 +27,8 @@ pub struct Scene {
     pub duration: vidra_core::Duration,
     /// Ordered list of layers (bottom to top for compositing).
     pub layers: Vec<Layer>,
+    /// Optional transition to effect when entering this scene from the previous one.
+    pub transition: Option<crate::transition::Transition>,
 }
 
 impl Scene {
@@ -36,6 +38,7 @@ impl Scene {
             id,
             duration,
             layers: Vec::new(),
+            transition: None,
         }
     }
 

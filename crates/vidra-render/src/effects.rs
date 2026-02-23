@@ -141,6 +141,7 @@ impl GpuEffects {
             pad: 0.0,
         };
 
+        let mut custom_pipeline = None;
         match effect {
             LayerEffect::Blur(radius) => {
                 params.effect_type = 1;
@@ -153,6 +154,47 @@ impl GpuEffects {
             LayerEffect::Invert(intensity) => {
                 params.effect_type = 3;
                 params.intensity = *intensity as f32;
+            }
+            LayerEffect::CustomShader { wgsl_source } => {
+                params.effect_type = 4; // Or ignored because we use custom pipeline
+                let module = self.gpu.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                    label: Some("custom_effect_shader"),
+                    source: wgpu::ShaderSource::Wgsl(wgsl_source.as_str().into()),
+                });
+                
+                let pipeline_layout = self.gpu.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("custom_effects_pipeline_layout"),
+                    bind_group_layouts: &[&self.bind_group_layout],
+                    push_constant_ranges: &[],
+                });
+                
+                custom_pipeline = Some(self.gpu.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                    label: Some("custom_effect_compute_pipeline"),
+                    layout: Some(&pipeline_layout),
+                    module: &module,
+                    entry_point: "main",
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }));
+            }
+            LayerEffect::Brightness(amount) => {
+                params.effect_type = 5;
+                params.intensity = *amount as f32;
+            }
+            LayerEffect::Contrast(amount) => {
+                params.effect_type = 6;
+                params.intensity = *amount as f32;
+            }
+            LayerEffect::Saturation(amount) => {
+                params.effect_type = 7;
+                params.intensity = *amount as f32;
+            }
+            LayerEffect::HueRotate(degrees) => {
+                params.effect_type = 8;
+                params.intensity = *degrees as f32;
+            }
+            LayerEffect::Vignette(amount) => {
+                params.effect_type = 9;
+                params.intensity = *amount as f32;
             }
         }
 
@@ -185,7 +227,7 @@ impl GpuEffects {
 
         {
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
-            cpass.set_pipeline(&self.pipeline);
+            cpass.set_pipeline(custom_pipeline.as_ref().unwrap_or(&self.pipeline));
             cpass.set_bind_group(0, &bind_group, &[]);
             cpass.dispatch_workgroups((width + 15) / 16, (height + 15) / 16, 1);
         }

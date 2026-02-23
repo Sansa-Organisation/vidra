@@ -25,7 +25,7 @@ const handleEditorWillMount = (monaco: any) => {
             'audio', 'text', 'tts', 'position', 'animation', 'from', 'to',
             'duration', 'ease', 'easing', 'font', 'size', 'color', 'linear',
             'easeInOut', 'easeOut', 'easeIn', 'easeOutBack', 'cubicIn', 'cubicOut',
-            'cubicInOut', 'opacity', 'scale', 'rotation', 'effect', 'delay'
+            'cubicInOut', 'opacity', 'scale', 'rotation', 'effect', 'preset', 'delay', 'mask'
         ],
         typeKeywords: ['String', 'Number', 'Duration', 'Color', 'Image', 'Video', 'Font', 'AssetId'],
         tokenizer: {

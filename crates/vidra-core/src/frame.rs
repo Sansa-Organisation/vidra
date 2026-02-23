@@ -116,6 +116,34 @@ impl FrameBuffer {
         }
     }
 
+    /// Apply an alpha mask to this layer. Pixels outside the mask become transparent.
+    pub fn apply_mask(&mut self, mask: &FrameBuffer, ox: i32, oy: i32) {
+        if self.format != PixelFormat::Rgba8 || mask.format != PixelFormat::Rgba8 { return; }
+        
+        let start_y = std::cmp::max(0, oy);
+        let end_y = std::cmp::min(self.height as i32, oy + mask.height as i32);
+        let start_x = std::cmp::max(0, ox);
+        let end_x = std::cmp::min(self.width as i32, ox + mask.width as i32);
+        
+        for y in 0..(self.height as i32) {
+            for x in 0..(self.width as i32) {
+                let dst_idx = ((y as usize) * (self.width as usize) + (x as usize)) * 4;
+                
+                if x >= start_x && x < end_x && y >= start_y && y < end_y {
+                    let mask_x = (x - ox) as u32;
+                    let mask_y = (y - oy) as u32;
+                    let mask_idx = ((mask_y as usize) * (mask.width as usize) + (mask_x as usize)) * 4;
+                    // Multiply existing alpha by mask alpha or luminance. Here we use the mask alpha.
+                    let mask_a = mask.data[mask_idx + 3] as f32 / 255.0;
+                    let current_a = self.data[dst_idx + 3] as f32;
+                    self.data[dst_idx + 3] = (current_a * mask_a) as u8;
+                } else {
+                    self.data[dst_idx + 3] = 0;
+                }
+            }
+        }
+    }
+
     /// Alpha-composite `src` on top of `self` at position (dx, dy).
     /// Uses highly optimized SIMD-friendly integer math for auto-vectorization.
     pub fn composite_over(&mut self, src: &FrameBuffer, dx: i32, dy: i32) {

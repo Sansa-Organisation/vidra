@@ -137,6 +137,19 @@ impl TypeChecker {
                     }
                 }
             }
+            crate::ast::LayerBlockItem::Transition { duration: _, easing, span: _, transition_type: _ } => {
+                if let Some(_ease) = easing {
+                    // Could check easing string valid
+                }
+            }
+            crate::ast::LayerBlockItem::ComponentUse { .. } => {
+                // Ignore for now
+            }
+            crate::ast::LayerBlockItem::AnimationStagger { animations, .. } => {
+                for prop in animations {
+                    self.check_property(prop);
+                }
+            }
         }
     }
 
@@ -270,6 +283,19 @@ impl TypeChecker {
                 // Unknown function calls
                 self.type_error(format!("unknown function or property '{}'", name), span);
             }
+            PropertyNode::AnimationGroup { animations, .. } => {
+                for prop in animations {
+                    self.check_property(prop);
+                }
+            }
+            PropertyNode::AnimationSequence { animations, .. } => {
+                for prop in animations {
+                    self.check_property(prop);
+                }
+            }
+            PropertyNode::Wait { duration, span } => {
+                self.expect_duration_or_number(duration, span);
+            }
         }
     }
 
@@ -283,6 +309,7 @@ impl TypeChecker {
             ValueNode::Color(_) => "Color",
             ValueNode::Identifier(_) => "Identifier",
             ValueNode::BrandReference(_) => "BrandReference",
+            ValueNode::Array(_) => "Array",
         }
     }
 

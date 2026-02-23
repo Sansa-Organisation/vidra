@@ -93,6 +93,8 @@ pub struct Layer {
     pub visible: bool,
     /// Child layers (for nesting / component hierarchy).
     pub children: Vec<Layer>,
+    /// Optional mask layer (alpha channel is used to mask this layer).
+    pub mask: Option<LayerId>,
 }
 
 impl Layer {
@@ -107,6 +109,7 @@ impl Layer {
             effects: Vec::new(),
             visible: true,
             children: Vec::new(),
+            mask: None,
         }
     }
 

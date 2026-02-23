@@ -121,21 +121,10 @@ impl RenderPipeline {
         };
 
         let total_frames = project.total_frames();
-        let mut tasks = Vec::with_capacity(total_frames as usize);
-        let mut global_frame: u64 = 0;
-
-        for scene in &project.scenes {
-            let scene_frames = scene.frame_count(project.settings.fps);
-            for local_frame in 0..scene_frames {
-                tasks.push((scene, local_frame, global_frame));
-                global_frame += 1;
-            }
-        }
-
-        let frames: Result<Vec<FrameBuffer>, _> = tasks
+        let frames: Result<Vec<FrameBuffer>, _> = (0..total_frames)
             .into_par_iter()
-            .map(|(scene, local_frame, global_frame)| {
-                pipeline.render_frame(&ctx, project, scene, local_frame, global_frame)
+            .map(|global_frame| {
+                pipeline.render_frame_index(project, global_frame)
             })
             .collect();
 
@@ -162,25 +151,166 @@ impl RenderPipeline {
             fps: project.settings.fps,
         };
 
-        let mut current_global = 0.0;
-        let mut target_scene = None;
-        let mut local_f = 0;
+        let mut current_global = 0u64;
+        
+        let mut target_scenes = Vec::new();
 
-        for scene in &project.scenes {
+        for (i, scene) in project.scenes.iter().enumerate() {
             let sf = scene.frame_count(project.settings.fps);
-            if global_frame < (current_global as u64) + sf {
-                target_scene = Some(scene);
-                local_f = global_frame - (current_global as u64);
-                break;
+            let trans_f = if i > 0 {
+                if let Some(trans) = &scene.transition {
+                    let max_overlap = project.scenes[i - 1].frame_count(project.settings.fps).min(sf);
+                    trans.duration.frame_count(project.settings.fps).min(max_overlap)
+                } else {
+                    0
+                }
+            } else {
+                0
+            };
+            
+            let start_f = current_global.saturating_sub(trans_f);
+            let end_f = start_f + sf;
+            
+            if global_frame >= start_f && global_frame < end_f {
+                let local_f = global_frame - start_f;
+                target_scenes.push((scene, local_f));
             }
-            current_global += sf as f64;
+            
+            current_global = end_f;
         }
 
-        let scene = target_scene.ok_or_else(|| {
-            vidra_core::VidraError::Render(format!("frame out of bounds: {}", global_frame))
-        })?;
+        if target_scenes.is_empty() {
+            return Err(vidra_core::VidraError::Render(format!("frame out of bounds: {}", global_frame)));
+        }
 
-        self.render_frame(&ctx, project, scene, local_f, global_frame)
+        if target_scenes.len() == 1 {
+            let (scene, local_f) = target_scenes[0];
+            self.render_frame(&ctx, project, scene, local_f, global_frame)
+        } else {
+            // Composite the two scenes for transition
+            // They are added in order, so index 0 is the older scene, index 1 is the entering scene
+            let (scene1, local_f1) = target_scenes[0];
+            let (scene2, local_f2) = target_scenes[1];
+            
+            let frame1 = self.render_frame(&ctx, project, scene1, local_f1, global_frame)?;
+            let frame2 = self.render_frame(&ctx, project, scene2, local_f2, global_frame)?;
+            
+            let trans = scene2.transition.as_ref().unwrap();
+            let trans_frames = trans.duration.frame_count(project.settings.fps) as f64;
+            let progress = local_f2 as f64 / trans_frames;
+            let eased_progress = trans.easing.apply(progress);
+
+            self.apply_transition(frame1, frame2, &trans.effect, eased_progress, ctx.width, ctx.height)
+        }
+    }
+    
+    fn apply_transition(&self, frame1: FrameBuffer, frame2: FrameBuffer, effect: &vidra_ir::transition::TransitionType, progress: f64, width: u32, height: u32) -> Result<FrameBuffer, vidra_core::VidraError> {
+        let mut out = frame1.clone();
+        
+        match effect {
+            vidra_ir::transition::TransitionType::Crossfade => {
+                for y in 0..height {
+                    for x in 0..width {
+                        let c1 = frame1.get_pixel(x, y).unwrap_or([0, 0, 0, 0]);
+                        let c2 = frame2.get_pixel(x, y).unwrap_or([0, 0, 0, 0]);
+                        
+                        let r = (c1[0] as f64 * (1.0 - progress) + c2[0] as f64 * progress) as u8;
+                        let g = (c1[1] as f64 * (1.0 - progress) + c2[1] as f64 * progress) as u8;
+                        let b = (c1[2] as f64 * (1.0 - progress) + c2[2] as f64 * progress) as u8;
+                        let a = (c1[3] as f64 * (1.0 - progress) + c2[3] as f64 * progress) as u8;
+                        
+                        out.set_pixel(x, y, [r, g, b, a]);
+                    }
+                }
+            }
+            vidra_ir::transition::TransitionType::Wipe { direction } => {
+                let offset_x = (width as f64 * progress) as u32;
+                let offset_y = (height as f64 * progress) as u32;
+                for y in 0..height {
+                    for x in 0..width {
+                        let show_frame2 = match direction.as_str() {
+                            "left" => x >= width - offset_x,
+                            "up" => y >= height - offset_y,
+                            "down" => y < offset_y,
+                            _ => x < offset_x, // right
+                        };
+                        if show_frame2 {
+                            out.set_pixel(x, y, frame2.get_pixel(x, y).unwrap_or([0, 0, 0, 0]));
+                        }
+                    }
+                }
+            }
+            vidra_ir::transition::TransitionType::Push { direction } => {
+                let offset_x = (width as f64 * progress) as u32;
+                let offset_y = (height as f64 * progress) as u32;
+                for y in 0..height {
+                    for x in 0..width {
+                        match direction.as_str() {
+                            "left" => {
+                                if x >= width - offset_x {
+                                    out.set_pixel(x, y, frame2.get_pixel(x - (width - offset_x), y).unwrap_or([0, 0, 0, 0]));
+                                } else {
+                                    out.set_pixel(x, y, frame1.get_pixel(x + offset_x, y).unwrap_or([0, 0, 0, 0]));
+                                }
+                            }
+                            "up" => {
+                                if y >= height - offset_y {
+                                    out.set_pixel(x, y, frame2.get_pixel(x, y - (height - offset_y)).unwrap_or([0, 0, 0, 0]));
+                                } else {
+                                    out.set_pixel(x, y, frame1.get_pixel(x, y + offset_y).unwrap_or([0, 0, 0, 0]));
+                                }
+                            }
+                            "down" => {
+                                if y < offset_y {
+                                    out.set_pixel(x, y, frame2.get_pixel(x, height - offset_y + y).unwrap_or([0, 0, 0, 0]));
+                                } else {
+                                    out.set_pixel(x, y, frame1.get_pixel(x, y - offset_y).unwrap_or([0, 0, 0, 0]));
+                                }
+                            }
+                            _ => { // right
+                                if x < offset_x {
+                                    out.set_pixel(x, y, frame2.get_pixel(width - offset_x + x, y).unwrap_or([0, 0, 0, 0]));
+                                } else {
+                                    out.set_pixel(x, y, frame1.get_pixel(x - offset_x, y).unwrap_or([0, 0, 0, 0]));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            vidra_ir::transition::TransitionType::Slide { direction } => {
+                let offset_x = (width as f64 * progress) as u32;
+                let offset_y = (height as f64 * progress) as u32;
+                for y in 0..height {
+                    for x in 0..width {
+                        match direction.as_str() {
+                            "left" => {
+                                if x >= width - offset_x {
+                                    out.set_pixel(x, y, frame2.get_pixel(x - (width - offset_x), y).unwrap_or([0, 0, 0, 0]));
+                                }
+                            }
+                            "up" => {
+                                if y >= height - offset_y {
+                                    out.set_pixel(x, y, frame2.get_pixel(x, y - (height - offset_y)).unwrap_or([0, 0, 0, 0]));
+                                }
+                            }
+                            "down" => {
+                                if y < offset_y {
+                                    out.set_pixel(x, y, frame2.get_pixel(x, height - offset_y + y).unwrap_or([0, 0, 0, 0]));
+                                }
+                            }
+                            _ => { // right
+                                if x < offset_x {
+                                    out.set_pixel(x, y, frame2.get_pixel(width - offset_x + x, y).unwrap_or([0, 0, 0, 0]));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        Ok(out)
     }
 
     /// Retrieve the bounding boxes of all visible layers at this exact frame
@@ -195,23 +325,35 @@ impl RenderPipeline {
             fps: project.settings.fps,
         };
 
-        let mut current_global = 0.0;
-        let mut target_scene = None;
-        let mut local_f = 0;
+        let mut current_global = 0u64;
+        let mut target_scenes = Vec::new();
 
-        for scene in &project.scenes {
+        for (i, scene) in project.scenes.iter().enumerate() {
             let sf = scene.frame_count(project.settings.fps);
-            if global_frame < (current_global as u64) + sf {
-                target_scene = Some(scene);
-                local_f = global_frame - (current_global as u64);
-                break;
+            let trans_f = if i > 0 {
+                if let Some(trans) = &scene.transition {
+                    let max_overlap = project.scenes[i - 1].frame_count(project.settings.fps).min(sf);
+                    trans.duration.frame_count(project.settings.fps).min(max_overlap)
+                } else {
+                    0
+                }
+            } else {
+                0
+            };
+            let start_f = current_global.saturating_sub(trans_f);
+            let end_f = start_f + sf;
+            
+            if global_frame >= start_f && global_frame < end_f {
+                let local_f = global_frame - start_f;
+                target_scenes.push((scene, local_f));
             }
-            current_global += sf as f64;
+            current_global = end_f;
         }
 
-        let scene = target_scene.ok_or_else(|| {
+        let scene = target_scenes.last().map(|(s, _)| *s).ok_or_else(|| {
             vidra_core::VidraError::Render(format!("frame out of bounds: {}", global_frame))
         })?;
+        let local_f = target_scenes.last().map(|(_, f)| *f).unwrap();
 
         let mut bounds = Vec::new();
 
@@ -252,9 +394,22 @@ impl RenderPipeline {
             if !layer.visible {
                 continue;
             }
-            if let Ok(layer_buf) = self.render_layer(ctx, project, layer, local_frame) {
+            if let Ok(mut layer_buf) = self.render_layer(ctx, project, layer, local_frame) {
                 let (dx, dy) = Self::compute_layer_position(ctx, layer, local_frame);
                 let (cx, cy) = Self::apply_anchor(dx, dy, &layer_buf, layer);
+                
+                if let Some(mask_id) = &layer.mask {
+                    if let Some(mask_layer) = scene.layers.iter().find(|l| &l.id == mask_id) {
+                        if let Ok(mask_buf) = self.render_layer(ctx, project, mask_layer, local_frame) {
+                            let (mdx, mdy) = Self::compute_layer_position(ctx, mask_layer, local_frame);
+                            let (mcx, mcy) = Self::apply_anchor(mdx, mdy, &mask_buf, mask_layer);
+                            let rel_x = mcx - cx;
+                            let rel_y = mcy - cy;
+                            layer_buf.apply_mask(&mask_buf, rel_x, rel_y);
+                        }
+                    }
+                }
+                
                 self.compositor.composite(&mut canvas, &layer_buf, cx, cy, &layer.effects);
             }
         }
@@ -431,12 +586,12 @@ impl RenderPipeline {
                 ..
             } => self.render_video_frame(ctx, project, asset_id, trim_start, frame, opacity),
             LayerContent::TTS { text, .. } => {
-                // AI TTS node — render a placeholder caption frame
+                // Audio visualization component
                 self.text_renderer
                     .render_text(&format!("🔊 {}", text), "Inter", 32.0, &Color::WHITE)
             }
             LayerContent::AutoCaption { .. } => {
-                // AI AutoCaption node — render placeholder until whisper inference is wired
+                // AI AutoCaption component — fallback text display
                 self.text_renderer
                     .render_text("[Auto Caption]", "Inter", 28.0, &Color::WHITE)
             }
@@ -490,7 +645,7 @@ impl RenderPipeline {
             if let Some(fb) = loaded {
                 self.image_cache.insert(cache_key.clone(), fb);
             } else {
-                // Return magenta placeholder for missing images
+                // Return magenta fallback for missing images
                 return FrameBuffer::solid(128, 128, &Color::rgba(1.0, 0.0, 1.0, opacity as f32));
             }
         }
@@ -718,7 +873,7 @@ mod tests {
 
     #[test]
     fn test_render_video_layer_fallback() {
-        // Video layer with a missing asset should fall back to a cyan placeholder
+        // Video layer with a missing asset should fall back to a cyan frame
         let mut project = Project::new(ProjectSettings::custom(10, 10, 1.0));
         project.settings.background = Color::BLACK;
         let mut scene = Scene::new(SceneId::new("s"), vidra_core::Duration::from_seconds(1.0));

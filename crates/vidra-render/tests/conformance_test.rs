@@ -75,7 +75,7 @@ fn test_conformance_02_text_basic() {
     let hash = run_conformance_test(&proj);
     assert_eq!(
         hash,
-        "e6746fe99e68c874876f75a8c0c0d9c53091c1ed6f715d9bf9206c4dc69e5bd6"
+        "0ee1a20bb1da2e181859372edd8566cf339f8144269ab6e328d6862cdf30f59f"
     );
 }
 
@@ -101,7 +101,7 @@ fn test_conformance_03_text_multiline() {
     let hash = run_conformance_test(&proj);
     assert_eq!(
         hash,
-        "66641260ed38f612bd630df4073f5dc246d547e0cf3186d375bb49112fab4057"
+        "aa72688ff62828f6653b35215f5b0e38012102b8cfe5bd31db331211219be86e"
     );
 }
 
@@ -131,7 +131,7 @@ fn test_conformance_04_shape_rect() {
     let hash = run_conformance_test(&proj);
     assert_eq!(
         hash,
-        "620cf9d91d18b5054b7a03fddf953ba7df4d8baf941028d41145f4aa2ee6ed86"
+        "9eae250a82e0316571bc13e0daf399611aa4fc4a68588218a6d58ece858e2846"
     );
 }
 
@@ -157,7 +157,7 @@ fn test_conformance_05_shape_circle() {
     let hash = run_conformance_test(&proj);
     assert_eq!(
         hash,
-        "3dcab9e040f084b89db9600d8b3ba3e2af5d903a3182e2a3d86e9595d6a8f7c3"
+        "f837edee1304af6d04201790e7ebddea0b06ba8d7cfc28aa35ddbf2e0db58844"
     );
 }
 
@@ -180,7 +180,7 @@ fn test_conformance_06_image() {
     let hash = run_conformance_test(&proj);
     assert_eq!(
         hash,
-        "15e2d2f3e5b9962787871594f71578388ab924a5523eb326c8db33ad60693e03"
+        "27255f724568ceebaa11f77ce60b40ee9ba630854fa63b9ec66d9f99783ba854"
     );
 }
 
@@ -205,7 +205,7 @@ fn test_conformance_07_video() {
     let hash = run_conformance_test(&proj);
     assert_eq!(
         hash,
-        "01212691fe98b8d149d457225f35d8ec3f7f2b597cd930a7da2f9f6d6cddc68f"
+        "1d6aa454c82a4f2e6c776f18904ceb969134e64bcc159d78b94292c5a7b3446e"
     );
 }
 
@@ -243,7 +243,7 @@ fn test_conformance_08_opacity() {
     let hash = run_conformance_test(&proj);
     assert_eq!(
         hash,
-        "4a1210478daa6709cb4e46d6e98d849cbedcec91aebf4a71d83cd7268be734ea"
+        "c608604e8ab0c9c054023d3e74c88d972fa3c324ae88a2658654d816088b52af"
     );
 }
 
@@ -278,7 +278,7 @@ fn test_conformance_09_hierarchy() {
     let hash = run_conformance_test(&proj);
     assert_eq!(
         hash,
-        "3dd3e9e783d5b968c63e6ae8eaf90cffe27800aec3f2a6010bdf24f84dc83440"
+        "e5683a38ab4ee14563c97bd8df7da49d3ba9dd6d47d44fc969a32d2dd8260cd1"
     );
 }
 
@@ -317,6 +317,36 @@ fn test_conformance_10_animation_position() {
     let hash = run_conformance_test(&proj);
     assert_eq!(
         hash,
-        "6452b348833efa154554f952815a837ea805a0f529d0cf44c8695eb8b146c524"
+        "564db51aec9ee2530d0ed24541c62f541c5fa9db6258460e3b2497e5a8fb7567"
+    );
+}
+
+#[test]
+fn test_conformance_11_transitions() {
+    let mut proj = create_base_project();
+    
+    let mut scene1 = Scene::new(SceneId::new("s1"), Duration::from_seconds(0.5));
+    scene1.add_layer(Layer::new(
+        LayerId::new("bg1"),
+        LayerContent::Solid { color: Color::RED },
+    ));
+    proj.add_scene(scene1);
+
+    let mut scene2 = Scene::new(SceneId::new("s2"), Duration::from_seconds(0.5));
+    scene2.add_layer(Layer::new(
+        LayerId::new("bg2"),
+        LayerContent::Solid { color: Color::BLUE },
+    ));
+    scene2.transition = Some(vidra_ir::transition::Transition {
+        effect: vidra_ir::transition::TransitionType::Wipe { direction: "right".to_string() },
+        duration: Duration::from_seconds(0.5),
+        easing: vidra_core::types::Easing::Linear,
+    });
+    proj.add_scene(scene2);
+
+    let hash = run_conformance_test(&proj);
+    assert_eq!(
+        hash,
+        "b1ddd99a4b6c0b195de2de751d04c9e8d02e364b292976726286a7900d884e1a"
     );
 }

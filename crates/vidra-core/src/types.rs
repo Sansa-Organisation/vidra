@@ -48,6 +48,18 @@ pub enum LayerEffect {
     Grayscale(f64),
     /// Invert colors (0.0 to 1.0 intensity).
     Invert(f64),
+    /// Custom shader effect built with VidraFX
+    CustomShader { wgsl_source: String },
+    /// Brightness effect (1.0 = normal, >1.0 brighter, <1.0 darker)
+    Brightness(f64),
+    /// Contrast effect (1.0 = normal)
+    Contrast(f64),
+    /// Saturation effect (1.0 = normal, 0.0 = grayscale)
+    Saturation(f64),
+    /// Hue rotation in degrees
+    HueRotate(f64),
+    /// Vignette effect (0.0 to 1.0 intensity)
+    Vignette(f64),
 }
 
 /// Blend mode for layer compositing.

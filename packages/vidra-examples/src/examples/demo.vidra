@@ -1,30 +1,61 @@
 project(1920, 1080, 60) {
-    scene("welcome", 3s) {
+    @var brandYellow = #FFCC00
+    @var brandRed = #FF3366
+    @var timing = 4
+
+    scene("welcome", timing) {
         layer("bg") {
             solid(#09090b)
         }
         layer("title") {
-            text("Vidra Studio", font: "Inter", size: 140, color: #ffffff)
-            position(960, 540)
-            animation(opacity, from: 0, to: 1, duration: 2s, easing: easeOut)
-            animation(scale, from: 0.9, to: 1.0, duration: 2s, easing: easeOutBack)
+            text("Vidra FX!", font: "Inter", size: 160, color: brandYellow)
+            position(960, 500)
+            preset("bounceIn", 1.5s)
+            effect(brightness, 1.2)
+            effect(hueRotate, 15)
         }
     }
     
-    scene("features", 4s) {
+    scene("effects", 5s) {
+        transition("wipe", 1.5s, ease: "easeInOut")
         layer("bg2") {
             solid(#18181b)
+            effect(vignette, 0.8)
         }
         layer("headline") {
-            text("Showcase Your Engine", font: "Inter", size: 80, color: #3b82f6)
+            text("Cinematic Power", font: "Inter", size: 100, color: #ffffff)
             position(960, 400)
-            animation(positionY, from: 450, to: 400, duration: 1s, easing: easeOut)
-            animation(opacity, from: 0, to: 1, duration: 1s)
+            preset("fadeInUp", 1s)
+            effect(contrast, 1.5)
+            effect(saturation, 2.0)
         }
         layer("sub") {
-            text("Drop an image layer to try the asset manager!", font: "Inter", size: 40, color: #94a3b8)
-            position(960, 600)
-            animation(opacity, from: 0, to: 1, duration: 1s, delay: 0.5s)
+            text("Presets, Variables, and Shader FX", font: "Inter", size: 40, color: brandRed)
+            position(960, 550)
+            preset("glitch", 0.5s)
+        }
+    }
+    
+    scene("masks", 4s) {
+        transition("slide", 1s, ease: "easeOut")
+        layer("mask_circle") {
+            shape(circle, radius: 450, fill: #FFFFFF)
+            position(960, 540)
+            animation(scale, from: 0.1, to: 1.0, duration: 2s, ease: "easeOutBack")
+        }
+        layer("bg3") {
+            solid(#111111)
+        }
+        layer("masked_content") {
+            solid(brandYellow)
+            mask("mask_circle")
+            effect(vignette, 0.4)
+        }
+        layer("text") {
+            text("Masking Engine", font: "Inter", size: 100, color: #111111)
+            position(960, 540)
+            preset("fadeInUp", 1s)
+            mask("mask_circle")
         }
     }
 }

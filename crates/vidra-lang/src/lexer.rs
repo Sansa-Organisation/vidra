@@ -41,6 +41,7 @@ pub enum TokenKind {
     From,
     Component,
     Slot,
+    Transition,
     If,
     Else,
     Asset,
@@ -60,6 +61,8 @@ pub enum TokenKind {
     // Punctuation
     LeftBrace,
     RightBrace,
+    LeftBracket,
+    RightBracket,
     LeftParen,
     RightParen,
     Comma,
@@ -99,6 +102,7 @@ impl fmt::Display for TokenKind {
             TokenKind::From => write!(f, "from"),
             TokenKind::Component => write!(f, "component"),
             TokenKind::Slot => write!(f, "slot"),
+            TokenKind::Transition => write!(f, "transition"),
             TokenKind::If => write!(f, "if"),
             TokenKind::Else => write!(f, "else"),
             TokenKind::Asset => write!(f, "asset"),
@@ -120,6 +124,8 @@ impl fmt::Display for TokenKind {
             }
             TokenKind::LeftBrace => write!(f, "{{"),
             TokenKind::RightBrace => write!(f, "}}"),
+            TokenKind::LeftBracket => write!(f, "["),
+            TokenKind::RightBracket => write!(f, "]"),
             TokenKind::LeftParen => write!(f, "("),
             TokenKind::RightParen => write!(f, ")"),
             TokenKind::Comma => write!(f, ","),
@@ -247,6 +253,14 @@ impl Lexer {
             '}' => {
                 self.advance();
                 TokenKind::RightBrace
+            }
+            '[' => {
+                self.advance();
+                TokenKind::LeftBracket
+            }
+            ']' => {
+                self.advance();
+                TokenKind::RightBracket
             }
             '(' => {
                 self.advance();
@@ -399,6 +413,7 @@ impl Lexer {
                     "from" => TokenKind::From,
                     "component" => TokenKind::Component,
                     "slot" => TokenKind::Slot,
+                    "transition" => TokenKind::Transition,
                     "if" => TokenKind::If,
                     "else" => TokenKind::Else,
                     "asset" => TokenKind::Asset,

@@ -28,11 +28,21 @@ impl Project {
         }
     }
 
-    /// Total duration of the project (sum of all scene durations).
+    /// Total duration of the project (sum of all scene durations minus overlapping transitions).
     pub fn total_duration(&self) -> vidra_core::Duration {
-        self.scenes
-            .iter()
-            .fold(vidra_core::Duration::zero(), |acc, s| acc + s.duration)
+        let mut total = vidra_core::Duration::zero();
+        for (i, scene) in self.scenes.iter().enumerate() {
+            total = total + scene.duration;
+            if i > 0 {
+                if let Some(trans) = &scene.transition {
+                    // Subtract transition duration (capped at scene and prev scene duration)
+                    let max_overlap = scene.duration.as_seconds().min(self.scenes[i - 1].duration.as_seconds());
+                    let overlap = trans.duration.as_seconds().min(max_overlap);
+                    total = total - vidra_core::Duration::from_seconds(overlap);
+                }
+            }
+        }
+        total
     }
 
     /// Total number of frames in the project.

@@ -19,3 +19,4 @@ pub use project::{Project, ProjectSettings};
 pub use scene::{Scene, SceneId};
 pub mod builder;
 pub mod crdt;
+pub mod transition;

@@ -19,6 +19,7 @@ export function createDemoProject() {
 
     // Try uploading an image and referencing it here like:
     // const s2 = new Scene("img", 3.0);
+    // s2.setTransition({ Wipe: { direction: "right" } }, 1.0, Easing.EaseInOut);
     // s2.addLayer(new Layer("logo").image("your-asset-id").position(960, 540));
     // project.addScene(s2);
 

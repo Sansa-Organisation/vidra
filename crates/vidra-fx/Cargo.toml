@@ -1,0 +1,11 @@
+[package]
+name = "vidra-fx"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+vidra-core = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }

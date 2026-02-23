@@ -6,10 +6,18 @@ You generate complete, syntactically correct VidraScript code.
 ## VidraScript Syntax
 
 1. Root Block: Every file must start with exactly one project(width, height, fps) { ... }.
-   Example: project(1920, 1080, 60) { ... }
+   Inside a project, you can define global variables via \`@var name = value\`.
+   Example: 
+   project(1920, 1080, 60) { 
+       @var accent = #FFCC00
+       @var dur = 3s
+       ... 
+   }
 
 2. Scenes: Time-bounded blocks inside the project. They run sequentially.
-   Example: scene("intro", 5s) { ... }
+   Example: scene("intro", dur) { ... }
+   Transitions can be defined inside scenes, overlapping with the previous scene.
+   Example: transition("crossfade", 1s, ease: "easeOut") // Other types: wipe, slide, push
 
 3. Layers: Renderable units stacked bottom-to-top inside a scene.
    Example: layer("title") { ... }
@@ -23,6 +31,9 @@ You generate complete, syntactically correct VidraScript code.
 5. Layer Properties:
    - position(x, y)
    - animation(property, from: val, to: val, duration: time, easing: type)
+   - mask("layer_id") -> Apply the alpha channel of another layer as a mask
+   - preset("name", argument) -> Applies multiple animations instantly. e.g. preset("fadeInUp", 1s), preset("bounceIn", 1s), preset("glitch", 0.5s)
+   - effect(type, amount) -> e.g. effect(brightness, 1.5), effect(contrast, 1.2), effect(hueRotate, 90), effect(vignette, 0.8)
      Properties: opacity, positionX, positionY, scale, rotation
      Durations: 1s, 500ms
      Easings: linear, easeIn, easeOut, easeInOut, cubicIn, cubicOut, cubicInOut, easeOutBack
@@ -44,6 +55,7 @@ project(1920, 1080, 60) {
         }
     }
     scene("details", 4s) {
+        transition("wipe", 1s)
         layer("bg2") { solid(#0f172a) }
         layer("info") {
             text("Powered by WASM", font: "Inter", size: 60, color: #3b82f6)
@@ -71,6 +83,7 @@ import { Project, Scene, Layer, Easing, hex, rgba } from '@sansavision/vidra-pla
 ### Scene
 - new Scene("id", durationSeconds) - Create a scene
 - scene.addLayer(layer) / scene.addLayers(l1, l2, ...)
+- scene.setTransition(effect, durationSec, easing?) - Set entry transition (e.g. "Crossfade", { Wipe: { direction: "right" } })
 
 ### Layer (chainable)
 - new Layer("id") - Create a layer
@@ -156,6 +169,11 @@ export const DOCS_DATA = {
         { name: 'blur', syntax: 'effect(blur, 5.0)', desc: 'Gaussian blur' },
         { name: 'grayscale', syntax: 'effect(grayscale, 1.0)', desc: 'Desaturate' },
         { name: 'invert', syntax: 'effect(invert, 1.0)', desc: 'Color inversion' },
+        { name: 'brightness', syntax: 'effect(brightness, 1.2)', desc: 'Multiplier' },
+        { name: 'contrast', syntax: 'effect(contrast, 1.5)', desc: 'Contrast adjustment' },
+        { name: 'saturation', syntax: 'effect(saturation, 2.0)', desc: 'Color vibrance' },
+        { name: 'hueRotate', syntax: 'effect(hueRotate, 45.0)', desc: 'Rotate hue degrees' },
+        { name: 'vignette', syntax: 'effect(vignette, 0.8)', desc: 'Darken edges' },
     ],
 };
 

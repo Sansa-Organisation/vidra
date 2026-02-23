@@ -62,8 +62,13 @@ impl Compiler {
             ));
         }
 
+        let mut global_env = HashMap::new();
+        for var in &ast.variables {
+            global_env.insert(var.name.clone(), var.value.clone());
+        }
+
         for scene_node in &ast.scenes {
-            let scene = compiler.compile_scene(scene_node, &mut project)?;
+            let scene = compiler.compile_scene(scene_node, &mut project, &global_env)?;
             project.add_scene(scene);
         }
 
@@ -84,14 +89,78 @@ impl Compiler {
         }
     }
 
-    fn compile_scene(&self, scene_node: &SceneNode, project: &mut Project) -> Result<Scene, VidraError> {
-        let duration = vidra_core::Duration::from_seconds(scene_node.duration);
+    fn compile_scene(&self, scene_node: &SceneNode, project: &mut Project, global_env: &HashMap<String, ValueNode>) -> Result<Scene, VidraError> {
+        let dur_val = match &scene_node.duration {
+            ValueNode::Identifier(id) => global_env.get(id).unwrap_or(&scene_node.duration),
+            other => other,
+        };
+        let duration_secs = Self::value_to_f64(dur_val)?;
+        let duration = vidra_core::Duration::from_seconds(duration_secs);
         let mut scene = Scene::new(SceneId::new(&scene_node.name), duration);
 
+        let mut staggers = Vec::new();
         for item in &scene_node.items {
-            let compiled_layers = self.compile_layer_block_item(item, project, &HashMap::new(), &[])?;
-            for layer in compiled_layers {
-                scene.add_layer(layer);
+            if let crate::ast::LayerBlockItem::Transition { transition_type, duration: dur_val, easing, span: _ } = item {
+                let dur = Self::value_to_f64(dur_val)?;
+                let ease = match easing.as_deref() {
+                    Some("easeIn") => vidra_core::types::Easing::EaseIn,
+                    Some("easeOut") => vidra_core::types::Easing::EaseOut,
+                    Some("easeInOut") => vidra_core::types::Easing::EaseInOut,
+                    _ => vidra_core::types::Easing::Linear,
+                };
+                let effect = match transition_type.as_str() {
+                    "crossfade" => vidra_ir::transition::TransitionType::Crossfade,
+                    "wipe" => vidra_ir::transition::TransitionType::Wipe { direction: "right".to_string() },
+                    "push" => vidra_ir::transition::TransitionType::Push { direction: "right".to_string() },
+                    "slide" => vidra_ir::transition::TransitionType::Slide { direction: "right".to_string() },
+                    _ => vidra_ir::transition::TransitionType::Crossfade,
+                };
+                scene.transition = Some(vidra_ir::transition::Transition {
+                    effect,
+                    duration: vidra_core::Duration::from_seconds(dur),
+                    easing: ease,
+                });
+            } else if let crate::ast::LayerBlockItem::AnimationStagger { args, animations, span: _ } = item {
+                staggers.push((args.clone(), animations.clone()));
+            } else {
+                let compiled_layers = self.compile_layer_block_item(item, project, global_env, &[])?;
+                for layer in compiled_layers {
+                    scene.add_layer(layer);
+                }
+            }
+        }
+
+        for (args, animations) in staggers {
+            let mut offset = 0.0;
+            let mut target_layers: Vec<String> = Vec::new();
+            
+            for arg in &args {
+                if arg.name == "offset" {
+                    offset = Self::value_to_f64(&arg.value).unwrap_or(0.0);
+                } else if arg.name == "layers" {
+                    if let ValueNode::Array(arr) = &arg.value {
+                        for item in arr {
+                            if let Ok(layer_name) = Self::value_to_string(item) {
+                                target_layers.push(layer_name);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            for (i, layer_name) in target_layers.iter().enumerate() {
+                if let Some(layer) = scene.layers.iter_mut().find(|l| l.id.0.as_str() == layer_name) {
+                    let total_delay_offset = offset * (i as f64);
+                    
+                    for anim_node in &animations {
+                        if let PropertyNode::Animation { property, args, .. } = anim_node {
+                            let mut anim = Self::compile_animation(property, args, global_env)?;
+                            let existing_delay = anim.delay.as_seconds();
+                            anim.delay = vidra_core::Duration::from_seconds(existing_delay + total_delay_offset);
+                            layer.animations.push(anim);
+                        }
+                    }
+                }
             }
         }
 
@@ -106,6 +175,7 @@ impl Compiler {
             ValueNode::Duration(d) => *d > 0.0,
             ValueNode::Identifier(_) => true, // Usually identifiers themselves are truths unless evaled
             ValueNode::BrandReference(_) => true,
+            ValueNode::Array(arr) => !arr.is_empty(),
         }
     }
 
@@ -141,6 +211,18 @@ impl Compiler {
                     }
                 }
                 Ok(out)
+            }
+            crate::ast::LayerBlockItem::Transition { .. } => {
+                // Ignore, handled at scene level
+                Ok(Vec::new())
+            }
+            crate::ast::LayerBlockItem::ComponentUse { .. } => {
+                // Ignore for now, handled elsewhere or unused
+                Ok(Vec::new())
+            }
+            crate::ast::LayerBlockItem::AnimationStagger { args: _, animations: _, span: _ } => {
+                // To be implemented: apply stagger stagger to scene's matching layers
+                Ok(Vec::new())
             }
         }
     }
@@ -204,13 +286,98 @@ impl Compiler {
                                     let intensity = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(1.0) } else { 1.0 };
                                     layer.effects.push(vidra_core::types::LayerEffect::Invert(intensity));
                                 }
+                                "brightness" => {
+                                    let amount = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(1.0) } else { 1.0 };
+                                    layer.effects.push(vidra_core::types::LayerEffect::Brightness(amount));
+                                }
+                                "contrast" => {
+                                    let amount = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(1.0) } else { 1.0 };
+                                    layer.effects.push(vidra_core::types::LayerEffect::Contrast(amount));
+                                }
+                                "saturation" => {
+                                    let amount = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(1.0) } else { 1.0 };
+                                    layer.effects.push(vidra_core::types::LayerEffect::Saturation(amount));
+                                }
+                                "hue_rotate" | "hueRotate" => {
+                                    let degrees = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(0.0) } else { 0.0 };
+                                    layer.effects.push(vidra_core::types::LayerEffect::HueRotate(degrees));
+                                }
+                                "vignette" => {
+                                    let amount = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(1.0) } else { 1.0 };
+                                    layer.effects.push(vidra_core::types::LayerEffect::Vignette(amount));
+                                }
                                 _ => tracing::warn!("Unknown effect: {}", effect_type),
                             }
+                        }
+                    } else if name == "preset" && !args.is_empty() {
+                        let preset_name = if let ValueNode::Identifier(id) = &args[0] {
+                            env.get(id).unwrap_or(&args[0])
+                        } else { &args[0] };
+                        
+                        let delay = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(0.0) } else { 0.0 };
+                        
+                        if let Ok(preset_type) = Self::value_to_string(preset_name) {
+                            match preset_type.as_str() {
+                                "fadeInUp" => {
+                                    layer.animations.push(vidra_ir::animation::Animation::from_to(vidra_ir::animation::AnimatableProperty::Opacity, 0.0, 1.0, vidra_core::Duration::from_seconds(0.5), vidra_core::types::Easing::EaseOut).with_delay(vidra_core::Duration::from_seconds(delay)));
+                                    layer.animations.push(vidra_ir::animation::Animation::from_to(vidra_ir::animation::AnimatableProperty::PositionY, 50.0, 0.0, vidra_core::Duration::from_seconds(0.5), vidra_core::types::Easing::EaseOut).with_delay(vidra_core::Duration::from_seconds(delay)));
+                                }
+                                "bounceIn" => {
+                                    layer.animations.push(vidra_ir::animation::Animation::from_to(vidra_ir::animation::AnimatableProperty::ScaleX, 0.0, 1.0, vidra_core::Duration::from_seconds(0.6), vidra_core::types::Easing::EaseOutBack).with_delay(vidra_core::Duration::from_seconds(delay)));
+                                    layer.animations.push(vidra_ir::animation::Animation::from_to(vidra_ir::animation::AnimatableProperty::ScaleY, 0.0, 1.0, vidra_core::Duration::from_seconds(0.6), vidra_core::types::Easing::EaseOutBack).with_delay(vidra_core::Duration::from_seconds(delay)));
+                                    layer.animations.push(vidra_ir::animation::Animation::from_to(vidra_ir::animation::AnimatableProperty::Opacity, 0.0, 1.0, vidra_core::Duration::from_seconds(0.3), vidra_core::types::Easing::Linear).with_delay(vidra_core::Duration::from_seconds(delay)));
+                                }
+                                "typewriter" => {
+                                    layer.animations.push(vidra_ir::animation::Animation::from_to(vidra_ir::animation::AnimatableProperty::Opacity, 0.0, 1.0, vidra_core::Duration::from_seconds(0.2), vidra_core::types::Easing::Linear).with_delay(vidra_core::Duration::from_seconds(delay)));
+                                }
+                                "glitch" => {
+                                    layer.animations.push(vidra_ir::animation::Animation::from_to(vidra_ir::animation::AnimatableProperty::PositionX, -10.0, 0.0, vidra_core::Duration::from_seconds(0.2), vidra_core::types::Easing::EaseIn).with_delay(vidra_core::Duration::from_seconds(delay)));
+                                    layer.animations.push(vidra_ir::animation::Animation::from_to(vidra_ir::animation::AnimatableProperty::ScaleX, 1.5, 1.0, vidra_core::Duration::from_seconds(0.2), vidra_core::types::Easing::Linear).with_delay(vidra_core::Duration::from_seconds(delay)));
+                                }
+                                _ => tracing::warn!("Unknown preset: {}", preset_type),
+                            }
+                        }
+                    } else if name == "mask" && !args.is_empty() {
+                        let mask_layer_name = if let ValueNode::Identifier(id) = &args[0] {
+                            env.get(id).unwrap_or(&args[0])
+                        } else { &args[0] };
+                        if let Ok(mask_str) = Self::value_to_string(mask_layer_name) {
+                            layer.mask = Some(LayerId::new(mask_str));
                         }
                     } else {
                         // Handle generic function calls — extensible for enter/exit/etc.
                         tracing::debug!("unhandled function call: {}", name);
                     }
+                }
+                PropertyNode::AnimationGroup { animations, span: _ } => {
+                    // All start at 0 (or delay inside)
+                    for ag_prop in animations {
+                        if let PropertyNode::Animation { property, args, .. } = ag_prop {
+                            let anim = Self::compile_animation(property, args, env)?;
+                            layer.animations.push(anim);
+                        }
+                    }
+                }
+                PropertyNode::AnimationSequence { animations, span: _ } => {
+                    let mut current_time = 0.0;
+                    for seq_prop in animations {
+                        match seq_prop {
+                            PropertyNode::Wait { duration, .. } => {
+                                current_time += Self::value_to_f64(duration).unwrap_or(0.0);
+                            }
+                            PropertyNode::Animation { property, args, .. } => {
+                                let mut anim = Self::compile_animation(property, args, env)?;
+                                let delay = anim.delay.as_seconds() + current_time;
+                                anim.delay = vidra_core::Duration::from_seconds(delay);
+                                current_time += anim.duration().as_seconds();
+                                layer.animations.push(anim);
+                            }
+                            _ => {} // Group within Sequence not yet handled
+                        }
+                    }
+                }
+                PropertyNode::Wait { .. } => {
+                    // no-op if outside of a sequence
                 }
             }
         }
@@ -472,17 +639,59 @@ impl Compiler {
                 let c = Self::value_to_color(color_val)?;
                 Ok(LayerContent::Solid { color: c })
             }
-            LayerContentNode::Shape { .. } => {
-                // Shapes need more complex parsing — placeholder
+            LayerContentNode::Shape { shape_type, args } => {
+                let mut stroke_color = None;
+                let mut stroke_w = 0.0;
+                let mut fill_color = Some(Color::WHITE);
+
+                let get_val = |key: &str| -> Option<ValueNode> {
+                    args.iter().find(|a| a.name == key).map(|a| {
+                        if let ValueNode::Identifier(id) = &a.value {
+                            env.get(id).cloned().unwrap_or(a.value.clone())
+                        } else {
+                            a.value.clone()
+                        }
+                    })
+                };
+
+                if let Some(c) = get_val("fill").or_else(|| get_val("color")) {
+                    fill_color = Some(Self::value_to_color(&c)?);
+                }
+                if let Some(c) = get_val("stroke") {
+                    stroke_color = Some(Self::value_to_color(&c)?);
+                }
+                if let Some(w) = get_val("strokeWidth") {
+                    stroke_w = Self::value_to_f64(&w)?;
+                }
+
+                let shape = match shape_type.as_str() {
+                    "rect" | "rectangle" => {
+                        let width = get_val("width").map(|v| Self::value_to_f64(&v).unwrap_or(100.0)).unwrap_or(100.0);
+                        let height = get_val("height").map(|v| Self::value_to_f64(&v).unwrap_or(100.0)).unwrap_or(100.0);
+                        let corner_radius = get_val("cornerRadius").map(|v| Self::value_to_f64(&v).unwrap_or(0.0)).unwrap_or(0.0);
+                        vidra_core::types::ShapeType::Rect { width, height, corner_radius }
+                    }
+                    "circle" => {
+                        let radius = get_val("radius").map(|v| Self::value_to_f64(&v).unwrap_or(50.0)).unwrap_or(50.0);
+                        vidra_core::types::ShapeType::Circle { radius }
+                    }
+                    "ellipse" => {
+                        let rx = get_val("rx").map(|v| Self::value_to_f64(&v).unwrap_or(50.0)).unwrap_or(50.0);
+                        let ry = get_val("ry").map(|v| Self::value_to_f64(&v).unwrap_or(50.0)).unwrap_or(50.0);
+                        vidra_core::types::ShapeType::Ellipse { rx, ry }
+                    }
+                    _ => {
+                        return Err(VidraError::Compile(
+                            format!("unknown shape type: {}", shape_type),
+                        ));
+                    }
+                };
+
                 Ok(LayerContent::Shape {
-                    shape: vidra_core::types::ShapeType::Rect {
-                        width: 100.0,
-                        height: 100.0,
-                        corner_radius: 0.0,
-                    },
-                    fill: Some(Color::WHITE),
-                    stroke: None,
-                    stroke_width: 0.0,
+                    shape,
+                    fill: fill_color,
+                    stroke: stroke_color,
+                    stroke_width: stroke_w,
                 })
             }
             LayerContentNode::Component { .. } | LayerContentNode::Slot | LayerContentNode::Empty => Ok(LayerContent::Empty),
@@ -965,5 +1174,75 @@ mod tests {
         // which sets the position to 100, 100
         assert_eq!(box_layer.transform.position.x, 100.0);
         assert_eq!(box_layer.transform.position.y, 100.0);
+    }
+
+    #[test]
+    fn test_compile_variables_and_presets() {
+        let project = compile(
+            r#"
+            project(1920, 1080, 30) {
+                @var dur = 5
+                @var accent = #FFCC00
+                @var entrance = 1.0
+
+                scene("main", dur) {
+                    layer("box") { 
+                        solid(accent)
+                        preset("fadeInUp", entrance)
+                    }
+                }
+            }
+            "#,
+        );
+        let scene = &project.scenes[0];
+        assert_eq!(scene.duration.as_seconds(), 5.0);
+        let box_layer = &scene.layers[0];
+        assert_eq!(box_layer.animations.len(), 2);
+        
+        match &box_layer.content {
+            LayerContent::Solid { color } => assert_eq!(color.to_rgba8(), [255, 204, 0, 255]),
+            _ => panic!("Expected solid content"),
+        }
+    }
+
+    #[test]
+    fn test_compile_animation_features() {
+        let project = compile(
+            r#"
+            project(1920, 1080, 30) {
+                scene("main", 5s) {
+                    layer("item1") { text("1") }
+                    layer("item2") { text("2") }
+                    
+                    animate.stagger(layers: ["item1", "item2"], offset: 0.5) {
+                        animation(opacity, from: 0.0, to: 1.0, duration: 1.0)
+                    }
+                    
+                    layer("seq_item") {
+                        text("seq")
+                        animate.sequence {
+                            animation(opacity, from: 0.0, to: 1.0, duration: 1.0)
+                            wait(0.5)
+                            animation(scale, from: 1.0, to: 2.0, duration: 1.0)
+                        }
+                    }
+                }
+            }
+        "#,
+        );
+        let scene = &project.scenes[0];
+        
+        let item1 = &scene.layers[0];
+        assert_eq!(item1.animations.len(), 1);
+        assert_eq!(item1.animations[0].delay.as_seconds(), 0.0);
+        
+        let item2 = &scene.layers[1];
+        assert_eq!(item2.animations.len(), 1);
+        assert_eq!(item2.animations[0].delay.as_seconds(), 0.5);
+        
+        let seq_item = &scene.layers[2];
+        assert_eq!(seq_item.animations.len(), 2);
+        assert_eq!(seq_item.animations[0].delay.as_seconds(), 0.0);
+        assert_eq!(seq_item.animations[1].delay.as_seconds(), 1.5);
     }
 }

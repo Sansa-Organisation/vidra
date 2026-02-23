@@ -109,6 +109,7 @@ impl Parser {
         let mut imports = Vec::new();
         let mut assets = Vec::new();
         let mut layout_rules = Vec::new();
+        let mut variables = Vec::new();
         while self.peek() != &TokenKind::RightBrace && self.peek() != &TokenKind::Eof {
             self.skip_newlines();
             if self.peek() == &TokenKind::RightBrace {
@@ -122,6 +123,18 @@ impl Parser {
                 assets.push(self.parse_asset()?);
             } else if self.peek() == &TokenKind::Layout {
                 layout_rules.push(self.parse_layout_rules()?);
+            } else if self.peek() == &TokenKind::At {
+                // Peek ahead to see if it's `@var`
+                let next_token = &self.tokens[(self.pos + 1).min(self.tokens.len() - 1)];
+                if let TokenKind::Identifier(id) = &next_token.kind {
+                    if id == "var" {
+                        variables.push(self.parse_var_def()?);
+                    } else {
+                        scenes.push(self.parse_scene()?);
+                    }
+                } else {
+                    scenes.push(self.parse_scene()?);
+                }
             } else {
                 scenes.push(self.parse_scene()?);
             }
@@ -137,6 +150,7 @@ impl Parser {
             imports,
             assets,
             layout_rules,
+            variables,
             scenes,
             components,
             span,
@@ -239,6 +253,33 @@ impl Parser {
 
         Ok(LayoutRulesNode {
             rules,
+            span,
+        })
+    }
+
+    /// Parse a variable definition: `@var name = value`
+    fn parse_var_def(&mut self) -> Result<VarDefNode, VidraError> {
+        let span = self.current_span();
+        self.expect(&TokenKind::At)?;
+        let kw = self.parse_identifier()?;
+        if kw != "var" {
+            return Err(VidraError::parse(
+                format!("expected 'var', got '{}'", kw),
+                &self.file,
+                span.line,
+                span.column,
+            ));
+        }
+        
+        let name = self.parse_identifier()?;
+        self.skip_newlines();
+        self.expect(&TokenKind::Equals)?;
+        self.skip_newlines();
+        let value = self.parse_value()?;
+        
+        Ok(VarDefNode {
+            name,
+            value,
             span,
         })
     }
@@ -409,7 +450,7 @@ impl Parser {
         self.expect(&TokenKind::Comma)?;
         self.skip_newlines();
 
-        let duration = self.parse_duration_or_number()?;
+        let duration = self.parse_value()?;
         self.skip_newlines();
 
         self.expect(&TokenKind::RightParen)?;
@@ -440,9 +481,95 @@ impl Parser {
     fn parse_layer_block_item(&mut self) -> Result<LayerBlockItem, VidraError> {
         if self.peek() == &TokenKind::If {
             self.parse_if_item()
+        } else if self.peek() == &TokenKind::Transition {
+            self.parse_transition_item()
+        } else if self.peek() == &TokenKind::Identifier("animate".to_string()) {
+            self.parse_animate_stagger_item()
         } else {
             Ok(LayerBlockItem::Layer(self.parse_layer()?))
         }
+    }
+
+    fn parse_transition_item(&mut self) -> Result<LayerBlockItem, VidraError> {
+        let span = self.current_span();
+        self.expect(&TokenKind::Transition)?;
+        self.expect(&TokenKind::LeftParen)?;
+        self.skip_newlines();
+
+        let transition_type = self.parse_string()?;
+        self.skip_newlines();
+
+        self.expect(&TokenKind::Comma)?;
+        self.skip_newlines();
+
+        let duration = self.parse_value()?;
+        self.skip_newlines();
+
+        let mut easing = None;
+        if self.peek() == &TokenKind::Comma {
+            self.advance();
+            self.skip_newlines();
+            let args = self.parse_named_args_list()?;
+            for arg in args {
+                if arg.name == "ease" {
+                    if let ValueNode::String(s) = arg.value {
+                        easing = Some(s);
+                    }
+                }
+            }
+        }
+
+        self.expect(&TokenKind::RightParen)?;
+
+        Ok(LayerBlockItem::Transition {
+            transition_type,
+            duration,
+            easing,
+            span,
+        })
+    }
+
+    fn parse_animate_stagger_item(&mut self) -> Result<LayerBlockItem, VidraError> {
+        let span = self.current_span();
+        self.advance(); // consume `animate`
+        self.expect(&TokenKind::Dot)?;
+        let ident = self.parse_identifier()?;
+        if ident != "stagger" {
+            let s = self.current_span();
+            return Err(VidraError::parse(
+                format!("expected 'stagger' after 'animate.', got {}", ident),
+                &self.file,
+                s.line,
+                s.column,
+            ));
+        }
+
+        self.expect(&TokenKind::LeftParen)?;
+        self.skip_newlines();
+        let args = self.parse_named_args_list()?;
+        self.expect(&TokenKind::RightParen)?;
+        self.skip_newlines();
+
+        self.expect(&TokenKind::LeftBrace)?;
+        self.skip_newlines();
+
+        let mut animations = Vec::new();
+        while self.peek() != &TokenKind::RightBrace && self.peek() != &TokenKind::Eof {
+            self.skip_newlines();
+            if self.peek() == &TokenKind::RightBrace {
+                break;
+            }
+            animations.push(self.parse_property()?);
+            self.skip_newlines();
+        }
+
+        self.expect(&TokenKind::RightBrace)?;
+
+        Ok(LayerBlockItem::AnimationStagger {
+            args,
+            animations,
+            span,
+        })
     }
 
     fn parse_if_item(&mut self) -> Result<LayerBlockItem, VidraError> {
@@ -660,6 +787,50 @@ impl Parser {
                 self.expect(&TokenKind::RightParen)?;
                 Ok(PropertyNode::Position { x, y, span })
             }
+            TokenKind::Identifier(ref name) if name == "animate" => {
+                self.advance(); // consume `animate`
+                self.expect(&TokenKind::Dot)?;
+                let ident = self.parse_identifier()?;
+                if ident == "group" {
+                    self.skip_newlines();
+                    self.expect(&TokenKind::LeftBrace)?;
+                    self.skip_newlines();
+                    let mut animations = Vec::new();
+                    while self.peek() != &TokenKind::RightBrace && self.peek() != &TokenKind::Eof {
+                        self.skip_newlines();
+                        if self.peek() == &TokenKind::RightBrace { break; }
+                        animations.push(self.parse_property()?);
+                        self.skip_newlines();
+                    }
+                    self.expect(&TokenKind::RightBrace)?;
+                    Ok(PropertyNode::AnimationGroup { animations, span })
+                } else if ident == "sequence" {
+                    self.skip_newlines();
+                    self.expect(&TokenKind::LeftBrace)?;
+                    self.skip_newlines();
+                    let mut animations = Vec::new();
+                    while self.peek() != &TokenKind::RightBrace && self.peek() != &TokenKind::Eof {
+                        self.skip_newlines();
+                        if self.peek() == &TokenKind::RightBrace { break; }
+                        animations.push(self.parse_property()?);
+                        self.skip_newlines();
+                    }
+                    self.expect(&TokenKind::RightBrace)?;
+                    Ok(PropertyNode::AnimationSequence { animations, span })
+                } else {
+                    Err(VidraError::parse(
+                        format!("expected 'group' or 'sequence' after 'animate.', got {}", ident),
+                        &self.file, span.line, span.column
+                    ))
+                }
+            }
+            TokenKind::Identifier(ref name) if name == "wait" => {
+                self.advance();
+                self.expect(&TokenKind::LeftParen)?;
+                let duration = self.parse_value()?;
+                self.expect(&TokenKind::RightParen)?;
+                Ok(PropertyNode::Wait { duration, span })
+            }
             TokenKind::Animation => {
                 self.advance();
                 self.expect(&TokenKind::LeftParen)?;
@@ -801,29 +972,23 @@ impl Parser {
         }
     }
 
-    fn parse_duration_or_number(&mut self) -> Result<f64, VidraError> {
-        match self.peek().clone() {
-            TokenKind::DurationLiteral(d) => {
-                self.advance();
-                Ok(d)
-            }
-            TokenKind::NumberLiteral(n) => {
-                self.advance();
-                Ok(n)
-            }
-            _ => {
-                let span = self.current_span();
-                Err(VidraError::parse(
-                    format!("expected duration or number, got {}", self.peek()),
-                    &self.file,
-                    span.line,
-                    span.column,
-                ))
-            }
-        }
-    }
-
     fn parse_value(&mut self) -> Result<ValueNode, VidraError> {
+        let span = self.current_span();
+        if self.peek() == &TokenKind::LeftBracket {
+            self.advance();
+            let mut items = Vec::new();
+            while self.peek() != &TokenKind::RightBracket && self.peek() != &TokenKind::Eof {
+                self.skip_newlines();
+                if self.peek() == &TokenKind::RightBracket { break; }
+                items.push(self.parse_value()?);
+                self.skip_newlines();
+                if self.peek() == &TokenKind::Comma { self.advance(); }
+                self.skip_newlines();
+            }
+            self.expect(&TokenKind::RightBracket)?;
+            return Ok(ValueNode::Array(items));
+        }
+
         match self.peek().clone() {
             TokenKind::StringLiteral(s) => {
                 self.advance();
@@ -1000,7 +1165,7 @@ mod tests {
         assert!((project.fps - 30.0).abs() < 0.001);
         assert_eq!(project.scenes.len(), 1);
         assert_eq!(project.scenes[0].name, "intro");
-        assert!((project.scenes[0].duration - 5.0).abs() < 0.001);
+        assert_eq!(project.scenes[0].duration, ValueNode::Duration(5.0));
         assert_eq!(project.scenes[0].items.len(), 1);
         if let LayerBlockItem::Layer(layer) = &project.scenes[0].items[0] {
             assert_eq!(layer.name, "bg");

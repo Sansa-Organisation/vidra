@@ -8,22 +8,22 @@ mod renderer;
 use renderer::WasmRenderer;
 use wasm_bindgen::prelude::*;
 
-/// Global renderer instance.
-static mut RENDERER: Option<WasmRenderer> = None;
+thread_local! {
+    /// Global renderer instance for the main WASM thread.
+    static RENDERER: std::cell::RefCell<WasmRenderer> = std::cell::RefCell::new(WasmRenderer::new());
+}
 
-fn get_renderer() -> &'static mut WasmRenderer {
-    unsafe {
-        if RENDERER.is_none() {
-            RENDERER = Some(WasmRenderer::new());
-        }
-        RENDERER.as_mut().unwrap()
-    }
+fn with_renderer<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut WasmRenderer) -> R,
+{
+    RENDERER.with(|r| f(&mut *r.borrow_mut()))
 }
 
 /// Initialize the WASM module. Call this once before rendering.
 #[wasm_bindgen]
 pub fn init() {
-    get_renderer();
+    with_renderer(|_| {});
 }
 
 /// Parse VidraScript source and compile to IR JSON.
@@ -84,7 +84,9 @@ pub fn get_project_info(ir_json: &str) -> Result<String, JsValue> {
 /// Call this before rendering frames that reference the asset.
 #[wasm_bindgen]
 pub fn load_image_asset(asset_id: &str, data: &[u8]) {
-    get_renderer().load_image_bytes(asset_id, data);
+    with_renderer(|r| {
+        r.load_image_bytes(asset_id, data);
+    });
 }
 
 /// Render a single frame and return RGBA pixel data.
@@ -95,10 +97,9 @@ pub fn render_frame(ir_json: &str, frame_index: u32) -> Result<Vec<u8>, JsValue>
     let project: vidra_ir::project::Project = serde_json::from_str(ir_json)
         .map_err(|e| JsValue::from_str(&format!("JSON parse error: {}", e)))?;
 
-    let renderer = get_renderer();
-    let fb = renderer.render_frame(&project, frame_index as u64);
+    let fb = with_renderer(|r| r.render_frame(&project, frame_index as u64));
 
-    Ok(fb.data.clone())
+    Ok(fb.data)
 }
 
 /// Render a single frame from VidraScript source directly.
