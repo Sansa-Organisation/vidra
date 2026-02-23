@@ -154,10 +154,12 @@ impl Compiler {
                     
                     for anim_node in &animations {
                         if let PropertyNode::Animation { property, args, .. } = anim_node {
-                            let mut anim = Self::compile_animation(property, args, global_env)?;
-                            let existing_delay = anim.delay.as_seconds();
-                            anim.delay = vidra_core::Duration::from_seconds(existing_delay + total_delay_offset);
-                            layer.animations.push(anim);
+                            let mut anims = Self::compile_animation(property, args, global_env)?;
+                            for mut anim in anims {
+                                let existing_delay = anim.delay.as_seconds();
+                                anim.delay = vidra_core::Duration::from_seconds(existing_delay + total_delay_offset);
+                                layer.animations.push(anim);
+                            }
                         }
                     }
                 }
@@ -258,8 +260,8 @@ impl Compiler {
                     layer.transform.position.y = Self::value_to_f64(&resolved_y)?;
                 }
                 PropertyNode::Animation { property, args, .. } => {
-                    let anim = Self::compile_animation(property, args, env)?;
-                    layer.animations.push(anim);
+                    let anims = Self::compile_animation(property, args, env)?;
+                    layer.animations.extend(anims);
                 }
                 PropertyNode::FunctionCall {
                     name,
@@ -353,8 +355,8 @@ impl Compiler {
                     // All start at 0 (or delay inside)
                     for ag_prop in animations {
                         if let PropertyNode::Animation { property, args, .. } = ag_prop {
-                            let anim = Self::compile_animation(property, args, env)?;
-                            layer.animations.push(anim);
+                            let anims = Self::compile_animation(property, args, env)?;
+                            layer.animations.extend(anims);
                         }
                     }
                 }
@@ -366,11 +368,16 @@ impl Compiler {
                                 current_time += Self::value_to_f64(duration).unwrap_or(0.0);
                             }
                             PropertyNode::Animation { property, args, .. } => {
-                                let mut anim = Self::compile_animation(property, args, env)?;
-                                let delay = anim.delay.as_seconds() + current_time;
-                                anim.delay = vidra_core::Duration::from_seconds(delay);
-                                current_time += anim.duration().as_seconds();
-                                layer.animations.push(anim);
+                                let mut anims = Self::compile_animation(property, args, env)?;
+                                let mut max_dur = 0.0;
+                                for mut anim in anims {
+                                    let delay = anim.delay.as_seconds() + current_time;
+                                    anim.delay = vidra_core::Duration::from_seconds(delay);
+                                    let d = if let Some(last) = anim.keyframes.last() { last.time.as_seconds() } else { 0.0 };
+                                    if d > max_dur { max_dur = d; }
+                                    layer.animations.push(anim);
+                                }
+                                current_time += max_dur;
                             }
                             _ => {} // Group within Sequence not yet handled
                         }
@@ -698,15 +705,16 @@ impl Compiler {
         }
     }
 
-    fn compile_animation(property: &str, args: &[NamedArg], env: &HashMap<String, ValueNode>) -> Result<Animation, VidraError> {
+    fn compile_animation(property: &str, args: &[NamedArg], env: &HashMap<String, ValueNode>) -> Result<Vec<Animation>, VidraError> {
         let animatable = match property {
-            "opacity" => AnimatableProperty::Opacity,
-            "position.x" | "positionX" | "x" => AnimatableProperty::PositionX,
-            "position.y" | "positionY" | "y" => AnimatableProperty::PositionY,
-            "scale.x" | "scaleX" => AnimatableProperty::ScaleX,
-            "scale.y" | "scaleY" => AnimatableProperty::ScaleY,
-            "scale" => AnimatableProperty::ScaleX, // convenience
-            "rotation" => AnimatableProperty::Rotation,
+            "opacity" => Some(AnimatableProperty::Opacity),
+            "position.x" | "positionX" | "x" => Some(AnimatableProperty::PositionX),
+            "position.y" | "positionY" | "y" => Some(AnimatableProperty::PositionY),
+            "scale.x" | "scaleX" => Some(AnimatableProperty::ScaleX),
+            "scale.y" | "scaleY" => Some(AnimatableProperty::ScaleY),
+            "scale" => Some(AnimatableProperty::ScaleX), // convenience
+            "rotation" => Some(AnimatableProperty::Rotation),
+            "position" => None, // Special case for paths
             _ => {
                 return Err(VidraError::Compile(format!(
                     "unknown animatable property: {}",
@@ -720,6 +728,12 @@ impl Compiler {
         let mut duration = 1.0;
         let mut easing = vidra_core::types::Easing::Linear;
         let mut delay = 0.0;
+
+        let mut stiffness = None;
+        let mut damping = None;
+        let mut velocity = None;
+        let mut expr = None;
+        let mut path = None;
 
         for arg in args {
             let val = env.get(&arg.name).unwrap_or(&arg.value);
@@ -736,23 +750,54 @@ impl Compiler {
                 "ease" | "easing" => {
                     easing = Self::value_to_easing(resolved_val)?;
                 }
+                "stiffness" => stiffness = Some(Self::value_to_f64(resolved_val)?),
+                "damping" => damping = Some(Self::value_to_f64(resolved_val)?),
+                "velocity" | "initialVelocity" => velocity = Some(Self::value_to_f64(resolved_val)?),
+                "expr" | "expression" => expr = Some(Self::value_to_string(resolved_val)?),
+                "path" => path = Some(Self::value_to_string(resolved_val)?),
                 _ => {}
             }
         }
 
-        let mut anim = Animation::from_to(
-            animatable,
-            from_val,
-            to_val,
-            vidra_core::Duration::from_seconds(duration),
-            easing,
-        );
+        let mut anims = Vec::new();
 
-        if delay > 0.0 {
-            anim = anim.with_delay(vidra_core::Duration::from_seconds(delay));
+        if let Some(p) = path {
+            let (mut ax, mut ay) = crate::advanced_anim::compile_path_animations(&p, duration);
+            if delay > 0.0 {
+                ax = ax.with_delay(vidra_core::Duration::from_seconds(delay));
+                ay = ay.with_delay(vidra_core::Duration::from_seconds(delay));
+            }
+            anims.push(ax);
+            anims.push(ay);
+        } else if let Some(e) = expr {
+            let mut a = crate::advanced_anim::compile_expression(animatable.unwrap(), &e, duration);
+            if delay > 0.0 {
+                a = a.with_delay(vidra_core::Duration::from_seconds(delay));
+            }
+            anims.push(a);
+        } else if let Some(s) = stiffness {
+            let d = damping.unwrap_or(10.0);
+            let v = velocity.unwrap_or(0.0);
+            let mut a = crate::advanced_anim::compile_spring(animatable.unwrap(), from_val, to_val, s, d, v);
+            if delay > 0.0 {
+                a = a.with_delay(vidra_core::Duration::from_seconds(delay));
+            }
+            anims.push(a);
+        } else {
+            let mut anim = Animation::from_to(
+                animatable.unwrap(),
+                from_val,
+                to_val,
+                vidra_core::Duration::from_seconds(duration),
+                easing,
+            );
+            if delay > 0.0 {
+                anim = anim.with_delay(vidra_core::Duration::from_seconds(delay));
+            }
+            anims.push(anim);
         }
 
-        Ok(anim)
+        Ok(anims)
     }
 
     // --- Value converters ---
@@ -1244,5 +1289,38 @@ mod tests {
         assert_eq!(seq_item.animations.len(), 2);
         assert_eq!(seq_item.animations[0].delay.as_seconds(), 0.0);
         assert_eq!(seq_item.animations[1].delay.as_seconds(), 1.5);
+    }
+
+    #[test]
+    fn test_compile_advanced_animations() {
+        let project = compile(
+            r#"
+            project(1920, 1080, 30) {
+                scene("main", 5s) {
+                    layer("spring_layer") {
+                        animation(x, from: 0.0, to: 100.0, stiffness: 50.0, damping: 5.0)
+                    }
+                    layer("expr_layer") {
+                        animation(y, expr: "t * 50.0", duration: 2.0)
+                    }
+                    layer("path_layer") {
+                        animation(position, path: "M0 0 L100 100", duration: 2.0)
+                    }
+                }
+            }
+        "#,
+        );
+        let s = &project.scenes[0];
+        
+        let l1 = &s.layers[0];
+        assert_eq!(l1.animations.len(), 1);
+        assert!(l1.animations[0].keyframes.len() > 2);
+        
+        let l2 = &s.layers[1];
+        assert_eq!(l2.animations.len(), 1);
+        assert!(l2.animations[0].keyframes.len() > 2);
+
+        let l3 = &s.layers[2];
+        assert_eq!(l3.animations.len(), 2);
     }
 }

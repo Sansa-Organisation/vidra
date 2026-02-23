@@ -11,6 +11,10 @@ vidra-core = { workspace = true }
 vidra-ir = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+fasteval = "0.2.4"
+evalexpr = "13.1.0"
+lyon_path = "1.0.16"
+lyon_algorithms = "1.0.16"
 
 [dev-dependencies]
 vidra-render = { workspace = true }

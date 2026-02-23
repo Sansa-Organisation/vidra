@@ -17,10 +17,10 @@ These features unlock creative depth using the existing architecture.
   - [x] Implement `animate.group` for parallel animations.
   - [x] Implement `animate.sequence` for sequential animations.
   - [x] Implement `animate.stagger` for applying offset animations across multiple layers.
-- [ ] **Advanced Animation Types**
-  - [ ] Spring Physics animations (stiffness, damping instead of fixed duration).
-  - [ ] Expression-driven animations evaluated per frame.
-  - [ ] Path animations (animating position along bezier/SVG paths).
+- [x] **Advanced Animation Types**
+  - [x] Spring Physics animations (stiffness, damping instead of fixed duration).
+  - [x] Expression-driven animations evaluated per frame.
+  - [x] Path animations (animating position along bezier/SVG paths).
 - [ ] **Extended Animatable Properties**
   - [ ] Animate layer text/content: `color`, `fontSize`.
   - [ ] Animate shape properties: `cornerRadius`, `strokeWidth`.

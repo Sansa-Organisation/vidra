@@ -9,6 +9,7 @@ pub mod compiler;
 pub mod lexer;
 pub mod parser;
 pub mod formatter;
+pub mod advanced_anim;
 
 pub use checker::TypeChecker;
 pub use compiler::Compiler;

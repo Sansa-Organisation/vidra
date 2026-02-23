@@ -260,6 +260,7 @@ impl TypeChecker {
                 let valid_props = [
                     "opacity", "position.x", "positionX", "x",
                     "position.y", "positionY", "y",
+                    "position",
                     "scale.x", "scaleX", "scale.y", "scaleY", "scale",
                     "rotation"
                 ];
@@ -275,6 +276,11 @@ impl TypeChecker {
                         "duration" => self.expect_duration_or_number(&arg.value, &arg.span),
                         "delay" => self.expect_duration_or_number(&arg.value, &arg.span),
                         "ease" | "easing" => self.expect_identifier(&arg.value, &arg.span),
+                        "stiffness" => self.expect_number(&arg.value, &arg.span),
+                        "damping" => self.expect_number(&arg.value, &arg.span),
+                        "initialVelocity" | "velocity" => self.expect_number(&arg.value, &arg.span),
+                        "expr" | "expression" => self.expect_string(&arg.value, &arg.span),
+                        "path" => self.expect_string(&arg.value, &arg.span),
                         _ => self.type_error(format!("unknown animation parameter '{}'", arg.name), &arg.span),
                     }
                 }
