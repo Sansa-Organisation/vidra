@@ -361,9 +361,10 @@ impl RenderPipeline {
             if !layer.visible {
                 continue;
             }
-            if let Ok(layer_buf) = self.render_layer(&ctx, project, layer, local_f) {
+            let (content, _) = Self::compute_layer_animated_state(&ctx, layer, local_f);
+            if let Ok(layer_buf) = self.render_layer(&ctx, project, layer, &content, local_f) {
                 let (dx, dy) = Self::compute_layer_position(&ctx, layer, local_f);
-                let (cx, cy) = Self::apply_anchor(dx, dy, &layer_buf, layer);
+                let (cx, cy) = Self::apply_anchor(dx, dy, &layer_buf, layer, &content);
                 bounds.push(LayerBounds {
                     id: layer.id.to_string(),
                     x: cx,
@@ -394,15 +395,17 @@ impl RenderPipeline {
             if !layer.visible {
                 continue;
             }
-            if let Ok(mut layer_buf) = self.render_layer(ctx, project, layer, local_frame) {
+            let (content, effects) = Self::compute_layer_animated_state(ctx, layer, local_frame);
+            if let Ok(mut layer_buf) = self.render_layer(ctx, project, layer, &content, local_frame) {
                 let (dx, dy) = Self::compute_layer_position(ctx, layer, local_frame);
-                let (cx, cy) = Self::apply_anchor(dx, dy, &layer_buf, layer);
+                let (cx, cy) = Self::apply_anchor(dx, dy, &layer_buf, layer, &content);
                 
                 if let Some(mask_id) = &layer.mask {
                     if let Some(mask_layer) = scene.layers.iter().find(|l| &l.id == mask_id) {
-                        if let Ok(mask_buf) = self.render_layer(ctx, project, mask_layer, local_frame) {
+                        let (m_content, _) = Self::compute_layer_animated_state(ctx, mask_layer, local_frame);
+                        if let Ok(mask_buf) = self.render_layer(ctx, project, mask_layer, &m_content, local_frame) {
                             let (mdx, mdy) = Self::compute_layer_position(ctx, mask_layer, local_frame);
-                            let (mcx, mcy) = Self::apply_anchor(mdx, mdy, &mask_buf, mask_layer);
+                            let (mcx, mcy) = Self::apply_anchor(mdx, mdy, &mask_buf, mask_layer, &m_content);
                             let rel_x = mcx - cx;
                             let rel_y = mcy - cy;
                             layer_buf.apply_mask(&mask_buf, rel_x, rel_y);
@@ -410,7 +413,7 @@ impl RenderPipeline {
                     }
                 }
                 
-                self.compositor.composite(&mut canvas, &layer_buf, cx, cy, &layer.effects);
+                self.compositor.composite(&mut canvas, &layer_buf, cx, cy, &effects);
             }
         }
 
@@ -455,7 +458,6 @@ impl RenderPipeline {
         (sx, sy)
     }
 
-    /// Compute the animated opacity of a layer at a given frame.
     fn compute_layer_opacity(ctx: &RenderContext, layer: &Layer, frame: u64) -> f64 {
         let time = vidra_core::Duration::from_seconds(frame as f64 / ctx.fps);
         let mut opacity = layer.transform.opacity;
@@ -471,12 +473,87 @@ impl RenderPipeline {
         opacity.clamp(0.0, 1.0)
     }
 
+    /// Compute the layer content and effects updated with animation values at the given frame.
+    fn compute_layer_animated_state(ctx: &RenderContext, layer: &Layer, frame: u64) -> (LayerContent, Vec<vidra_core::types::LayerEffect>) {
+        let time = vidra_core::Duration::from_seconds(frame as f64 / ctx.fps);
+        let mut content = layer.content.clone();
+        let mut effects = layer.effects.clone();
+
+        for anim in &layer.animations {
+            if let Some(value) = anim.evaluate(time) {
+                match anim.property {
+                    AnimatableProperty::ColorR => match &mut content {
+                        LayerContent::Text { color, .. } => color.r = value as f32,
+                        LayerContent::Solid { color } => color.r = value as f32,
+                        LayerContent::Shape { fill, .. } => if let Some(c) = fill { c.r = value as f32; }
+                        _ => {}
+                    },
+                    AnimatableProperty::ColorG => match &mut content {
+                        LayerContent::Text { color, .. } => color.g = value as f32,
+                        LayerContent::Solid { color } => color.g = value as f32,
+                        LayerContent::Shape { fill, .. } => if let Some(c) = fill { c.g = value as f32; }
+                        _ => {}
+                    },
+                    AnimatableProperty::ColorB => match &mut content {
+                        LayerContent::Text { color, .. } => color.b = value as f32,
+                        LayerContent::Solid { color } => color.b = value as f32,
+                        LayerContent::Shape { fill, .. } => if let Some(c) = fill { c.b = value as f32; }
+                        _ => {}
+                    },
+                    AnimatableProperty::ColorA => match &mut content {
+                        LayerContent::Text { color, .. } => color.a = value as f32,
+                        LayerContent::Solid { color } => color.a = value as f32,
+                        LayerContent::Shape { fill, .. } => if let Some(c) = fill { c.a = value as f32; }
+                        _ => {}
+                    },
+                    AnimatableProperty::FontSize => {
+                        if let LayerContent::Text { font_size, .. } = &mut content {
+                            *font_size = value;
+                        }
+                    },
+                    AnimatableProperty::CornerRadius => {
+                        if let LayerContent::Shape { shape: vidra_core::types::ShapeType::Rect { corner_radius, .. }, .. } = &mut content {
+                            *corner_radius = value;
+                        }
+                    },
+                    AnimatableProperty::StrokeWidth => {
+                        if let LayerContent::Shape { stroke_width, .. } = &mut content {
+                            *stroke_width = value;
+                        }
+                    },
+                    AnimatableProperty::Volume => {
+                        if let LayerContent::Audio { volume, .. } | LayerContent::TTS { volume, .. } = &mut content {
+                            *volume = value;
+                        }
+                    }
+                    AnimatableProperty::BlurRadius => {
+                        for effect in &mut effects {
+                            if let vidra_core::types::LayerEffect::Blur(radius) = effect {
+                                *radius = value;
+                            }
+                        }
+                    }
+                    AnimatableProperty::BrightnessLevel => {
+                        for effect in &mut effects {
+                            if let vidra_core::types::LayerEffect::Brightness(level) = effect {
+                                *level = value;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        (content, effects)
+    }
+
     /// Determine whether a layer's content has an intrinsic bounding box
     /// (i.e., it's not a full-canvas fill). Only layers with intrinsic sizes
     /// should have anchor-point offsets applied.
-    fn has_intrinsic_size(layer: &Layer) -> bool {
+    fn has_intrinsic_size(content: &LayerContent) -> bool {
         matches!(
-            layer.content,
+            content,
             LayerContent::Text { .. }
                 | LayerContent::Image { .. }
                 | LayerContent::Video { .. }
@@ -488,8 +565,8 @@ impl RenderPipeline {
 
     /// Apply anchor-point offset to the raw position.
     /// For full-canvas layers (Solid, Empty, Audio), the position is returned unchanged.
-    fn apply_anchor(dx: i32, dy: i32, buf: &FrameBuffer, layer: &Layer) -> (i32, i32) {
-        if Self::has_intrinsic_size(layer) {
+    fn apply_anchor(dx: i32, dy: i32, buf: &FrameBuffer, layer: &Layer, content: &LayerContent) -> (i32, i32) {
+        if Self::has_intrinsic_size(content) {
             let cx = dx - (buf.width as f64 * layer.transform.anchor.x).round() as i32;
             let cy = dy - (buf.height as f64 * layer.transform.anchor.y).round() as i32;
             (cx, cy)
@@ -504,11 +581,12 @@ impl RenderPipeline {
         ctx: &RenderContext,
         project: &Project,
         layer: &Layer,
+        content: &LayerContent,
         frame: u64,
     ) -> Result<FrameBuffer, vidra_core::VidraError> {
         let opacity = Self::compute_layer_opacity(ctx, layer, frame);
 
-        let mut buf = match &layer.content {
+        let mut buf = match content {
             LayerContent::Solid { color } => {
                 let mut c = *color;
                 c.a *= opacity as f32;
@@ -616,9 +694,10 @@ impl RenderPipeline {
             if !child.visible {
                 continue;
             }
-            let child_buf = self.render_layer(ctx, project, child, frame)?;
+            let (c_content, _) = Self::compute_layer_animated_state(ctx, child, frame);
+            let child_buf = self.render_layer(ctx, project, child, &c_content, frame)?;
             let (dx, dy) = Self::compute_layer_position(ctx, child, frame);
-            let (cx, cy) = Self::apply_anchor(dx, dy, &child_buf, child);
+            let (cx, cy) = Self::apply_anchor(dx, dy, &child_buf, child, &c_content);
             buf.composite_over(&child_buf, cx, cy);
         }
 

@@ -21,11 +21,11 @@ These features unlock creative depth using the existing architecture.
   - [x] Spring Physics animations (stiffness, damping instead of fixed duration).
   - [x] Expression-driven animations evaluated per frame.
   - [x] Path animations (animating position along bezier/SVG paths).
-- [ ] **Extended Animatable Properties**
-  - [ ] Animate layer text/content: `color`, `fontSize`.
-  - [ ] Animate shape properties: `cornerRadius`, `strokeWidth`.
-  - [ ] Animate video properties: `crop.top/left/right/bottom`, audio `volume`.
-  - [ ] Animate effect properties (e.g. blur radius, brightness level).
+- [x] **Extended Animatable Properties**
+  - [x] Animate layer text/content: `color`, `fontSize`.
+  - [x] Animate shape properties: `cornerRadius`, `strokeWidth`.
+  - [x] Animate video properties: `crop.top/left/right/bottom`, audio `volume`.
+  - [x] Animate effect properties (e.g. blur radius, brightness level).
 - [ ] **Custom Shader Ingestion**
   - [ ] Support `shader("path/to.wgsl")` to load and compile custom WGSL files.
   - [ ] Inject uniforms (`@t`, `@resolution`) into custom shaders automatically.

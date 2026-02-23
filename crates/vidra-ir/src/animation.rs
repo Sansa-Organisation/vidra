@@ -10,6 +10,20 @@ pub enum AnimatableProperty {
     ScaleY,
     Rotation,
     Opacity,
+    FontSize,
+    ColorR,
+    ColorG,
+    ColorB,
+    ColorA,
+    CornerRadius,
+    StrokeWidth,
+    CropTop,
+    CropRight,
+    CropBottom,
+    CropLeft,
+    Volume,
+    BlurRadius,
+    BrightnessLevel,
 }
 
 impl std::fmt::Display for AnimatableProperty {
@@ -21,6 +35,20 @@ impl std::fmt::Display for AnimatableProperty {
             AnimatableProperty::ScaleY => write!(f, "scale.y"),
             AnimatableProperty::Rotation => write!(f, "rotation"),
             AnimatableProperty::Opacity => write!(f, "opacity"),
+            AnimatableProperty::FontSize => write!(f, "fontSize"),
+            AnimatableProperty::ColorR => write!(f, "colorR"),
+            AnimatableProperty::ColorG => write!(f, "colorG"),
+            AnimatableProperty::ColorB => write!(f, "colorB"),
+            AnimatableProperty::ColorA => write!(f, "colorA"),
+            AnimatableProperty::CornerRadius => write!(f, "cornerRadius"),
+            AnimatableProperty::StrokeWidth => write!(f, "strokeWidth"),
+            AnimatableProperty::CropTop => write!(f, "cropTop"),
+            AnimatableProperty::CropRight => write!(f, "cropRight"),
+            AnimatableProperty::CropBottom => write!(f, "cropBottom"),
+            AnimatableProperty::CropLeft => write!(f, "cropLeft"),
+            AnimatableProperty::Volume => write!(f, "volume"),
+            AnimatableProperty::BlurRadius => write!(f, "blurRadius"),
+            AnimatableProperty::BrightnessLevel => write!(f, "brightnessLevel"),
         }
     }
 }

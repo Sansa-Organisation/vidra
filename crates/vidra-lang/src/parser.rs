@@ -745,6 +745,24 @@ impl Parser {
                 self.expect(&TokenKind::RightParen)?;
                 Ok(LayerContentNode::Slot)
             }
+            TokenKind::Shape => {
+                self.advance();
+                self.expect(&TokenKind::LeftParen)?;
+                let shape_type = self.parse_value()?;
+                let shape_type_str = match shape_type {
+                    ValueNode::String(s) => s,
+                    ValueNode::Identifier(s) => s,
+                    _ => return Err(VidraError::parse(
+                        format!("expected string or identifier for shape type"),
+                        &self.file,
+                        self.current_span().line,
+                        self.current_span().column,
+                    )),
+                };
+                let args = self.parse_trailing_named_args()?;
+                self.expect(&TokenKind::RightParen)?;
+                Ok(LayerContentNode::Shape { shape_type: shape_type_str, args })
+            }
             TokenKind::Identifier(name) => {
                 // E.g., CustomComponent(prop: "value")
                 self.advance();

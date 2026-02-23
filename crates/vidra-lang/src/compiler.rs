@@ -715,6 +715,17 @@ impl Compiler {
             "scale" => Some(AnimatableProperty::ScaleX), // convenience
             "rotation" => Some(AnimatableProperty::Rotation),
             "position" => None, // Special case for paths
+            "color" => Some(AnimatableProperty::ColorR), // Pseudo-property, handled specially
+            "fontSize" => Some(AnimatableProperty::FontSize),
+            "cornerRadius" => Some(AnimatableProperty::CornerRadius),
+            "strokeWidth" => Some(AnimatableProperty::StrokeWidth),
+            "crop.top" | "cropTop" => Some(AnimatableProperty::CropTop),
+            "crop.right" | "cropRight" => Some(AnimatableProperty::CropRight),
+            "crop.bottom" | "cropBottom" => Some(AnimatableProperty::CropBottom),
+            "crop.left" | "cropLeft" => Some(AnimatableProperty::CropLeft),
+            "volume" => Some(AnimatableProperty::Volume),
+            "blur" | "blurRadius" => Some(AnimatableProperty::BlurRadius),
+            "brightness" | "brightnessLevel" => Some(AnimatableProperty::BrightnessLevel),
             _ => {
                 return Err(VidraError::Compile(format!(
                     "unknown animatable property: {}",
@@ -725,6 +736,8 @@ impl Compiler {
 
         let mut from_val = 0.0;
         let mut to_val = 1.0;
+        let mut from_color = None;
+        let mut to_color = None;
         let mut duration = 1.0;
         let mut easing = vidra_core::types::Easing::Linear;
         let mut delay = 0.0;
@@ -743,8 +756,20 @@ impl Compiler {
             } else { val };
 
             match arg.name.as_str() {
-                "from" => from_val = Self::value_to_f64(resolved_val)?,
-                "to" => to_val = Self::value_to_f64(resolved_val)?,
+                "from" => {
+                    if property == "color" {
+                        from_color = Some(Self::value_to_color(resolved_val)?);
+                    } else {
+                        from_val = Self::value_to_f64(resolved_val)?;
+                    }
+                }
+                "to" => {
+                    if property == "color" {
+                        to_color = Some(Self::value_to_color(resolved_val)?);
+                    } else {
+                        to_val = Self::value_to_f64(resolved_val)?;
+                    }
+                }
                 "duration" => duration = Self::value_to_duration(resolved_val)?,
                 "delay" => delay = Self::value_to_duration(resolved_val)?,
                 "ease" | "easing" => {
@@ -761,7 +786,28 @@ impl Compiler {
 
         let mut anims = Vec::new();
 
-        if let Some(p) = path {
+        if property == "color" {
+            let fc = from_color.unwrap_or_else(|| Color::WHITE);
+            let tc = to_color.unwrap_or_else(|| Color::WHITE);
+            let dur = vidra_core::Duration::from_seconds(duration);
+            let del = vidra_core::Duration::from_seconds(delay);
+
+            let mut ar = Animation::from_to(AnimatableProperty::ColorR, fc.r as f64, tc.r as f64, dur, easing.clone());
+            let mut ag = Animation::from_to(AnimatableProperty::ColorG, fc.g as f64, tc.g as f64, dur, easing.clone());
+            let mut ab = Animation::from_to(AnimatableProperty::ColorB, fc.b as f64, tc.b as f64, dur, easing.clone());
+            let mut aa = Animation::from_to(AnimatableProperty::ColorA, fc.a as f64, tc.a as f64, dur, easing.clone());
+            
+            if delay > 0.0 {
+                ar = ar.with_delay(del);
+                ag = ag.with_delay(del);
+                ab = ab.with_delay(del);
+                aa = aa.with_delay(del);
+            }
+            anims.push(ar);
+            anims.push(ag);
+            anims.push(ab);
+            anims.push(aa);
+        } else if let Some(p) = path {
             let (mut ax, mut ay) = crate::advanced_anim::compile_path_animations(&p, duration);
             if delay > 0.0 {
                 ax = ax.with_delay(vidra_core::Duration::from_seconds(delay));
@@ -1322,5 +1368,38 @@ mod tests {
 
         let l3 = &s.layers[2];
         assert_eq!(l3.animations.len(), 2);
+    }
+
+
+    #[test]
+    fn test_compile_extended_properties() {
+        let project = compile(
+            r#"
+            project(1920, 1080, 30) {
+                scene("main", 5s) {
+                    layer("text_layer") {
+                        text("Hello", fontSize: 50.0)
+                        animation(fontSize, from: 50.0, to: 100.0, duration: 1.0)
+                        animation(color, from: #000000, to: #FFFFFF, duration: 1.0)
+                    }
+                    layer("shape_layer") {
+                        shape("rect", width: 100, height: 100, cornerRadius: 0.0)
+                        animation(cornerRadius, from: 0.0, to: 50.0, duration: 1.0)
+                    }
+                }
+            }
+        "#,
+        );
+        let s = &project.scenes[0];
+        
+        let l1 = &s.layers[0];
+        // text layer has fontSize animation (1) and color animations (4) = 5 total
+        assert_eq!(l1.animations.len(), 5);
+        let is_color_anim = l1.animations.iter().any(|a| matches!(a.property, AnimatableProperty::ColorR));
+        assert!(is_color_anim);
+        
+        let l2 = &s.layers[1];
+        assert_eq!(l2.animations.len(), 1);
+        assert!(matches!(l2.animations[0].property, AnimatableProperty::CornerRadius));
     }
 }

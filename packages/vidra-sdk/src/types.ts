@@ -73,7 +73,21 @@ export type AnimatableProperty =
     | "ScaleX"
     | "ScaleY"
     | "Rotation"
-    | "Opacity";
+    | "Opacity"
+    | "FontSize"
+    | "ColorR"
+    | "ColorG"
+    | "ColorB"
+    | "ColorA"
+    | "CornerRadius"
+    | "StrokeWidth"
+    | "CropTop"
+    | "CropRight"
+    | "CropBottom"
+    | "CropLeft"
+    | "Volume"
+    | "BlurRadius"
+    | "BrightnessLevel";
 
 export type Easing =
     | "Linear"

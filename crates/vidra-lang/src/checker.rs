@@ -262,7 +262,10 @@ impl TypeChecker {
                     "position.y", "positionY", "y",
                     "position",
                     "scale.x", "scaleX", "scale.y", "scaleY", "scale",
-                    "rotation"
+                    "rotation", "color", "fontSize", "cornerRadius", "strokeWidth",
+                    "crop.top", "cropTop", "crop.right", "cropRight",
+                    "crop.bottom", "cropBottom", "crop.left", "cropLeft",
+                    "volume", "blur", "blurRadius", "brightness", "brightnessLevel"
                 ];
                 
                 if !valid_props.contains(&property_name.as_str()) {
