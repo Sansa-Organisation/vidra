@@ -7,7 +7,9 @@
 
 pub mod animation;
 pub mod asset;
+pub mod data;
 pub mod layer;
+pub mod layout;
 pub mod project;
 pub mod scene;
 pub mod validate;
@@ -15,6 +17,7 @@ pub mod validate;
 pub use animation::{Animation, Keyframe};
 pub use asset::{Asset, AssetId, AssetRegistry, AssetType};
 pub use layer::{Layer, LayerContent, LayerId};
+pub use layout::{LayoutConstraint, LayoutSolver, ResolvedLayout};
 pub use project::{Project, ProjectSettings};
 pub use scene::{Scene, SceneId};
 pub mod builder;

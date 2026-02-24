@@ -12,6 +12,8 @@ pub mod math;
 pub mod time;
 pub mod types;
 pub mod config;
+pub mod plugin;
+pub mod vfx;
 
 pub use config::*;
 

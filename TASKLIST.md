@@ -10,7 +10,7 @@ This document tracks the ongoing implementation of the S-Tier feature roadmap fo
 
 ---
 
-## Phase 2 — Power Users (🚧 Next Up)
+## Phase 2 — Power Users (✅ Completed)
 These features unlock creative depth using the existing architecture.
 
 - [x] **Animation Groups & Stagger**
@@ -26,30 +26,30 @@ These features unlock creative depth using the existing architecture.
   - [x] Animate shape properties: `cornerRadius`, `strokeWidth`.
   - [x] Animate video properties: `crop.top/left/right/bottom`, audio `volume`.
   - [x] Animate effect properties (e.g. blur radius, brightness level).
-- [ ] **Custom Shader Ingestion**
-  - [ ] Support `shader("path/to.wgsl")` to load and compile custom WGSL files.
-  - [ ] Inject uniforms (`@t`, `@resolution`) into custom shaders automatically.
-- [ ] **Additional Exporters**
-  - [ ] WebM (VP9) multi-format export for web.
-  - [ ] GIF / APNG exporters for shorts and stickers.
+- [x] **Custom Shader Ingestion**
+  - [x] Support `shader("path/to.wgsl")` to load and compile custom WGSL files.
+  - [x] Inject uniforms (`@t`, `@resolution`) into custom shaders automatically.
+- [x] **Additional Exporters**
+  - [x] WebM (VP9) multi-format export for web.
+  - [x] GIF / APNG exporters for shorts and stickers.
 
 ---
 
-## Phase 3 — Platform 
+## Phase 3 — Platform (✅ Completed)
 Transforming Vidra from a tool into a platform.
 
-- [ ] **Responsive Constraint-Based Layout Engine**
-  - [ ] Implement constraints parser (`center(horizontal)`, `pin(top)`, `below("title")`).
-  - [ ] Implement layout solver engine to handle multi-aspect ratio rendering dynamically.
-- [ ] **Data-Driven Templates**
-  - [ ] Import data files (`@data "contacts.csv"` or JSON).
-  - [ ] Bind row data to template values (`{{first_name}}`, `{{avatar_url}}`).
-  - [ ] Implement CLI batch rendering over bound data.
-- [ ] **Vidra Plugin Ecosystem (Rust)**
-  - [ ] Define core `VidraPlugin`, `EffectPlugin`, `LayerPlugin`, and `TransitionPlugin` traits.
-  - [ ] Implement standard dynamic library loading or WASM module binding for plugins (`@plugin "name"`).
-- [ ] **VidraFX DSL Stabilization**
-  - [ ] Finalize custom `vidra-fx` typescript-like language to write effects natively in `.vfx` files.
+- [x] **Responsive Constraint-Based Layout Engine**
+  - [x] Implement constraints parser (`center(horizontal)`, `pin(top)`, `below("title")`).
+  - [x] Implement layout solver engine to handle multi-aspect ratio rendering dynamically.
+- [x] **Data-Driven Templates**
+  - [x] Import data files (`@data "contacts.csv"` or JSON).
+  - [x] Bind row data to template values (`{{first_name}}`, `{{avatar_url}}`).
+  - [x] Implement CLI batch rendering over bound data.
+- [x] **Vidra Plugin Ecosystem (Rust)**
+  - [x] Define core `VidraPlugin`, `EffectPlugin`, `LayerPlugin`, and `TransitionPlugin` traits.
+  - [x] Implement standard dynamic library loading or WASM module binding for plugins (`@plugin "name"`).
+- [x] **VidraFX DSL Stabilization**
+  - [x] Finalize custom `vidra-fx` typescript-like language to write effects natively in `.vfx` files.
 
 ---
 

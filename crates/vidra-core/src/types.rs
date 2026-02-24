@@ -21,6 +21,8 @@ pub enum LayerType {
     TTS,
     /// AI Auto-Caption node.
     AutoCaption,
+    /// A custom WGSL shader.
+    Shader,
 }
 
 impl std::fmt::Display for LayerType {
@@ -35,6 +37,7 @@ impl std::fmt::Display for LayerType {
             LayerType::Component => write!(f, "component"),
             LayerType::TTS => write!(f, "tts"),
             LayerType::AutoCaption => write!(f, "autocaption"),
+            LayerType::Shader => write!(f, "shader"),
         }
     }
 }

@@ -1,9 +1,19 @@
 //! # vidra-encode
 //!
-//! Encoding module — converts raw FrameBuffers to encoded video files.
-//! Phase 0: shells out to FFmpeg for H.264 encoding.
-//! Future phases: native AV1 encoder, ProRes, streaming output.
+//! Encoding module — converts raw FrameBuffers to encoded video/image files.
+//!
+//! ## Encoders
+//! - `FfmpegEncoder` — H.264 MP4 via FFmpeg subprocess
+//! - `WebmEncoder` — VP9 WebM via FFmpeg subprocess (web-optimized, alpha support)
+//! - `GifEncoder` — Native animated GIF (no external dependencies)
+//! - `ApngEncoder` — Native animated PNG (lossless, no external dependencies)
 
 pub mod ffmpeg;
+pub mod webm;
+pub mod gif;
+pub mod apng;
 
-pub use ffmpeg::FfmpegEncoder;
+pub use ffmpeg::{FfmpegEncoder, AudioTrack};
+pub use webm::WebmEncoder;
+pub use gif::GifEncoder;
+pub use apng::ApngEncoder;

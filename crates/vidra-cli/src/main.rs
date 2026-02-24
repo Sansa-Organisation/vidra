@@ -34,6 +34,10 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
 
+        /// Output format: mp4, webm, gif, apng (auto-detected from extension if not set)
+        #[arg(short, long)]
+        format: Option<String>,
+
         /// Comma-separated list of target aspect ratios (e.g. 16:9,9:16,1:1)
         #[arg(long)]
         targets: Option<String>,
@@ -41,6 +45,10 @@ enum Commands {
         /// Push render to the managed cloud cluster
         #[arg(long)]
         cloud: bool,
+
+        /// Path to a CSV or JSON data file for batch template rendering
+        #[arg(long)]
+        data: Option<PathBuf>,
     },
 
     /// Check a VidraScript file for errors (parse + type check)
@@ -397,7 +405,7 @@ async fn main() -> Result<()> {
     }
 
     match cli.command {
-        Commands::Render { file, output, targets, cloud } => cmd_render(file, output, targets, cloud),
+        Commands::Render { file, output, format, targets, cloud, data } => cmd_render(file, output, format, targets, cloud, data),
         Commands::Check { file } => cmd_check(file),
         Commands::Fmt { file, check } => cmd_fmt(file, check),
         Commands::Test { file, update } => test_runner::run_test(file, update),
@@ -549,7 +557,7 @@ fn cmd_doctor() -> Result<()> {
     Ok(())
 }
 
-fn cmd_render(file: PathBuf, output: Option<PathBuf>, targets: Option<String>, cloud: bool) -> Result<()> {
+fn cmd_render(file: PathBuf, output: Option<PathBuf>, format: Option<String>, targets: Option<String>, cloud: bool, data: Option<PathBuf>) -> Result<()> {
     let start = Instant::now();
 
     if cloud {
@@ -560,15 +568,54 @@ fn cmd_render(file: PathBuf, output: Option<PathBuf>, targets: Option<String>, c
         println!("   ✓ Auto-scaling render cluster provisioning GPU instance...");
         println!("   ✓ Estimated cost: $0.14 (32 render-seconds)");
         println!("   > Job ID: job_x9y8z7");
-        println!("   > Status: Queued");
-        println!();
-        println!("   Run `vidra jobs watch` to monitor progress, or `vidra jobs --run` to execute locally.");
         return Ok(());
     }
 
     // Read source file
     let source = std::fs::read_to_string(&file)
         .with_context(|| format!("failed to read file: {}", file.display()))?;
+
+    // If --data is set, do batch rendering
+    if let Some(ref data_path) = data {
+        println!("📊 Vidra Batch Render (data-driven)");
+        println!("   Source:    {}", file.display());
+        println!("   Data:      {}", data_path.display());
+
+        let dataset = vidra_ir::data::DataSet::load(data_path)
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+        println!("   Rows:      {}", dataset.rows.len());
+        println!("   Columns:   {:?}", dataset.columns);
+        println!();
+
+        let stem = file.file_stem().unwrap_or_default().to_string_lossy();
+        let out_ext_str = format.as_deref().unwrap_or("mp4");
+        let out_dir = output.as_ref()
+            .and_then(|o| o.parent())
+            .unwrap_or(std::path::Path::new("output"));
+        std::fs::create_dir_all(out_dir)?;
+
+        for (row_idx, row) in dataset.rows.iter().enumerate() {
+            let row_source = vidra_ir::data::interpolate(&source, row);
+            let row_output = out_dir.join(format!("{}_{}.{}", stem, row_idx + 1, out_ext_str));
+
+            // Write interpolated source to a temp file, then render it
+            let tmp_file = std::env::temp_dir().join(format!("vidra_batch_{}_{}.vidra", stem, row_idx));
+            std::fs::write(&tmp_file, &row_source)?;
+            
+            println!("   ── Row {} ──", row_idx + 1);
+            match cmd_render(tmp_file.clone(), Some(row_output.clone()), format.clone(), targets.clone(), false, None) {
+                Ok(_) => println!("      ✓ Row {} → {}", row_idx + 1, row_output.display()),
+                Err(e) => println!("      ✗ Row {} failed: {}", row_idx + 1, e),
+            }
+            let _ = std::fs::remove_file(&tmp_file);
+        }
+
+        let total = start.elapsed();
+        println!();
+        println!("   ⚡ Batch complete: {} rows in {:.2}s", dataset.rows.len(), total.as_secs_f64());
+        return Ok(());
+    }
 
     let file_name = file.file_name().unwrap_or_default().to_string_lossy();
 
@@ -725,7 +772,21 @@ fn cmd_render(file: PathBuf, output: Option<PathBuf>, targets: Option<String>, c
             render_fps
         );
 
-        // Phase 5: Encode
+        // Phase 5: Encode — detect output format
+        // Determine the output format: explicit --format flag > file extension > default mp4
+        let out_ext = format.as_deref().unwrap_or_else(|| {
+            output.as_ref()
+                .and_then(|p| p.extension())
+                .and_then(|e| e.to_str())
+                .unwrap_or("mp4")
+        });
+        let out_ext = match out_ext {
+            "webm" => "webm",
+            "gif" => "gif",
+            "apng" | "png" => "apng",
+            _ => "mp4",
+        };
+
         let output_path = if multiple_targets || target != "default" {
             let stem = file.file_stem().unwrap_or_default().to_string_lossy();
             let suffix = target.replace(':', "x");
@@ -736,23 +797,21 @@ fn cmd_render(file: PathBuf, output: Option<PathBuf>, targets: Option<String>, c
             };
             
             if output.is_some() && output.as_ref().unwrap().is_file() {
-                // If the user specified an exact file.
-                 let mut dir = p.parent().unwrap_or(std::path::Path::new("")).to_path_buf();
-                 let f_stem = p.file_stem().unwrap_or_default().to_string_lossy();
-                 let ext = p.extension().unwrap_or_default().to_string_lossy();
-                 dir.push(format!("{}_{}.{}", f_stem, suffix, if ext.is_empty() { "mp4" } else { &ext }));
-                 dir
+                let mut dir = p.parent().unwrap_or(std::path::Path::new("")).to_path_buf();
+                let f_stem = p.file_stem().unwrap_or_default().to_string_lossy();
+                dir.push(format!("{}_{}.{}", f_stem, suffix, out_ext));
+                dir
             } else {
-                 if !p.exists() {
-                     std::fs::create_dir_all(&p)?;
-                 }
-                 p.push(format!("{}_{}.mp4", stem, suffix));
-                 p
+                if !p.exists() {
+                    std::fs::create_dir_all(&p)?;
+                }
+                p.push(format!("{}_{}.{}", stem, suffix, out_ext));
+                p
             }
         } else {
             output.clone().unwrap_or_else(|| {
                 let stem = file.file_stem().unwrap_or_default().to_string_lossy();
-                PathBuf::from(format!("output/{}.mp4", stem))
+                PathBuf::from(format!("output/{}.{}", stem, out_ext))
             })
         };
 
@@ -764,19 +823,60 @@ fn cmd_render(file: PathBuf, output: Option<PathBuf>, targets: Option<String>, c
 
         let encode_start = Instant::now();
         let audio_tracks = extract_audio_tracks(&project);
-        vidra_encode::FfmpegEncoder::encode(
-            &result.frames,
-            &audio_tracks,
-            result.width,
-            result.height,
-            result.fps,
-            &output_path,
-        )
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+        match out_ext {
+            "webm" => {
+                vidra_encode::WebmEncoder::encode(
+                    &result.frames,
+                    &audio_tracks,
+                    result.width,
+                    result.height,
+                    result.fps,
+                    &output_path,
+                    None,
+                )
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
+            }
+            "gif" => {
+                vidra_encode::GifEncoder::encode(
+                    &result.frames,
+                    result.width,
+                    result.height,
+                    result.fps,
+                    &output_path,
+                    None,
+                )
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
+            }
+            "apng" => {
+                vidra_encode::ApngEncoder::encode(
+                    &result.frames,
+                    result.width,
+                    result.height,
+                    result.fps,
+                    &output_path,
+                    None,
+                )
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
+            }
+            _ => {
+                vidra_encode::FfmpegEncoder::encode(
+                    &result.frames,
+                    &audio_tracks,
+                    result.width,
+                    result.height,
+                    result.fps,
+                    &output_path,
+                )
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
+            }
+        }
+
         let encode_time = encode_start.elapsed();
         println!(
-            "   ✓ Encoded to {} in {:.1}ms",
+            "   ✓ Encoded to {} ({}) in {:.1}ms",
             output_path.display(),
+            out_ext.to_uppercase(),
             encode_time.as_secs_f64() * 1000.0
         );
 
@@ -1115,6 +1215,7 @@ fn print_layer(layer: &vidra_ir::layer::Layer, prefix: &str, is_last: bool, eval
         vidra_ir::layer::LayerContent::Solid { color } => format!("Solid ({})", color),
         vidra_ir::layer::LayerContent::TTS { text, voice, .. } => format!("TTS (\"{}\" voice: {})", text, voice),
         vidra_ir::layer::LayerContent::AutoCaption { asset_id, .. } => format!("AutoCaption (source: {})", asset_id),
+        vidra_ir::layer::LayerContent::Shader { asset_id, .. } => format!("Shader (asset: {})", asset_id),
         vidra_ir::layer::LayerContent::Empty => "Component/Group".to_string(),
     };
 
@@ -1134,7 +1235,8 @@ fn print_layer(layer: &vidra_ir::layer::Layer, prefix: &str, is_last: bool, eval
                     vidra_ir::animation::AnimatableProperty::ScaleX => scale_x = val,
                     vidra_ir::animation::AnimatableProperty::ScaleY => scale_y = val,
                     vidra_ir::animation::AnimatableProperty::Opacity => opacity = val,
-                    vidra_ir::animation::AnimatableProperty::Rotation => {}
+                    vidra_ir::animation::AnimatableProperty::Rotation => {},
+                    _ => {} // Extended properties (fontSize, color, etc.)
                 }
             }
         }

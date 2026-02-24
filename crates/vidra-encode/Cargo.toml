@@ -1,6 +1,6 @@
 [package]
 name = "vidra-encode"
-description = "Vidra encoding — frames to video files (H.264 via FFmpeg)"
+description = "Vidra encoding — frames to video/image files (H.264, VP9, GIF, APNG)"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -10,3 +10,5 @@ license.workspace = true
 vidra-core = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+image = { workspace = true }
+png = "0.17"

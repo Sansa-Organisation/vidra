@@ -638,7 +638,7 @@ impl Parser {
         let mut content = LayerContentNode::Empty;
         
         let is_content = match self.peek() {
-            TokenKind::Text | TokenKind::Image | TokenKind::Video | TokenKind::Audio | TokenKind::Solid | TokenKind::Shape | TokenKind::Slot | TokenKind::TTS | TokenKind::AutoCaption => true,
+            TokenKind::Text | TokenKind::Image | TokenKind::Video | TokenKind::Audio | TokenKind::Solid | TokenKind::Shape | TokenKind::Shader | TokenKind::Slot | TokenKind::TTS | TokenKind::AutoCaption => true,
             TokenKind::Identifier(name) if name != "position" && name != "animation" && name != "size" && name != "scale" => true,
             _ => false,
         };
@@ -762,6 +762,14 @@ impl Parser {
                 let args = self.parse_trailing_named_args()?;
                 self.expect(&TokenKind::RightParen)?;
                 Ok(LayerContentNode::Shape { shape_type: shape_type_str, args })
+            }
+            TokenKind::Shader => {
+                self.advance();
+                self.expect(&TokenKind::LeftParen)?;
+                let path = self.parse_value()?;
+                let args = self.parse_trailing_named_args()?;
+                self.expect(&TokenKind::RightParen)?;
+                Ok(LayerContentNode::Shader { path, args })
             }
             TokenKind::Identifier(name) => {
                 // E.g., CustomComponent(prop: "value")
@@ -991,7 +999,7 @@ impl Parser {
     }
 
     fn parse_value(&mut self) -> Result<ValueNode, VidraError> {
-        let span = self.current_span();
+        let _span = self.current_span();
         if self.peek() == &TokenKind::LeftBracket {
             self.advance();
             let mut items = Vec::new();

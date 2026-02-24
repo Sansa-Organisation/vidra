@@ -181,6 +181,10 @@ pub enum LayerContentNode {
         shape_type: String,
         args: Vec<NamedArg>,
     },
+    Shader {
+        path: ValueNode,
+        args: Vec<NamedArg>,
+    },
     /// A custom component instance
     Component {
         name: String,

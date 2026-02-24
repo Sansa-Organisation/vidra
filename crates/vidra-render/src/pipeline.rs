@@ -69,8 +69,10 @@ pub struct RenderPipeline {
     text_renderer: TextRenderer,
     video_decoder: VideoDecoder,
     image_cache: DashMap<String, FrameBuffer>,
+    shader_cache: DashMap<String, String>,
     gpu_ctx: std::sync::Arc<crate::gpu::GpuContext>,
     compositor: crate::compositor::GpuCompositor,
+    shader_renderer: crate::custom_shader::CustomShaderRenderer,
 }
 
 impl RenderPipeline {
@@ -82,13 +84,16 @@ impl RenderPipeline {
             })?
         );
         let compositor = crate::compositor::GpuCompositor::new(gpu_ctx.clone());
+        let shader_renderer = crate::custom_shader::CustomShaderRenderer::new(gpu_ctx.clone());
 
         Ok(Self {
             text_renderer: TextRenderer::new(),
             video_decoder: VideoDecoder::new(),
             image_cache: DashMap::new(),
+            shader_cache: DashMap::new(),
             gpu_ctx,
             compositor,
+            shader_renderer,
         })
     }
 
@@ -104,6 +109,11 @@ impl RenderPipeline {
                 let fb = crate::image_loader::load_image(&asset.path)
                     .map_err(|e| vidra_core::VidraError::Render(format!("Asset load error {}: {}", asset.id.0, e)))?;
                 self.image_cache.insert(asset.id.to_string(), fb);
+            } else if asset.path.extension().map(|e| e == "wgsl").unwrap_or(false) {
+                tracing::info!("Loading shader {} from {}", asset.id.0, asset.path.display());
+                let source = std::fs::read_to_string(&asset.path)
+                    .map_err(|e| vidra_core::VidraError::Render(format!("Failed to read custom shader {}: {}", asset.id.0, e)))?;
+                self.shader_cache.insert(asset.id.to_string(), source);
             }
         }
         Ok(())
@@ -672,6 +682,23 @@ impl RenderPipeline {
                 // AI AutoCaption component — fallback text display
                 self.text_renderer
                     .render_text("[Auto Caption]", "Inter", 28.0, &Color::WHITE)
+            }
+            LayerContent::Shader { asset_id } => {
+                // If we don't know the exact resolution of a custom shader, we default to the project resolution.
+                // Or maybe the user set a custom scale/size on the layer. We'll default to project for this prototype phase.
+                if let Some(source) = self.shader_cache.get(&asset_id.to_string()) {
+                    let time_sec = frame as f32 / ctx.fps as f32;
+                    match self.shader_renderer.render(source.value(), ctx.width, ctx.height, time_sec) {
+                        Ok(fb) => fb,
+                        Err(e) => {
+                            tracing::error!("Custom shader render failed for {}: {}", asset_id.to_string(), e);
+                            FrameBuffer::new(ctx.width, ctx.height, vidra_core::PixelFormat::Rgba8)
+                        }
+                    }
+                } else {
+                    tracing::warn!("Custom shader {} not found in cache", asset_id.to_string());
+                    FrameBuffer::new(ctx.width, ctx.height, vidra_core::PixelFormat::Rgba8)
+                }
             }
         };
 

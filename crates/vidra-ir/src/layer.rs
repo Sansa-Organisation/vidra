@@ -70,6 +70,10 @@ pub enum LayerContent {
     },
     /// A solid color fill.
     Solid { color: Color },
+    /// A custom WGSL shader execution.
+    Shader {
+        asset_id: AssetId,
+    },
     /// An empty content block (useful for grouping layers into components).
     Empty,
 }
@@ -95,6 +99,8 @@ pub struct Layer {
     pub children: Vec<Layer>,
     /// Optional mask layer (alpha channel is used to mask this layer).
     pub mask: Option<LayerId>,
+    /// Layout constraints for responsive positioning.
+    pub constraints: Vec<crate::layout::LayoutConstraint>,
 }
 
 impl Layer {
@@ -110,6 +116,7 @@ impl Layer {
             visible: true,
             children: Vec::new(),
             mask: None,
+            constraints: Vec::new(),
         }
     }
 
@@ -153,6 +160,7 @@ impl Layer {
             LayerContent::Solid { .. } => vidra_core::LayerType::Solid,
             LayerContent::TTS { .. } => vidra_core::LayerType::TTS,
             LayerContent::AutoCaption { .. } => vidra_core::LayerType::AutoCaption,
+            LayerContent::Shader { .. } => vidra_core::LayerType::Shader,
             LayerContent::Empty => vidra_core::LayerType::Component,
         }
     }

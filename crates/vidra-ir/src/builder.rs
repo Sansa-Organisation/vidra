@@ -97,6 +97,7 @@ impl LayerBuilder {
                 visible: true,
                 children: Vec::new(),
                 mask: None,
+                constraints: Vec::new(),
             },
         }
     }

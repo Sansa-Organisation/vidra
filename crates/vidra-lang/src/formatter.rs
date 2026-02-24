@@ -203,6 +203,9 @@ impl Formatter {
             LayerContentNode::AutoCaption { audio_source, args } => {
                 self.format_content_func("autocaption", audio_source, args);
             }
+            LayerContentNode::Shader { path, args } => {
+                self.format_content_func("shader", path, args);
+            }
             LayerContentNode::Empty => {}
         }
     }

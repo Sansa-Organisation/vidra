@@ -25,6 +25,7 @@ pub enum AssetType {
     Video,
     Audio,
     Font,
+    Shader,
 }
 
 impl std::fmt::Display for AssetType {
@@ -34,6 +35,7 @@ impl std::fmt::Display for AssetType {
             AssetType::Video => write!(f, "video"),
             AssetType::Audio => write!(f, "audio"),
             AssetType::Font => write!(f, "font"),
+            AssetType::Shader => write!(f, "shader"),
         }
     }
 }

@@ -11,6 +11,7 @@ pub mod text;
 pub mod video_decoder;
 pub mod gpu;
 pub mod effects;
+pub mod custom_shader;
 
 pub use pipeline::{RenderContext, RenderPipeline, RenderResult};
 pub use gpu::GpuContext;

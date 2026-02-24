@@ -109,7 +109,7 @@ impl TypeChecker {
         // Check assets
         for asset in &proj.assets {
             match asset.asset_type.as_str() {
-                "font" | "image" | "video" | "audio" => {}
+                "font" | "image" | "video" | "audio" | "shader" => {}
                 _ => self.type_error(format!("unknown asset type '{}'", asset.asset_type), &asset.span),
             }
         }
@@ -240,6 +240,9 @@ impl TypeChecker {
                 } else {
                     self.type_error(format!("unknown component '{}'", name), span);
                 }
+            }
+            LayerContentNode::Shader { path, args: _ } => {
+                self.expect_string(path, span);
             }
             LayerContentNode::Slot => {}
             LayerContentNode::Empty => {}

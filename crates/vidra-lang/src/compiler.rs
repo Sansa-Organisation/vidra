@@ -346,6 +346,54 @@ impl Compiler {
                         if let Ok(mask_str) = Self::value_to_string(mask_layer_name) {
                             layer.mask = Some(LayerId::new(mask_str));
                         }
+                    } else if name == "center" && !args.is_empty() {
+                        // center(horizontal), center(vertical), center(both) or center()
+                        let axis_val = Self::value_to_string(&args[0]).unwrap_or_else(|_| "both".to_string());
+                        let axis = match axis_val.as_str() {
+                            "horizontal" | "h" => vidra_ir::layout::CenterAxis::Horizontal,
+                            "vertical" | "v" => vidra_ir::layout::CenterAxis::Vertical,
+                            _ => vidra_ir::layout::CenterAxis::Both,
+                        };
+                        layer.constraints.push(vidra_ir::layout::LayoutConstraint::Center(axis));
+                    } else if name == "center" && args.is_empty() {
+                        layer.constraints.push(vidra_ir::layout::LayoutConstraint::Center(vidra_ir::layout::CenterAxis::Both));
+                    } else if name == "pin" && !args.is_empty() {
+                        // pin(top, 20), pin(left), pin(bottom, 40)
+                        let edge_val = Self::value_to_string(&args[0]).unwrap_or_else(|_| "top".to_string());
+                        let margin = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(0.0) } else { 0.0 };
+                        let edge = match edge_val.as_str() {
+                            "top" => vidra_ir::layout::Edge::Top,
+                            "bottom" => vidra_ir::layout::Edge::Bottom,
+                            "left" => vidra_ir::layout::Edge::Left,
+                            "right" => vidra_ir::layout::Edge::Right,
+                            _ => vidra_ir::layout::Edge::Top,
+                        };
+                        layer.constraints.push(vidra_ir::layout::LayoutConstraint::Pin { edge, margin });
+                    } else if name == "below" && !args.is_empty() {
+                        let anchor = Self::value_to_string(&args[0])?;
+                        let spacing = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(0.0) } else { 0.0 };
+                        layer.constraints.push(vidra_ir::layout::LayoutConstraint::Below { anchor_layer: anchor, spacing });
+                    } else if name == "above" && !args.is_empty() {
+                        let anchor = Self::value_to_string(&args[0])?;
+                        let spacing = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(0.0) } else { 0.0 };
+                        layer.constraints.push(vidra_ir::layout::LayoutConstraint::Above { anchor_layer: anchor, spacing });
+                    } else if name == "rightOf" && !args.is_empty() {
+                        let anchor = Self::value_to_string(&args[0])?;
+                        let spacing = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(0.0) } else { 0.0 };
+                        layer.constraints.push(vidra_ir::layout::LayoutConstraint::RightOf { anchor_layer: anchor, spacing });
+                    } else if name == "leftOf" && !args.is_empty() {
+                        let anchor = Self::value_to_string(&args[0])?;
+                        let spacing = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(0.0) } else { 0.0 };
+                        layer.constraints.push(vidra_ir::layout::LayoutConstraint::LeftOf { anchor_layer: anchor, spacing });
+                    } else if name == "fill" && !args.is_empty() {
+                        let axis_val = Self::value_to_string(&args[0]).unwrap_or_else(|_| "both".to_string());
+                        let padding = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(0.0) } else { 0.0 };
+                        let axis = match axis_val.as_str() {
+                            "horizontal" | "h" => vidra_ir::layout::FillAxis::Horizontal,
+                            "vertical" | "v" => vidra_ir::layout::FillAxis::Vertical,
+                            _ => vidra_ir::layout::FillAxis::Both,
+                        };
+                        layer.constraints.push(vidra_ir::layout::LayoutConstraint::Fill { axis, padding });
                     } else {
                         // Handle generic function calls — extensible for enter/exit/etc.
                         tracing::debug!("unhandled function call: {}", name);
@@ -700,6 +748,21 @@ impl Compiler {
                     stroke: stroke_color,
                     stroke_width: stroke_w,
                 })
+            }
+            LayerContentNode::Shader { path, args: _args } => {
+                let path_val = if let ValueNode::Identifier(id) = path {
+                    env.get(id).unwrap_or(path)
+                } else { path };
+                let resolved_path = Self::value_to_string(path_val)?;
+                let asset_id = AssetId::new(resolved_path.clone());
+                
+                if project.assets.get(&asset_id).is_none() {
+                    project
+                        .assets
+                        .register(Asset::new(asset_id.clone(), AssetType::Shader, resolved_path));
+                }
+                
+                Ok(LayerContent::Shader { asset_id })
             }
             LayerContentNode::Component { .. } | LayerContentNode::Slot | LayerContentNode::Empty => Ok(LayerContent::Empty),
         }
@@ -1391,7 +1454,6 @@ mod tests {
         "#,
         );
         let s = &project.scenes[0];
-        
         let l1 = &s.layers[0];
         // text layer has fontSize animation (1) and color animations (4) = 5 total
         assert_eq!(l1.animations.len(), 5);
@@ -1401,5 +1463,85 @@ mod tests {
         let l2 = &s.layers[1];
         assert_eq!(l2.animations.len(), 1);
         assert!(matches!(l2.animations[0].property, AnimatableProperty::CornerRadius));
+    }
+
+    #[test]
+    fn test_compile_shader() {
+        let project = compile(
+            r#"
+            project(1920, 1080, 30) {
+                scene("main", 5s) {
+                    layer("shader_layer") {
+                        shader("fractal.wgsl")
+                    }
+                }
+            }
+        "#,
+        );
+        let l1 = &project.scenes[0].layers[0];
+        assert!(matches!(l1.content, LayerContent::Shader { .. }));
+        assert_eq!(project.assets.count(), 1);
+        let asset = project.assets.all().next().unwrap();
+        assert_eq!(asset.asset_type, AssetType::Shader);
+    }
+
+    #[test]
+    fn test_compile_constraints() {
+        let project = compile(
+            r#"
+            project(1920, 1080, 30) {
+                scene("main", 5s) {
+                    layer("title") {
+                        text("Hello World")
+                        center("horizontal")
+                        pin("top", 100)
+                    }
+                    layer("subtitle") {
+                        text("Sub")
+                        center("horizontal")
+                        below("title", 20)
+                    }
+                    layer("cta") {
+                        solid(#FF0000)
+                        pin("bottom", 40)
+                        pin("right", 50)
+                        fill("horizontal", 60)
+                    }
+                }
+            }
+        "#,
+        );
+        let s = &project.scenes[0];
+        
+        // Title: center(horizontal) + pin(top, 100)
+        let title = &s.layers[0];
+        assert_eq!(title.constraints.len(), 2);
+        assert!(matches!(title.constraints[0], vidra_ir::layout::LayoutConstraint::Center(vidra_ir::layout::CenterAxis::Horizontal)));
+        assert!(matches!(title.constraints[1], vidra_ir::layout::LayoutConstraint::Pin { edge: vidra_ir::layout::Edge::Top, margin } if (margin - 100.0).abs() < 0.01));
+        
+        // Subtitle: center(horizontal) + below("title", 20)
+        let subtitle = &s.layers[1];
+        assert_eq!(subtitle.constraints.len(), 2);
+        assert!(matches!(&subtitle.constraints[1], vidra_ir::layout::LayoutConstraint::Below { anchor_layer, spacing } if anchor_layer == "title" && (*spacing - 20.0).abs() < 0.01));
+        
+        // CTA: pin(bottom) + pin(right) + fill(horizontal)
+        let cta = &s.layers[2];
+        assert_eq!(cta.constraints.len(), 3);
+        
+        // Run the solver against two viewports to verify responsiveness
+        let solver_input: Vec<_> = s.layers.iter().map(|l| {
+            (l.id.0.clone(), 200.0, 50.0, l.constraints.clone())
+        }).collect();
+        
+        let r_16_9 = vidra_ir::layout::LayoutSolver::solve(1920.0, 1080.0, &solver_input);
+        let r_9_16 = vidra_ir::layout::LayoutSolver::solve(1080.0, 1920.0, &solver_input);
+        
+        // Title should be centered horizontally in both
+        assert!((r_16_9[0].1.x - (1920.0 - 200.0) / 2.0).abs() < 0.01);
+        assert!((r_9_16[0].1.x - (1080.0 - 200.0) / 2.0).abs() < 0.01);
+        
+        // Title pinned at top=100 in both
+        assert!((r_16_9[0].1.y - 100.0).abs() < 0.01);
+        assert!((r_9_16[0].1.y - 100.0).abs() < 0.01);
     }
 }
