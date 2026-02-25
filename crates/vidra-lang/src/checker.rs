@@ -185,11 +185,41 @@ impl TypeChecker {
             LayerContentNode::Image { path, args: _ } => {
                 self.expect_string(path, span);
             }
+            LayerContentNode::Spritesheet { path, args } => {
+                self.expect_string(path, span);
+                for arg in args {
+                    match arg.name.as_str() {
+                        "frameWidth" | "frame_width" => self.expect_number(&arg.value, &arg.span),
+                        "frameHeight" | "frame_height" => self.expect_number(&arg.value, &arg.span),
+                        "fps" => self.expect_number(&arg.value, &arg.span),
+                        "start" | "startFrame" | "start_frame" => self.expect_number(&arg.value, &arg.span),
+                        "frameCount" | "frame_count" => self.expect_number(&arg.value, &arg.span),
+                        _ => self.type_error(
+                            format!("unknown property '{}' for spritesheet layer", arg.name),
+                            &arg.span,
+                        ),
+                    }
+                }
+            }
             LayerContentNode::Video { path, args: _ } => {
                 self.expect_string(path, span);
             }
             LayerContentNode::Audio { path, args: _ } => {
                 self.expect_string(path, span);
+            }
+            LayerContentNode::Waveform { audio_source, args } => {
+                self.expect_string(audio_source, span);
+                for arg in args {
+                    match arg.name.as_str() {
+                        "width" => self.expect_number(&arg.value, &arg.span),
+                        "height" => self.expect_number(&arg.value, &arg.span),
+                        "color" => self.expect_color(&arg.value, &arg.span),
+                        _ => self.type_error(
+                            format!("unknown property '{}' for waveform layer", arg.name),
+                            &arg.span,
+                        ),
+                    }
+                }
             }
             LayerContentNode::TTS { text, voice, args: _ } => {
                 self.expect_string(text, span);
@@ -266,6 +296,7 @@ impl TypeChecker {
                     "position",
                     "scale.x", "scaleX", "scale.y", "scaleY", "scale",
                     "rotation", "color", "fontSize", "cornerRadius", "strokeWidth",
+                    "translateZ", "rotateX", "rotateY", "perspective",
                     "crop.top", "cropTop", "crop.right", "cropRight",
                     "crop.bottom", "cropBottom", "crop.left", "cropLeft",
                     "volume", "blur", "blurRadius", "brightness", "brightnessLevel"
@@ -286,14 +317,54 @@ impl TypeChecker {
                         "damping" => self.expect_number(&arg.value, &arg.span),
                         "initialVelocity" | "velocity" => self.expect_number(&arg.value, &arg.span),
                         "expr" | "expression" => self.expect_string(&arg.value, &arg.span),
+                        "audio" => self.expect_string(&arg.value, &arg.span),
                         "path" => self.expect_string(&arg.value, &arg.span),
                         _ => self.type_error(format!("unknown animation parameter '{}'", arg.name), &arg.span),
                     }
                 }
             }
-            PropertyNode::FunctionCall { name, span, .. } => {
-                // Unknown function calls
-                self.type_error(format!("unknown function or property '{}'", name), span);
+            PropertyNode::FunctionCall { name, span, args, .. } => {
+                match name.as_str() {
+                    // Core transform-ish properties
+                    "scale" => {
+                        if args.len() == 1 {
+                            self.expect_number(&args[0], span);
+                        } else if args.len() >= 2 {
+                            self.expect_number(&args[0], span);
+                            self.expect_number(&args[1], span);
+                        } else {
+                            self.type_error("scale(s) or scale(sx, sy) expects 1-2 numeric arguments", span);
+                        }
+                    }
+                    "rotation" | "opacity" | "translateZ" | "rotateX" | "rotateY" | "perspective" => {
+                        if let Some(v) = args.get(0) {
+                            self.expect_number(v, span);
+                        } else {
+                            self.type_error(format!("'{}' expects a numeric argument", name), span);
+                        }
+                    }
+                    "anchor" => {
+                        if args.len() >= 2 {
+                            self.expect_number(&args[0], span);
+                            self.expect_number(&args[1], span);
+                        } else {
+                            self.type_error("anchor(x, y) expects 2 numeric arguments", span);
+                        }
+                    }
+                    // Effects / masks / presets
+                    "effect" | "mask" | "preset" => {
+                        if args.is_empty() {
+                            self.type_error(format!("'{}' expects at least 1 argument", name), span);
+                        }
+                    }
+                    // Layout constraints
+                    "center" | "pin" | "below" | "above" | "leftOf" | "rightOf" | "fill" => {
+                        // Arguments are validated more thoroughly at compile-time.
+                    }
+                    _ => {
+                        self.type_error(format!("unknown function or property '{}'", name), span);
+                    }
+                }
             }
             PropertyNode::AnimationGroup { animations, .. } => {
                 for prop in animations {
@@ -307,6 +378,22 @@ impl TypeChecker {
             }
             PropertyNode::Wait { duration, span } => {
                 self.expect_duration_or_number(duration, span);
+            }
+            PropertyNode::OnEvent { event, actions, span } => {
+                if event != "click" {
+                    self.type_error(
+                        format!("unsupported @on event '{}' (only 'click' is supported)", event),
+                        span,
+                    );
+                }
+                for a in actions {
+                    if a.name.is_empty() {
+                        self.type_error("set action must have a variable name", &a.span);
+                    }
+                    if a.expr.trim().is_empty() {
+                        self.type_error("set action must have an expression", &a.span);
+                    }
+                }
             }
         }
     }

@@ -14,6 +14,8 @@ use vidra_ir::layer::{Layer, LayerContent};
 use vidra_ir::project::Project;
 use vidra_ir::scene::Scene;
 
+use evalexpr::{build_operator_tree, ContextWithMutableVariables, DefaultNumericTypes, HashMapContext, Value};
+
 // ─── Embedded default font ─────────────────────────────────────────
 
 static DEFAULT_FONT_BYTES: &[u8] = include_bytes!("../../vidra-render/assets/Inter-Regular.ttf");
@@ -29,6 +31,9 @@ struct RenderContext {
     width: u32,
     height: u32,
     fps: f64,
+    mouse_x: f64,
+    mouse_y: f64,
+    state_vars: HashMap<String, f64>,
 }
 
 // ─── CPU Renderer ───────────────────────────────────────────────────
@@ -36,6 +41,9 @@ struct RenderContext {
 pub struct WasmRenderer {
     font: Font,
     image_cache: HashMap<String, FrameBuffer>,
+    mouse_x: f64,
+    mouse_y: f64,
+    state_vars: HashMap<String, f64>,
 }
 
 impl WasmRenderer {
@@ -43,7 +51,168 @@ impl WasmRenderer {
         Self {
             font: default_font(),
             image_cache: HashMap::new(),
+            mouse_x: 0.0,
+            mouse_y: 0.0,
+            state_vars: HashMap::new(),
         }
+    }
+
+    pub fn set_mouse_position(&mut self, x: f64, y: f64) {
+        self.mouse_x = x;
+        self.mouse_y = y;
+    }
+
+    pub fn mouse_position(&self) -> (f64, f64) {
+        (self.mouse_x, self.mouse_y)
+    }
+
+    pub fn set_state_var(&mut self, name: &str, value: f64) {
+        self.state_vars.insert(name.to_string(), value);
+    }
+
+    pub fn get_state_var(&self, name: &str) -> Option<f64> {
+        self.state_vars.get(name).copied()
+    }
+
+    pub fn dispatch_click(&mut self, project: &Project, global_frame: u64, x: f64, y: f64) -> Option<String> {
+        let ctx = RenderContext {
+            width: project.settings.width,
+            height: project.settings.height,
+            fps: project.settings.fps,
+            mouse_x: self.mouse_x,
+            mouse_y: self.mouse_y,
+            state_vars: self.state_vars.clone(),
+        };
+
+        let (scene, local_frame) = self.pick_top_scene_for_frame(project, global_frame)?;
+
+        // Hit-test topmost layers first.
+        for layer in scene.layers.iter().rev() {
+            if !layer.visible {
+                continue;
+            }
+            let Some((rx, ry, rw, rh)) = self.compute_layer_rect(&ctx, project, scene, layer, local_frame) else {
+                continue;
+            };
+
+            let inside = x >= rx as f64
+                && y >= ry as f64
+                && x < (rx + rw as i32) as f64
+                && y < (ry + rh as i32) as f64;
+            if !inside {
+                continue;
+            }
+
+            // Execute click handlers if present.
+            let mut handled = false;
+            for h in &layer.events {
+                if h.event != vidra_ir::layer::LayerEventType::Click {
+                    continue;
+                }
+                for action in &h.actions {
+                    let vidra_ir::layer::LayerAction::SetVar { name, expr } = action;
+                    if let Some(v) = Self::eval_set_expr(&ctx, &self.state_vars, expr) {
+                        self.state_vars.insert(name.clone(), v);
+                        handled = true;
+                    }
+                }
+            }
+
+            if handled {
+                return Some(layer.id.0.clone());
+            }
+        }
+
+        None
+    }
+
+    fn pick_top_scene_for_frame<'a>(&self, project: &'a Project, global_frame: u64) -> Option<(&'a Scene, u64)> {
+        let mut current_global = 0u64;
+        let mut target_scenes: Vec<(&Scene, u64)> = Vec::new();
+        let fps = project.settings.fps;
+
+        for (i, scene) in project.scenes.iter().enumerate() {
+            let sf = (scene.duration.as_seconds() * fps).ceil() as u64;
+            let trans_f = if i > 0 {
+                if let Some(trans) = &scene.transition {
+                    let prev_sf = (project.scenes[i - 1].duration.as_seconds() * fps).ceil() as u64;
+                    let max_overlap = prev_sf.min(sf);
+                    let tf = (trans.duration.as_seconds() * fps).ceil() as u64;
+                    tf.min(max_overlap)
+                } else {
+                    0
+                }
+            } else {
+                0
+            };
+
+            let start_f = current_global.saturating_sub(trans_f);
+            let end_f = start_f + sf;
+
+            if global_frame >= start_f && global_frame < end_f {
+                let local_f = global_frame - start_f;
+                target_scenes.push((scene, local_f));
+            }
+
+            current_global = end_f;
+        }
+
+        // If overlap, prefer the top scene (the later one).
+        target_scenes.last().copied()
+    }
+
+    fn compute_layer_rect(
+        &self,
+        ctx: &RenderContext,
+        project: &Project,
+        scene: &Scene,
+        layer: &Layer,
+        frame: u64,
+    ) -> Option<(i32, i32, u32, u32)> {
+        let mut layer_buf = self.render_layer(ctx, project, layer, frame)?;
+
+        // Apply mask (same logic as render_scene_frame) so hit-testing matches visuals.
+        if let Some(mask_id) = &layer.mask {
+            if let Some(mask_layer) = scene.layers.iter().find(|l| &l.id == mask_id) {
+                if let Some(mask_buf) = self.render_layer(ctx, project, mask_layer, frame) {
+                    let (mdx, mdy) = Self::compute_position(ctx, mask_layer, frame);
+                    let (mcx, mcy) = Self::apply_anchor(mdx, mdy, &mask_buf, mask_layer);
+                    let (dx, dy) = Self::compute_position(ctx, layer, frame);
+                    let (cx, cy) = Self::apply_anchor(dx, dy, &layer_buf, layer);
+                    let rel_x = mcx - cx;
+                    let rel_y = mcy - cy;
+                    layer_buf.apply_mask(&mask_buf, rel_x, rel_y);
+                }
+            }
+        }
+
+        let (dx, dy) = Self::compute_position(ctx, layer, frame);
+        let (cx, cy) = Self::apply_anchor(dx, dy, &layer_buf, layer);
+        Some((cx, cy, layer_buf.width, layer_buf.height))
+    }
+
+    fn eval_set_expr(ctx: &RenderContext, vars: &HashMap<String, f64>, expr: &str) -> Option<f64> {
+        let compiled = build_operator_tree::<DefaultNumericTypes>(expr).ok()?;
+        let mut context = HashMapContext::new();
+
+        let _ = context.set_value("t".to_string(), Value::Float(0.0));
+        let _ = context.set_value("p".to_string(), Value::Float(1.0));
+        let _ = context.set_value("T".to_string(), Value::Float(0.0));
+        let _ = context.set_value("mouse_x".to_string(), Value::Float(ctx.mouse_x));
+        let _ = context.set_value("mouse_y".to_string(), Value::Float(ctx.mouse_y));
+        let _ = context.set_value("audio_amp".to_string(), Value::Float(0.0));
+
+        for (k, v) in vars {
+            // Provide state vars by raw name.
+            if k != "t" && k != "p" && k != "T" && k != "mouse_x" && k != "mouse_y" && k != "audio_amp" {
+                let _ = context.set_value(k.clone(), Value::Float(*v));
+            }
+        }
+
+        compiled
+            .eval_with_context(&context)
+            .ok()
+            .and_then(|v| v.as_number().ok())
     }
 
     /// Load image assets from embedded bytes or base64 data.
@@ -67,6 +236,9 @@ impl WasmRenderer {
             width: project.settings.width,
             height: project.settings.height,
             fps: project.settings.fps,
+            mouse_x: self.mouse_x,
+            mouse_y: self.mouse_y,
+            state_vars: self.state_vars.clone(),
         };
 
         let mut current_global = 0u64;
@@ -245,25 +417,67 @@ impl WasmRenderer {
             }
             if let Some(mut layer_buf) = self.render_layer(ctx, project, layer, local_frame) {
                 let (dx, dy) = Self::compute_position(ctx, layer, local_frame);
-                let (cx, cy) = Self::apply_anchor(dx, dy, &layer_buf, layer);
                 
                 if let Some(mask_id) = &layer.mask {
                     if let Some(mask_layer) = scene.layers.iter().find(|l| &l.id == mask_id) {
                         if let Some(mask_buf) = self.render_layer(ctx, project, mask_layer, local_frame) {
                             let (mdx, mdy) = Self::compute_position(ctx, mask_layer, local_frame);
                             let (mcx, mcy) = Self::apply_anchor(mdx, mdy, &mask_buf, mask_layer);
+                            let (cx, cy) = Self::apply_anchor(dx, dy, &layer_buf, layer);
                             let rel_x = mcx - cx;
                             let rel_y = mcy - cy;
                             layer_buf.apply_mask(&mask_buf, rel_x, rel_y);
                         }
                     }
                 }
-                
-                canvas.composite_over(&layer_buf, cx, cy);
+
+                let transform = Self::compute_layer_transform(ctx, layer, local_frame, dx, dy);
+                if Self::needs_projective_composite(&transform) {
+                    let corners = transform.project_corners(layer_buf.width as f64, layer_buf.height as f64);
+                    canvas.composite_over_projected(&layer_buf, corners);
+                } else {
+                    let (cx, cy) = Self::apply_anchor(dx, dy, &layer_buf, layer);
+                    canvas.composite_over(&layer_buf, cx, cy);
+                }
             }
         }
 
         canvas
+    }
+
+    fn compute_layer_transform(
+        ctx: &RenderContext,
+        layer: &Layer,
+        frame: u64,
+        dx: i32,
+        dy: i32,
+    ) -> vidra_core::Transform2D {
+        let mut t = layer.transform;
+        t.position.x = dx as f64;
+        t.position.y = dy as f64;
+
+        let time = vidra_core::Duration::from_seconds(frame as f64 / ctx.fps);
+        for anim in &layer.animations {
+            if let Some(value) = Self::evaluate_animation(ctx, anim, time) {
+                match anim.property {
+                    AnimatableProperty::Rotation => t.rotation = value,
+                    AnimatableProperty::TranslateZ => t.translate_z = value,
+                    AnimatableProperty::RotateX => t.rotate_x = value,
+                    AnimatableProperty::RotateY => t.rotate_y = value,
+                    AnimatableProperty::Perspective => t.perspective = value,
+                    _ => {}
+                }
+            }
+        }
+        t
+    }
+
+    fn needs_projective_composite(t: &vidra_core::Transform2D) -> bool {
+        t.rotation.abs() > f64::EPSILON
+            || t.translate_z.abs() > f64::EPSILON
+            || t.rotate_x.abs() > f64::EPSILON
+            || t.rotate_y.abs() > f64::EPSILON
+            || t.perspective > 0.0
     }
 
     fn render_layer(
@@ -298,6 +512,31 @@ impl WasmRenderer {
                     // Draw a fallback rectangle
                     FrameBuffer::solid(200, 200, &Color::rgba(0.5, 0.5, 0.5, 1.0))
                 }
+            }
+            LayerContent::Spritesheet {
+                asset_id,
+                frame_width,
+                frame_height,
+                fps,
+                start_frame,
+                frame_count,
+            } => {
+                let id_str = &asset_id.0;
+                let sheet = if let Some(cached) = self.image_cache.get(id_str) {
+                    cached.clone()
+                } else {
+                    FrameBuffer::solid(200, 200, &Color::rgba(0.5, 0.5, 0.5, 1.0))
+                };
+                Self::render_spritesheet_frame(
+                    &sheet,
+                    *frame_width,
+                    *frame_height,
+                    *fps,
+                    *start_frame,
+                    *frame_count,
+                    frame,
+                    ctx.fps,
+                )
             }
             LayerContent::Shape { shape, fill, .. } => {
                 let fill_color = fill.unwrap_or(Color::WHITE);
@@ -388,6 +627,47 @@ impl WasmRenderer {
         Some(buf)
     }
 
+    fn render_spritesheet_frame(
+        sheet: &FrameBuffer,
+        frame_w: u32,
+        frame_h: u32,
+        sheet_fps: f64,
+        start_frame: u32,
+        frame_count: Option<u32>,
+        local_frame: u64,
+        timeline_fps: f64,
+    ) -> FrameBuffer {
+        if sheet.format != vidra_core::frame::PixelFormat::Rgba8 || frame_w == 0 || frame_h == 0 {
+            return sheet.clone();
+        }
+
+        let cols = (sheet.width / frame_w).max(1);
+        let rows = (sheet.height / frame_h).max(1);
+        let derived_total = cols.saturating_mul(rows) as u32;
+        let total = frame_count.unwrap_or(derived_total).max(1).min(derived_total.max(1));
+
+        let t = local_frame as f64 / timeline_fps;
+        let idx = if sheet_fps <= 0.0 {
+            0
+        } else {
+            ((t * sheet_fps).floor() as u32) % total
+        };
+
+        let frame_idx = start_frame.saturating_add(idx) % total;
+        let x = (frame_idx % cols as u32) * frame_w;
+        let y = (frame_idx / cols as u32) * frame_h;
+
+        let mut out = FrameBuffer::new(frame_w, frame_h, vidra_core::frame::PixelFormat::Rgba8);
+        for yy in 0..frame_h {
+            for xx in 0..frame_w {
+                if let Some(px) = sheet.get_pixel(x + xx, y + yy) {
+                    out.set_pixel(xx, yy, px);
+                }
+            }
+        }
+        out
+    }
+
     // ── Text rendering (fontdue) ────────────────────────────────
 
     fn render_text(&self, text: &str, font_size: f32, color: &Color) -> FrameBuffer {
@@ -447,7 +727,7 @@ impl WasmRenderer {
         let mut x = layer.transform.position.x;
         let mut y = layer.transform.position.y;
         for anim in &layer.animations {
-            if let Some(value) = anim.evaluate(time) {
+            if let Some(value) = Self::evaluate_animation(ctx, anim, time) {
                 match anim.property {
                     AnimatableProperty::PositionX => x = value,
                     AnimatableProperty::PositionY => y = value,
@@ -463,7 +743,7 @@ impl WasmRenderer {
         let mut sx = layer.transform.scale.x;
         let mut sy = layer.transform.scale.y;
         for anim in &layer.animations {
-            if let Some(value) = anim.evaluate(time) {
+            if let Some(value) = Self::evaluate_animation(ctx, anim, time) {
                 match anim.property {
                     AnimatableProperty::ScaleX => sx = value,
                     AnimatableProperty::ScaleY => sy = value,
@@ -478,13 +758,62 @@ impl WasmRenderer {
         let time = vidra_core::Duration::from_seconds(frame as f64 / ctx.fps);
         let mut opacity = layer.transform.opacity;
         for anim in &layer.animations {
-            if let Some(value) = anim.evaluate(time) {
+            if let Some(value) = Self::evaluate_animation(ctx, anim, time) {
                 if matches!(anim.property, AnimatableProperty::Opacity) {
                     opacity = value;
                 }
             }
         }
         opacity.clamp(0.0, 1.0)
+    }
+
+    fn evaluate_animation(
+        ctx: &RenderContext,
+        anim: &vidra_ir::animation::Animation,
+        time: vidra_core::Duration,
+    ) -> Option<f64> {
+        if let Some(expr) = anim.expr.as_deref() {
+            let effective_secs = time.as_seconds() - anim.delay.as_seconds();
+            if effective_secs < 0.0 {
+                return None;
+            }
+
+            let duration_secs = anim
+                .expr_duration
+                .as_ref()
+                .map(|d| d.as_seconds())
+                .unwrap_or(0.0);
+            let t = if duration_secs > 0.0 {
+                effective_secs.min(duration_secs)
+            } else {
+                effective_secs
+            };
+            let p = if duration_secs > 0.0 {
+                (t / duration_secs).clamp(0.0, 1.0)
+            } else {
+                1.0
+            };
+
+            let compiled = build_operator_tree::<DefaultNumericTypes>(expr).ok()?;
+            let mut context = HashMapContext::new();
+            let _ = context.set_value("t".to_string(), Value::Float(t));
+            let _ = context.set_value("p".to_string(), Value::Float(p));
+            let _ = context.set_value("T".to_string(), Value::Float(duration_secs));
+            let _ = context.set_value("mouse_x".to_string(), Value::Float(ctx.mouse_x));
+            let _ = context.set_value("mouse_y".to_string(), Value::Float(ctx.mouse_y));
+            let _ = context.set_value("audio_amp".to_string(), Value::Float(0.0));
+            for (k, v) in &ctx.state_vars {
+                if k != "t" && k != "p" && k != "T" && k != "mouse_x" && k != "mouse_y" && k != "audio_amp" {
+                    let _ = context.set_value(k.clone(), Value::Float(*v));
+                }
+            }
+            return compiled
+                .eval_with_context(&context)
+                .ok()
+                .and_then(|v| v.as_number().ok());
+        }
+
+        anim.evaluate(time)
     }
 
     fn has_intrinsic_size(layer: &Layer) -> bool {
@@ -496,6 +825,7 @@ impl WasmRenderer {
                 | LayerContent::Shape { .. }
                 | LayerContent::TTS { .. }
                 | LayerContent::AutoCaption { .. }
+                | LayerContent::Waveform { .. }
         )
     }
 

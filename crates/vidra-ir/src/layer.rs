@@ -5,6 +5,26 @@ use crate::asset::AssetId;
 use vidra_core::types::ShapeType;
 use vidra_core::{BlendMode, Color, Transform2D};
 
+/// An interactive event handler attached to a layer.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LayerEventHandler {
+    pub event: LayerEventType,
+    pub actions: Vec<LayerAction>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum LayerEventType {
+    #[serde(rename = "click")]
+    Click,
+}
+
+/// A runtime action executed by interactive renderers.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum LayerAction {
+    /// `set name = expr` (expr evaluated at runtime).
+    SetVar { name: String, expr: String },
+}
+
 /// Unique identifier for a layer.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct LayerId(pub String);
@@ -33,6 +53,21 @@ pub enum LayerContent {
     },
     /// An image layer referencing an asset.
     Image { asset_id: AssetId },
+
+    /// A spritesheet layer (tile animation) referencing an image asset.
+    ///
+    /// The renderer selects a frame from the sheet over time based on `fps` and `start_frame`.
+    Spritesheet {
+        asset_id: AssetId,
+        frame_width: u32,
+        frame_height: u32,
+        fps: f64,
+        #[serde(default)]
+        start_frame: u32,
+        /// Optional explicit frame count. If absent, renderers derive it from image dimensions.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        frame_count: Option<u32>,
+    },
     /// A video clip layer referencing an asset.
     Video {
         asset_id: AssetId,
@@ -47,12 +82,31 @@ pub enum LayerContent {
         trim_start: vidra_core::Duration,
         trim_end: Option<vidra_core::Duration>,
         volume: f64,
+        /// Optional role hint (e.g. "music", "narration").
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        role: Option<String>,
+        /// If set (< 1.0), this track will be ducked under narration tracks.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        duck: Option<f64>,
+    },
+    /// A waveform visualization generated from an audio asset.
+    /// Typically materialized into an image before rendering.
+    Waveform {
+        asset_id: AssetId,
+        width: u32,
+        height: u32,
+        color: Color,
     },
     /// Text to Speech AI node
     TTS {
         text: String,
         voice: String,
         volume: f64,
+        /// If present, points at a generated audio asset that should be muxed.
+        /// Kept optional for backward compatibility and for workflows where TTS
+        /// is materialized outside the Rust CLI (e.g. web / React Native / Expo).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        audio_asset_id: Option<AssetId>,
     },
     /// Auto Caption AI generation
     AutoCaption {
@@ -91,6 +145,9 @@ pub struct Layer {
     pub blend_mode: BlendMode,
     /// Animations applied to this layer.
     pub animations: Vec<Animation>,
+    /// Interactive event handlers (e.g. click).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub events: Vec<LayerEventHandler>,
     /// Visual effects applied to this layer.
     pub effects: Vec<vidra_core::types::LayerEffect>,
     /// Whether the layer is visible.
@@ -112,6 +169,7 @@ impl Layer {
             transform: Transform2D::identity(),
             blend_mode: BlendMode::Normal,
             animations: Vec::new(),
+            events: Vec::new(),
             effects: Vec::new(),
             visible: true,
             children: Vec::new(),
@@ -154,8 +212,10 @@ impl Layer {
         match &self.content {
             LayerContent::Text { .. } => vidra_core::LayerType::Text,
             LayerContent::Image { .. } => vidra_core::LayerType::Image,
+            LayerContent::Spritesheet { .. } => vidra_core::LayerType::Image,
             LayerContent::Video { .. } => vidra_core::LayerType::Video,
             LayerContent::Audio { .. } => vidra_core::LayerType::Audio,
+            LayerContent::Waveform { .. } => vidra_core::LayerType::Waveform,
             LayerContent::Shape { .. } => vidra_core::LayerType::Shape,
             LayerContent::Solid { .. } => vidra_core::LayerType::Solid,
             LayerContent::TTS { .. } => vidra_core::LayerType::TTS,

@@ -1,6 +1,7 @@
 use dashmap::DashMap;
 use rayon::prelude::*;
 use std::path::Path;
+use std::collections::HashMap;
 
 use vidra_core::frame::FrameBuffer;
 use vidra_core::hash::{self, ContentHash};
@@ -10,6 +11,8 @@ use vidra_ir::asset::AssetId;
 use vidra_ir::layer::{Layer, LayerContent};
 use vidra_ir::project::Project;
 use vidra_ir::scene::Scene;
+
+use evalexpr::{build_operator_tree, ContextWithMutableVariables, DefaultNumericTypes, HashMapContext, Value};
 
 use crate::text::TextRenderer;
 use crate::video_decoder::VideoDecoder;
@@ -22,6 +25,13 @@ pub struct RenderContext {
     pub height: u32,
     /// Current frame rate.
     pub fps: f64,
+
+    /// Mouse position in pixel coordinates for interactive previews.
+    pub mouse_x: f64,
+    pub mouse_y: f64,
+
+    /// Runtime numeric state vars (used by interactive previews).
+    pub state_vars: HashMap<String, f64>,
 }
 
 /// Result of a complete render.
@@ -70,6 +80,7 @@ pub struct RenderPipeline {
     video_decoder: VideoDecoder,
     image_cache: DashMap<String, FrameBuffer>,
     shader_cache: DashMap<String, String>,
+    #[allow(dead_code)]
     gpu_ctx: std::sync::Arc<crate::gpu::GpuContext>,
     compositor: crate::compositor::GpuCompositor,
     shader_renderer: crate::custom_shader::CustomShaderRenderer,
@@ -128,6 +139,9 @@ impl RenderPipeline {
             width: project.settings.width,
             height: project.settings.height,
             fps: project.settings.fps,
+            mouse_x: 0.0,
+            mouse_y: 0.0,
+            state_vars: HashMap::new(),
         };
 
         let total_frames = project.total_frames();
@@ -159,6 +173,9 @@ impl RenderPipeline {
             width: project.settings.width,
             height: project.settings.height,
             fps: project.settings.fps,
+            mouse_x: 0.0,
+            mouse_y: 0.0,
+            state_vars: HashMap::new(),
         };
 
         let mut current_global = 0u64;
@@ -333,6 +350,9 @@ impl RenderPipeline {
             width: project.settings.width,
             height: project.settings.height,
             fps: project.settings.fps,
+            mouse_x: 0.0,
+            mouse_y: 0.0,
+            state_vars: HashMap::new(),
         };
 
         let mut current_global = 0u64;
@@ -408,7 +428,6 @@ impl RenderPipeline {
             let (content, effects) = Self::compute_layer_animated_state(ctx, layer, local_frame);
             if let Ok(mut layer_buf) = self.render_layer(ctx, project, layer, &content, local_frame) {
                 let (dx, dy) = Self::compute_layer_position(ctx, layer, local_frame);
-                let (cx, cy) = Self::apply_anchor(dx, dy, &layer_buf, layer, &content);
                 
                 if let Some(mask_id) = &layer.mask {
                     if let Some(mask_layer) = scene.layers.iter().find(|l| &l.id == mask_id) {
@@ -416,18 +435,65 @@ impl RenderPipeline {
                         if let Ok(mask_buf) = self.render_layer(ctx, project, mask_layer, &m_content, local_frame) {
                             let (mdx, mdy) = Self::compute_layer_position(ctx, mask_layer, local_frame);
                             let (mcx, mcy) = Self::apply_anchor(mdx, mdy, &mask_buf, mask_layer, &m_content);
+                            // For masks, keep the existing 2D anchor-based alignment (masking is applied
+                            // in the layer's local buffer space).
+                            let (cx, cy) = Self::apply_anchor(dx, dy, &layer_buf, layer, &content);
                             let rel_x = mcx - cx;
                             let rel_y = mcy - cy;
                             layer_buf.apply_mask(&mask_buf, rel_x, rel_y);
                         }
                     }
                 }
-                
-                self.compositor.composite(&mut canvas, &layer_buf, cx, cy, &effects);
+
+                let transform = Self::compute_layer_transform(ctx, layer, local_frame, dx, dy);
+                if Self::needs_projective_composite(&transform) {
+                    let corners = transform.project_corners(layer_buf.width as f64, layer_buf.height as f64);
+                    self.compositor
+                        .composite_projected(&mut canvas, &layer_buf, corners, &effects);
+                } else {
+                    let (cx, cy) = Self::apply_anchor(dx, dy, &layer_buf, layer, &content);
+                    self.compositor.composite(&mut canvas, &layer_buf, cx, cy, &effects);
+                }
             }
         }
 
         Ok(canvas)
+    }
+
+    fn compute_layer_transform(
+        ctx: &RenderContext,
+        layer: &Layer,
+        frame: u64,
+        dx: i32,
+        dy: i32,
+    ) -> vidra_core::Transform2D {
+        let mut t = layer.transform;
+        t.position.x = dx as f64;
+        t.position.y = dy as f64;
+
+        let time = vidra_core::Duration::from_seconds(frame as f64 / ctx.fps);
+        for anim in &layer.animations {
+            if let Some(value) = Self::evaluate_animation(ctx, anim, time) {
+                match anim.property {
+                    AnimatableProperty::Rotation => t.rotation = value,
+                    AnimatableProperty::TranslateZ => t.translate_z = value,
+                    AnimatableProperty::RotateX => t.rotate_x = value,
+                    AnimatableProperty::RotateY => t.rotate_y = value,
+                    AnimatableProperty::Perspective => t.perspective = value,
+                    _ => {}
+                }
+            }
+        }
+        t
+    }
+
+    fn needs_projective_composite(t: &vidra_core::Transform2D) -> bool {
+        // Use projective path for any non-trivial rotation or 2.5D parameters.
+        t.rotation.abs() > f64::EPSILON
+            || t.translate_z.abs() > f64::EPSILON
+            || t.rotate_x.abs() > f64::EPSILON
+            || t.rotate_y.abs() > f64::EPSILON
+            || t.perspective > 0.0
     }
 
     /// Compute the animated position of a layer at a given frame.
@@ -437,7 +503,7 @@ impl RenderPipeline {
         let mut y = layer.transform.position.y;
 
         for anim in &layer.animations {
-            if let Some(value) = anim.evaluate(time) {
+            if let Some(value) = Self::evaluate_animation(ctx, anim, time) {
                 match anim.property {
                     AnimatableProperty::PositionX => x = value,
                     AnimatableProperty::PositionY => y = value,
@@ -456,7 +522,7 @@ impl RenderPipeline {
         let mut sy = layer.transform.scale.y;
 
         for anim in &layer.animations {
-            if let Some(value) = anim.evaluate(time) {
+            if let Some(value) = Self::evaluate_animation(ctx, anim, time) {
                 match anim.property {
                     AnimatableProperty::ScaleX => sx = value,
                     AnimatableProperty::ScaleY => sy = value,
@@ -473,7 +539,7 @@ impl RenderPipeline {
         let mut opacity = layer.transform.opacity;
 
         for anim in &layer.animations {
-            if let Some(value) = anim.evaluate(time) {
+            if let Some(value) = Self::evaluate_animation(ctx, anim, time) {
                 if matches!(anim.property, AnimatableProperty::Opacity) {
                     opacity = value;
                 }
@@ -490,7 +556,7 @@ impl RenderPipeline {
         let mut effects = layer.effects.clone();
 
         for anim in &layer.animations {
-            if let Some(value) = anim.evaluate(time) {
+            if let Some(value) = Self::evaluate_animation(ctx, anim, time) {
                 match anim.property {
                     AnimatableProperty::ColorR => match &mut content {
                         LayerContent::Text { color, .. } => color.r = value as f32,
@@ -558,6 +624,56 @@ impl RenderPipeline {
         (content, effects)
     }
 
+    fn evaluate_animation(
+        ctx: &RenderContext,
+        anim: &vidra_ir::animation::Animation,
+        time: vidra_core::Duration,
+    ) -> Option<f64> {
+        if let Some(expr) = anim.expr.as_deref() {
+            let effective_secs = time.as_seconds() - anim.delay.as_seconds();
+            if effective_secs < 0.0 {
+                return None;
+            }
+
+            let duration_secs = anim
+                .expr_duration
+                .as_ref()
+                .map(|d| d.as_seconds())
+                .unwrap_or(0.0);
+            let t = if duration_secs > 0.0 {
+                effective_secs.min(duration_secs)
+            } else {
+                effective_secs
+            };
+            let p = if duration_secs > 0.0 {
+                (t / duration_secs).clamp(0.0, 1.0)
+            } else {
+                1.0
+            };
+
+            let compiled = build_operator_tree::<DefaultNumericTypes>(expr).ok()?;
+            let mut context = HashMapContext::new();
+            let _ = context.set_value("t".to_string(), Value::Float(t));
+            let _ = context.set_value("p".to_string(), Value::Float(p));
+            let _ = context.set_value("T".to_string(), Value::Float(duration_secs));
+            let _ = context.set_value("mouse_x".to_string(), Value::Float(ctx.mouse_x));
+            let _ = context.set_value("mouse_y".to_string(), Value::Float(ctx.mouse_y));
+            let _ = context.set_value("audio_amp".to_string(), Value::Float(0.0));
+            for (k, v) in &ctx.state_vars {
+                if k != "t" && k != "p" && k != "T" && k != "mouse_x" && k != "mouse_y" && k != "audio_amp" {
+                    let _ = context.set_value(k.clone(), Value::Float(*v));
+                }
+            }
+
+            return compiled
+                .eval_with_context(&context)
+                .ok()
+                .and_then(|v| v.as_number().ok());
+        }
+
+        anim.evaluate(time)
+    }
+
     /// Determine whether a layer's content has an intrinsic bounding box
     /// (i.e., it's not a full-canvas fill). Only layers with intrinsic sizes
     /// should have anchor-point offsets applied.
@@ -570,6 +686,7 @@ impl RenderPipeline {
                 | LayerContent::Shape { .. }
                 | LayerContent::TTS { .. }
                 | LayerContent::AutoCaption { .. }
+                | LayerContent::Waveform { .. }
         )
     }
 
@@ -668,6 +785,22 @@ impl RenderPipeline {
                 }
             }
             LayerContent::Image { asset_id } => self.load_image_asset(project, asset_id, opacity),
+            LayerContent::Spritesheet {
+                asset_id,
+                frame_width,
+                frame_height,
+                fps,
+                start_frame,
+                frame_count,
+            } => {
+                let sheet = self.load_image_asset(project, asset_id, opacity);
+                self.render_spritesheet_frame(&sheet, *frame_width, *frame_height, *fps, *start_frame, *frame_count, frame, ctx.fps)
+            }
+            LayerContent::Waveform { .. } => {
+                // If waveform materialization didn't run, show a placeholder.
+                self.text_renderer
+                    .render_text("[Waveform]", "Inter", 28.0, &Color::WHITE)
+            }
             LayerContent::Video {
                 asset_id,
                 trim_start,
@@ -729,6 +862,48 @@ impl RenderPipeline {
         }
 
         Ok(buf)
+    }
+
+    fn render_spritesheet_frame(
+        &self,
+        sheet: &FrameBuffer,
+        frame_w: u32,
+        frame_h: u32,
+        sheet_fps: f64,
+        start_frame: u32,
+        frame_count: Option<u32>,
+        local_frame: u64,
+        timeline_fps: f64,
+    ) -> FrameBuffer {
+        if sheet.format != vidra_core::frame::PixelFormat::Rgba8 || frame_w == 0 || frame_h == 0 {
+            return sheet.clone();
+        }
+
+        let cols = (sheet.width / frame_w).max(1);
+        let rows = (sheet.height / frame_h).max(1);
+        let derived_total = cols.saturating_mul(rows) as u32;
+        let total = frame_count.unwrap_or(derived_total).max(1).min(derived_total.max(1));
+
+        let t = local_frame as f64 / timeline_fps;
+        let idx = if sheet_fps <= 0.0 {
+            0
+        } else {
+            ((t * sheet_fps).floor() as u32) % total
+        };
+
+        let frame_idx = start_frame.saturating_add(idx) % total;
+        let x = (frame_idx % cols as u32) * frame_w;
+        let y = (frame_idx / cols as u32) * frame_h;
+
+        let mut out = FrameBuffer::new(frame_w, frame_h, vidra_core::frame::PixelFormat::Rgba8);
+        for yy in 0..frame_h {
+            for xx in 0..frame_w {
+                if let Some(px) = sheet.get_pixel(x + xx, y + yy) {
+                    out.set_pixel(xx, yy, px);
+                }
+            }
+        }
+        out
     }
 
     /// Load an image asset, with caching.

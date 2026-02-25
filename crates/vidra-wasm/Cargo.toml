@@ -25,6 +25,7 @@ web-sys = { version = "0.3", features = [
     "Window",
 ] }
 getrandom = { version = "0.2", features = ["js"] }
+evalexpr = "13.1.0"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"

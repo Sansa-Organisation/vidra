@@ -26,6 +26,7 @@ pub enum AssetType {
     Audio,
     Font,
     Shader,
+    Lut,
 }
 
 impl std::fmt::Display for AssetType {
@@ -36,6 +37,7 @@ impl std::fmt::Display for AssetType {
             AssetType::Audio => write!(f, "audio"),
             AssetType::Font => write!(f, "font"),
             AssetType::Shader => write!(f, "shader"),
+            AssetType::Lut => write!(f, "lut"),
         }
     }
 }
@@ -94,6 +96,11 @@ impl AssetRegistry {
         self.assets.get(id)
     }
 
+    /// Get a mutable asset by ID.
+    pub fn get_mut(&mut self, id: &AssetId) -> Option<&mut Asset> {
+        self.assets.get_mut(id)
+    }
+
     /// Remove an asset by ID.
     pub fn remove(&mut self, id: &AssetId) -> Option<Asset> {
         self.assets.remove(id)
@@ -102,6 +109,11 @@ impl AssetRegistry {
     /// List all assets.
     pub fn all(&self) -> impl Iterator<Item = &Asset> {
         self.assets.values()
+    }
+
+    /// List all assets mutably.
+    pub fn all_mut(&mut self) -> impl Iterator<Item = &mut Asset> {
+        self.assets.values_mut()
     }
 
     /// Number of registered assets.

@@ -1,6 +1,13 @@
 use anyhow::Result;
 use std::fs;
 
+#[derive(Debug, Clone, Copy)]
+pub struct TemplateInfo {
+    pub name: &'static str,
+    pub description: &'static str,
+    pub default_file: &'static str,
+}
+
 const TEMPLATE_SOCIAL_POST: &str = r#"
 project(1080, 1920, 60) {
     scene("main", 15s) {
@@ -118,6 +125,26 @@ project(1920, 1080, 60) {
 }
 "#;
 
+pub fn available_templates() -> Vec<TemplateInfo> {
+    vec![
+        TemplateInfo {
+            name: "social-post",
+            description: "1080x1920 portrait template",
+            default_file: "social_post.vidra",
+        },
+        TemplateInfo {
+            name: "lower-third",
+            description: "Broadcast-style lower third graphic",
+            default_file: "lower_third.vidra",
+        },
+        TemplateInfo {
+            name: "branded-intro",
+            description: "Clean fade-in logo reveal",
+            default_file: "branded_intro.vidra",
+        },
+    ]
+}
+
 pub fn execute_add(template_name: &str) -> Result<()> {
     let (content, default_name) = match template_name.to_lowercase().as_str() {
         "social-post" => (TEMPLATE_SOCIAL_POST, "social_post.vidra"),
@@ -126,9 +153,9 @@ pub fn execute_add(template_name: &str) -> Result<()> {
         _ => {
             println!("❌ Unknown template: '{}'", template_name);
             println!("\nAvailable templates:");
-            println!("  - social-post   (1080x1920 portrait template)");
-            println!("  - lower-third   (Broadcast-style lower third graphic)");
-            println!("  - branded-intro (Clean fade-in logo reveal)");
+            for t in available_templates() {
+                println!("  - {} ({})", t.name, t.description);
+            }
             return Ok(());
         }
     };

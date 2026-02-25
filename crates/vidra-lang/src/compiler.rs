@@ -9,6 +9,8 @@ use vidra_ir::project::{Project, ProjectSettings};
 use vidra_ir::scene::{Scene, SceneId};
 
 use std::collections::HashMap;
+use std::io::Read;
+use std::process::{Command, Stdio};
 
 /// Compiles a VidraScript AST into a Vidra IR Project.
 pub struct Compiler {
@@ -53,6 +55,7 @@ impl Compiler {
                 "image" => vidra_ir::asset::AssetType::Image,
                 "video" => vidra_ir::asset::AssetType::Video,
                 "audio" => vidra_ir::asset::AssetType::Audio,
+                "lut" => vidra_ir::asset::AssetType::Lut,
                 _ => continue,
             };
             project.assets.register(vidra_ir::asset::Asset::new(
@@ -154,7 +157,7 @@ impl Compiler {
                     
                     for anim_node in &animations {
                         if let PropertyNode::Animation { property, args, .. } = anim_node {
-                            let mut anims = Self::compile_animation(property, args, global_env)?;
+                            let anims = Self::compile_animation(property, args, global_env)?;
                             for mut anim in anims {
                                 let existing_delay = anim.delay.as_seconds();
                                 anim.delay = vidra_core::Duration::from_seconds(existing_delay + total_delay_offset);
@@ -281,16 +284,49 @@ impl Compiler {
                                     layer.effects.push(vidra_core::types::LayerEffect::Blur(radius));
                                 }
                                 "grayscale" => {
-                                    let intensity = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(1.0) } else { 1.0 };
-                                    layer.effects.push(vidra_core::types::LayerEffect::Grayscale(intensity));
+                                    let intensity_val = if args.len() > 1 { Self::value_to_f64(&args[1]) } else { Ok(1.0) };
+                                    if let Ok(intensity) = intensity_val {
+                                        let src = format!(
+                                            "@effect __vidra_grayscale() {{\n    let c = source() -> grayscale({})\n    c\n}}\n",
+                                            intensity
+                                        );
+                                        match vidra_fx::compile(&src) {
+                                            Ok(wgsl) => layer.effects.push(vidra_core::types::LayerEffect::CustomShader { wgsl_source: wgsl }),
+                                            Err(_) => layer.effects.push(vidra_core::types::LayerEffect::Grayscale(intensity)),
+                                        }
+                                    } else {
+                                        layer.effects.push(vidra_core::types::LayerEffect::Grayscale(1.0));
+                                    }
                                 }
                                 "invert" => {
-                                    let intensity = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(1.0) } else { 1.0 };
-                                    layer.effects.push(vidra_core::types::LayerEffect::Invert(intensity));
+                                    let intensity_val = if args.len() > 1 { Self::value_to_f64(&args[1]) } else { Ok(1.0) };
+                                    if let Ok(intensity) = intensity_val {
+                                        let src = format!(
+                                            "@effect __vidra_invert() {{\n    let c = source() -> invert({})\n    c\n}}\n",
+                                            intensity
+                                        );
+                                        match vidra_fx::compile(&src) {
+                                            Ok(wgsl) => layer.effects.push(vidra_core::types::LayerEffect::CustomShader { wgsl_source: wgsl }),
+                                            Err(_) => layer.effects.push(vidra_core::types::LayerEffect::Invert(intensity)),
+                                        }
+                                    } else {
+                                        layer.effects.push(vidra_core::types::LayerEffect::Invert(1.0));
+                                    }
                                 }
                                 "brightness" => {
-                                    let amount = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(1.0) } else { 1.0 };
-                                    layer.effects.push(vidra_core::types::LayerEffect::Brightness(amount));
+                                    let amount_val = if args.len() > 1 { Self::value_to_f64(&args[1]) } else { Ok(1.0) };
+                                    if let Ok(amount) = amount_val {
+                                        let src = format!(
+                                            "@effect __vidra_brightness() {{\n    let c = source() -> brightness({})\n    c\n}}\n",
+                                            amount
+                                        );
+                                        match vidra_fx::compile(&src) {
+                                            Ok(wgsl) => layer.effects.push(vidra_core::types::LayerEffect::CustomShader { wgsl_source: wgsl }),
+                                            Err(_) => layer.effects.push(vidra_core::types::LayerEffect::Brightness(amount)),
+                                        }
+                                    } else {
+                                        layer.effects.push(vidra_core::types::LayerEffect::Brightness(1.0));
+                                    }
                                 }
                                 "contrast" => {
                                     let amount = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(1.0) } else { 1.0 };
@@ -307,6 +343,45 @@ impl Compiler {
                                 "vignette" => {
                                     let amount = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(1.0) } else { 1.0 };
                                     layer.effects.push(vidra_core::types::LayerEffect::Vignette(amount));
+                                }
+                                "removeBackground" | "remove_background" | "remove-bg" => {
+                                    layer
+                                        .effects
+                                        .push(vidra_core::types::LayerEffect::RemoveBackground);
+                                }
+                                "lut" | "LUT" => {
+                                    if args.len() < 2 {
+                                        tracing::warn!("effect(lut, ...) requires a path or asset id");
+                                    } else {
+                                        let lut_ref = if let ValueNode::Identifier(id) = &args[1] {
+                                            env.get(id).unwrap_or(&args[1])
+                                        } else {
+                                            &args[1]
+                                        };
+                                        let lut_str = Self::value_to_string(lut_ref).unwrap_or_default();
+
+                                        let lut_path = project
+                                            .assets
+                                            .get(&vidra_ir::asset::AssetId::new(lut_str.clone()))
+                                            .map(|a| a.path.to_string_lossy().to_string())
+                                            .unwrap_or(lut_str);
+
+                                        let intensity = if args.len() > 2 {
+                                            let iv = if let ValueNode::Identifier(id) = &args[2] {
+                                                env.get(id).unwrap_or(&args[2])
+                                            } else {
+                                                &args[2]
+                                            };
+                                            Self::value_to_f64(iv).unwrap_or(1.0)
+                                        } else {
+                                            1.0
+                                        };
+
+                                        layer.effects.push(vidra_core::types::LayerEffect::Lut {
+                                            path: lut_path,
+                                            intensity,
+                                        });
+                                    }
                                 }
                                 _ => tracing::warn!("Unknown effect: {}", effect_type),
                             }
@@ -394,6 +469,57 @@ impl Compiler {
                             _ => vidra_ir::layout::FillAxis::Both,
                         };
                         layer.constraints.push(vidra_ir::layout::LayoutConstraint::Fill { axis, padding });
+                    } else if name == "scale" {
+                        // scale(s) or scale(sx, sy)
+                        if !args.is_empty() {
+                            let ax = if let ValueNode::Identifier(id) = &args[0] {
+                                env.get(id).unwrap_or(&args[0])
+                            } else {
+                                &args[0]
+                            };
+                            let sx = Self::value_to_f64(ax).unwrap_or(1.0);
+                            let sy = if args.len() > 1 {
+                                let ay = if let ValueNode::Identifier(id) = &args[1] {
+                                    env.get(id).unwrap_or(&args[1])
+                                } else {
+                                    &args[1]
+                                };
+                                Self::value_to_f64(ay).unwrap_or(sx)
+                            } else {
+                                sx
+                            };
+                            layer.transform.scale.x = sx;
+                            layer.transform.scale.y = sy;
+                        }
+                    } else if name == "rotation" {
+                        if let Some(v) = args.get(0) {
+                            layer.transform.rotation = Self::value_to_f64(v).unwrap_or(0.0);
+                        }
+                    } else if name == "opacity" {
+                        if let Some(v) = args.get(0) {
+                            layer.transform.opacity = Self::value_to_f64(v).unwrap_or(1.0);
+                        }
+                    } else if name == "anchor" {
+                        if args.len() >= 2 {
+                            layer.transform.anchor.x = Self::value_to_f64(&args[0]).unwrap_or(0.5);
+                            layer.transform.anchor.y = Self::value_to_f64(&args[1]).unwrap_or(0.5);
+                        }
+                    } else if name == "translateZ" || name == "translate_z" {
+                        if let Some(v) = args.get(0) {
+                            layer.transform.translate_z = Self::value_to_f64(v).unwrap_or(0.0);
+                        }
+                    } else if name == "rotateX" || name == "rotate_x" {
+                        if let Some(v) = args.get(0) {
+                            layer.transform.rotate_x = Self::value_to_f64(v).unwrap_or(0.0);
+                        }
+                    } else if name == "rotateY" || name == "rotate_y" {
+                        if let Some(v) = args.get(0) {
+                            layer.transform.rotate_y = Self::value_to_f64(v).unwrap_or(0.0);
+                        }
+                    } else if name == "perspective" {
+                        if let Some(v) = args.get(0) {
+                            layer.transform.perspective = Self::value_to_f64(v).unwrap_or(0.0);
+                        }
                     } else {
                         // Handle generic function calls — extensible for enter/exit/etc.
                         tracing::debug!("unhandled function call: {}", name);
@@ -416,7 +542,7 @@ impl Compiler {
                                 current_time += Self::value_to_f64(duration).unwrap_or(0.0);
                             }
                             PropertyNode::Animation { property, args, .. } => {
-                                let mut anims = Self::compile_animation(property, args, env)?;
+                                let anims = Self::compile_animation(property, args, env)?;
                                 let mut max_dur = 0.0;
                                 for mut anim in anims {
                                     let delay = anim.delay.as_seconds() + current_time;
@@ -433,6 +559,28 @@ impl Compiler {
                 }
                 PropertyNode::Wait { .. } => {
                     // no-op if outside of a sequence
+                }
+                PropertyNode::OnEvent { event, actions, .. } => {
+                    let event_ty = match event.as_str() {
+                        "click" => vidra_ir::layer::LayerEventType::Click,
+                        other => {
+                            tracing::warn!("unsupported @on event '{}'", other);
+                            continue;
+                        }
+                    };
+
+                    let compiled_actions = actions
+                        .iter()
+                        .map(|a| vidra_ir::layer::LayerAction::SetVar {
+                            name: a.name.clone(),
+                            expr: a.expr.clone(),
+                        })
+                        .collect::<Vec<_>>();
+
+                    layer.events.push(vidra_ir::layer::LayerEventHandler {
+                        event: event_ty,
+                        actions: compiled_actions,
+                    });
                 }
             }
         }
@@ -565,6 +713,53 @@ impl Compiler {
                 
                 Ok(LayerContent::Image { asset_id })
             }
+            LayerContentNode::Spritesheet { path, args } => {
+                let path_val = if let ValueNode::Identifier(id) = path {
+                    env.get(id).unwrap_or(path)
+                } else {
+                    path
+                };
+                let resolved_path = Self::value_to_string(path_val)?;
+                let asset_id = AssetId::new(resolved_path.clone());
+
+                if project.assets.get(&asset_id).is_none() {
+                    project
+                        .assets
+                        .register(Asset::new(asset_id.clone(), AssetType::Image, resolved_path));
+                }
+
+                let mut frame_width = 64.0;
+                let mut frame_height = 64.0;
+                let mut fps = 12.0;
+                let mut start_frame = 0.0;
+                let mut frame_count: Option<u32> = None;
+
+                for arg in args {
+                    let val = match &arg.value {
+                        ValueNode::Identifier(id) => env.get(id).unwrap_or(&arg.value),
+                        _ => &arg.value,
+                    };
+                    match arg.name.as_str() {
+                        "frameWidth" | "frame_width" => frame_width = Self::value_to_f64(val)?,
+                        "frameHeight" | "frame_height" => frame_height = Self::value_to_f64(val)?,
+                        "fps" => fps = Self::value_to_f64(val)?,
+                        "start" | "startFrame" | "start_frame" => start_frame = Self::value_to_f64(val)?,
+                        "frameCount" | "frame_count" => {
+                            frame_count = Some(Self::value_to_f64(val)?.max(0.0) as u32)
+                        }
+                        _ => {}
+                    }
+                }
+
+                Ok(LayerContent::Spritesheet {
+                    asset_id,
+                    frame_width: frame_width.max(1.0) as u32,
+                    frame_height: frame_height.max(1.0) as u32,
+                    fps,
+                    start_frame: start_frame.max(0.0) as u32,
+                    frame_count,
+                })
+            }
             LayerContentNode::Video { path, args } => {
                 let path_val = if let ValueNode::Identifier(id) = path {
                     env.get(id).unwrap_or(path)
@@ -615,6 +810,8 @@ impl Compiler {
                 let mut trim_start = vidra_core::Duration::zero();
                 let mut trim_end = None;
                 let mut volume = 1.0;
+                let mut role: Option<String> = None;
+                let mut duck: Option<f64> = None;
 
                 for arg in args {
                     let val = match &arg.value {
@@ -625,6 +822,8 @@ impl Compiler {
                         "trim_start" => trim_start = vidra_core::Duration::from_seconds(Self::value_to_f64(val)?),
                         "trim_end" => trim_end = Some(vidra_core::Duration::from_seconds(Self::value_to_f64(val)?)),
                         "volume" => volume = Self::value_to_f64(val)?,
+                        "role" => role = Some(Self::value_to_string(val)?),
+                        "duck" => duck = Some(Self::value_to_f64(val)?),
                         _ => {}
                     }
                 }
@@ -634,6 +833,45 @@ impl Compiler {
                     trim_start,
                     trim_end,
                     volume,
+                    role,
+                    duck,
+                })
+            }
+            LayerContentNode::Waveform { audio_source, args } => {
+                let path_str = Self::value_to_string(if let ValueNode::Identifier(id) = audio_source {
+                    env.get(id).unwrap_or(audio_source)
+                } else { audio_source })?;
+                let asset_id = AssetId::new(path_str.clone());
+
+                if project.assets.get(&asset_id).is_none() {
+                    project.assets.register(Asset::new(
+                        asset_id.clone(),
+                        AssetType::Audio,
+                        path_str,
+                    ));
+                }
+
+                let mut width = 1024.0;
+                let mut height = 256.0;
+                let mut color = Color::WHITE;
+                for arg in args {
+                    let val = match &arg.value {
+                        ValueNode::Identifier(id) => env.get(id).unwrap_or(&arg.value),
+                        _ => &arg.value,
+                    };
+                    match arg.name.as_str() {
+                        "width" => width = Self::value_to_f64(val)?,
+                        "height" => height = Self::value_to_f64(val)?,
+                        "color" => color = Self::value_to_color(val)?,
+                        _ => {}
+                    }
+                }
+
+                Ok(LayerContent::Waveform {
+                    asset_id,
+                    width: width.max(1.0) as u32,
+                    height: height.max(1.0) as u32,
+                    color,
                 })
             }
             LayerContentNode::TTS { text, voice, args } => {
@@ -655,6 +893,7 @@ impl Compiler {
                     text: resolved_text,
                     voice: resolved_voice,
                     volume,
+                    audio_asset_id: None,
                 })
             }
             LayerContentNode::AutoCaption { audio_source, args } => {
@@ -662,6 +901,16 @@ impl Compiler {
                     env.get(id).unwrap_or(audio_source)
                 } else { audio_source })?;
                 let asset_id = AssetId::new(path_str);
+
+                // Ensure audio source is registered as an Audio asset so downstream tooling
+                // (AI materializers, encoders) can resolve it consistently.
+                if project.assets.get(&asset_id).is_none() {
+                    project.assets.register(Asset::new(
+                        asset_id.clone(),
+                        AssetType::Audio,
+                        asset_id.0.clone(),
+                    ));
+                }
                 
                 let mut font_family = "Inter".to_string();
                 let mut font_size = 48.0;
@@ -777,6 +1026,10 @@ impl Compiler {
             "scale.y" | "scaleY" => Some(AnimatableProperty::ScaleY),
             "scale" => Some(AnimatableProperty::ScaleX), // convenience
             "rotation" => Some(AnimatableProperty::Rotation),
+            "translateZ" | "translate_z" => Some(AnimatableProperty::TranslateZ),
+            "rotateX" | "rotate_x" => Some(AnimatableProperty::RotateX),
+            "rotateY" | "rotate_y" => Some(AnimatableProperty::RotateY),
+            "perspective" => Some(AnimatableProperty::Perspective),
             "position" => None, // Special case for paths
             "color" => Some(AnimatableProperty::ColorR), // Pseudo-property, handled specially
             "fontSize" => Some(AnimatableProperty::FontSize),
@@ -810,6 +1063,7 @@ impl Compiler {
         let mut velocity = None;
         let mut expr = None;
         let mut path = None;
+        let mut audio_source = None;
 
         for arg in args {
             let val = env.get(&arg.name).unwrap_or(&arg.value);
@@ -842,6 +1096,7 @@ impl Compiler {
                 "damping" => damping = Some(Self::value_to_f64(resolved_val)?),
                 "velocity" | "initialVelocity" => velocity = Some(Self::value_to_f64(resolved_val)?),
                 "expr" | "expression" => expr = Some(Self::value_to_string(resolved_val)?),
+                "audio" => audio_source = Some(Self::value_to_string(resolved_val)?),
                 "path" => path = Some(Self::value_to_string(resolved_val)?),
                 _ => {}
             }
@@ -879,11 +1134,35 @@ impl Compiler {
             anims.push(ax);
             anims.push(ay);
         } else if let Some(e) = expr {
-            let mut a = crate::advanced_anim::compile_expression(animatable.unwrap(), &e, duration);
-            if delay > 0.0 {
-                a = a.with_delay(vidra_core::Duration::from_seconds(delay));
+            let (rewritten_interactive, uses_mouse) = rewrite_interactive_state_expr(&e);
+            if uses_mouse {
+                if rewritten_interactive.contains("audio.amplitude") {
+                    return Err(VidraError::Compile(
+                        "interactive expressions with audio.amplitude are not supported yet".to_string(),
+                    ));
+                }
+
+                let mut a = Animation::new(animatable.unwrap());
+                a.expr = Some(rewritten_interactive);
+                a.expr_duration = Some(vidra_core::Duration::from_seconds(duration));
+                if delay > 0.0 {
+                    a = a.with_delay(vidra_core::Duration::from_seconds(delay));
+                }
+                anims.push(a);
+            } else {
+                let (rewritten, amp_samples) =
+                    Self::prepare_audio_expression(&rewritten_interactive, audio_source.as_deref(), duration)?;
+                let mut a = crate::advanced_anim::compile_expression(
+                    animatable.unwrap(),
+                    &rewritten,
+                    duration,
+                    amp_samples.as_deref(),
+                );
+                if delay > 0.0 {
+                    a = a.with_delay(vidra_core::Duration::from_seconds(delay));
+                }
+                anims.push(a);
             }
-            anims.push(a);
         } else if let Some(s) = stiffness {
             let d = damping.unwrap_or(10.0);
             let v = velocity.unwrap_or(0.0);
@@ -907,6 +1186,38 @@ impl Compiler {
         }
 
         Ok(anims)
+    }
+
+    fn prepare_audio_expression(
+        expr: &str,
+        audio_source: Option<&str>,
+        duration: f64,
+    ) -> Result<(String, Option<Vec<f64>>), VidraError> {
+        // Only do extra work if the expression references audio amplitude.
+        if !expr.contains("audio.amplitude") {
+            return Ok((expr.to_string(), None));
+        }
+
+        let rewritten = rewrite_audio_amplitude_expr(expr);
+
+        // Determine audio path: prefer explicit `audio:` arg; else try to extract audio.amplitude("path").
+        let audio_path = audio_source
+            .map(|s| s.to_string())
+            .or_else(|| extract_audio_amplitude_path(expr));
+
+        let Some(audio_path) = audio_path else {
+            // No audio file known; keep audio_amp=0.0.
+            return Ok((rewritten, None));
+        };
+
+        // Best-effort: if ffmpeg isn't available, fall back to 0.
+        if !is_ffmpeg_available() {
+            return Ok((rewritten, None));
+        }
+
+        let samples = compute_audio_rms_envelope(&audio_path, duration)
+            .map_err(|e| VidraError::Compile(format!("failed to compute audio amplitude: {}", e)))?;
+        Ok((rewritten, Some(samples)))
     }
 
     // --- Value converters ---
@@ -1000,6 +1311,159 @@ impl Compiler {
                 name
             ))),
         }
+    }
+
+}
+
+fn rewrite_interactive_state_expr(expr: &str) -> (String, bool) {
+    // evalexpr variable names cannot contain '@' or '.', so we rewrite.
+    let rewritten = expr
+        .replace("@mouse.x", "mouse_x")
+        .replace("@mouse.y", "mouse_y")
+        .replace("mouse.x", "mouse_x")
+        .replace("mouse.y", "mouse_y")
+        .replace("@t", "t")
+        .replace("@p", "p")
+        .replace("@T", "T");
+
+    let uses_mouse = rewritten.contains("mouse_x") || rewritten.contains("mouse_y");
+    (rewritten, uses_mouse)
+}
+
+fn rewrite_audio_amplitude_expr(expr: &str) -> String {
+    // Replace audio.amplitude("...") or audio.amplitude(...) with audio_amp.
+    // This is a simple rewrite so evalexpr can use a normal variable name.
+    let mut out = String::new();
+    let mut chars = expr.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == 'a' {
+            // Quick check for substring.
+            let mut lookahead = String::new();
+            lookahead.push(c);
+            for _ in 0..("udio.amplitude".len()) {
+                if let Some(n) = chars.peek().copied() {
+                    lookahead.push(n);
+                    chars.next();
+                }
+            }
+            if lookahead == "audio.amplitude" {
+                // If next is '(', consume until matching ')'.
+                if chars.peek() == Some(&'(') {
+                    let mut depth = 0i32;
+                    while let Some(n) = chars.next() {
+                        if n == '(' {
+                            depth += 1;
+                        } else if n == ')' {
+                            depth -= 1;
+                            if depth <= 0 {
+                                break;
+                            }
+                        }
+                    }
+                }
+                out.push_str("audio_amp");
+                continue;
+            }
+            out.push_str(&lookahead);
+            continue;
+        }
+        out.push(c);
+    }
+    out
+}
+
+fn extract_audio_amplitude_path(expr: &str) -> Option<String> {
+    // Look for audio.amplitude("path") and return path.
+    let needle = "audio.amplitude(\"";
+    let start = expr.find(needle)? + needle.len();
+    let rest = &expr[start..];
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
+}
+
+fn is_ffmpeg_available() -> bool {
+    Command::new("ffmpeg")
+        .arg("-version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+fn compute_audio_rms_envelope(audio_path: &str, duration: f64) -> Result<Vec<f64>, Box<dyn std::error::Error>> {
+    // Decode to mono s16le at low sample rate to keep memory reasonable.
+    let sample_rate: f64 = 8000.0;
+    let fps: f64 = 60.0;
+    let dt: f64 = 1.0 / fps;
+
+    let mut child = Command::new("ffmpeg")
+        .args(["-v", "error", "-i"])
+        .arg(audio_path)
+        .args(["-vn", "-ac", "1", "-ar", "8000", "-f", "s16le", "-"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let mut stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "failed to open ffmpeg stdout")?;
+    let mut pcm = Vec::new();
+    stdout.read_to_end(&mut pcm)?;
+
+    let status = child.wait()?;
+    if !status.success() {
+        return Err("ffmpeg decode failed".into());
+    }
+
+    let sample_count = pcm.len() / 2;
+    let mut samples = Vec::with_capacity(sample_count);
+    for i in 0..sample_count {
+        let lo = pcm[i * 2] as u16;
+        let hi = (pcm[i * 2 + 1] as u16) << 8;
+        let v = (lo | hi) as i16;
+        samples.push(v as f64 / 32768.0);
+    }
+
+    let window = (sample_rate / fps).round().max(1.0) as usize;
+    let frame_count = (duration / dt).ceil() as usize + 1;
+    let mut out = Vec::with_capacity(frame_count);
+
+    for frame_idx in 0..frame_count {
+        let start = frame_idx * window;
+        if start >= samples.len() {
+            out.push(0.0);
+            continue;
+        }
+        let end = (start + window).min(samples.len());
+        let mut sum_sq = 0.0;
+        for &s in &samples[start..end] {
+            sum_sq += s * s;
+        }
+        let mean = sum_sq / (end - start).max(1) as f64;
+        let rms = mean.sqrt().clamp(0.0, 1.0);
+        out.push(rms);
+    }
+
+    Ok(out)
+}
+
+#[cfg(test)]
+mod audio_expr_tests {
+    use super::*;
+
+    #[test]
+    fn rewrite_replaces_audio_amplitude_calls() {
+        let src = "1 + audio.amplitude(\"assets/a.mp3\") * 2";
+        let out = rewrite_audio_amplitude_expr(src);
+        assert_eq!(out, "1 + audio_amp * 2");
+    }
+
+    #[test]
+    fn extract_path_from_audio_amplitude() {
+        let src = "audio.amplitude(\"assets/a.mp3\")";
+        assert_eq!(extract_audio_amplitude_path(src).as_deref(), Some("assets/a.mp3"));
     }
 }
 
@@ -1412,6 +1876,9 @@ mod tests {
                     layer("expr_layer") {
                         animation(y, expr: "t * 50.0", duration: 2.0)
                     }
+                    layer("mouse_expr_layer") {
+                        animation(x, expr: "@mouse.x * 2.0", duration: 2.0)
+                    }
                     layer("path_layer") {
                         animation(position, path: "M0 0 L100 100", duration: 2.0)
                     }
@@ -1429,7 +1896,13 @@ mod tests {
         assert_eq!(l2.animations.len(), 1);
         assert!(l2.animations[0].keyframes.len() > 2);
 
-        let l3 = &s.layers[2];
+        let l_mouse = &s.layers[2];
+        assert_eq!(l_mouse.animations.len(), 1);
+        assert!(l_mouse.animations[0].keyframes.is_empty());
+        assert!(l_mouse.animations[0].expr.is_some());
+        assert!(l_mouse.animations[0].expr_duration.is_some());
+
+        let l3 = &s.layers[3];
         assert_eq!(l3.animations.len(), 2);
     }
 
@@ -1543,5 +2016,71 @@ mod tests {
         // Title pinned at top=100 in both
         assert!((r_16_9[0].1.y - 100.0).abs() < 0.01);
         assert!((r_9_16[0].1.y - 100.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_compile_on_click_handler() {
+        let project = compile(
+            r#"
+            project(640, 360, 30) {
+                scene("main", 1s) {
+                    layer("btn") {
+                        solid(#ffffff)
+                        position(10, 20)
+                        @on click {
+                            set count = count + 1
+                        }
+                    }
+                }
+            }
+        "#,
+        );
+
+        let layer = &project.scenes[0].layers[0];
+        assert_eq!(layer.id.0, "btn");
+        assert_eq!(layer.events.len(), 1);
+        assert!(matches!(layer.events[0].event, vidra_ir::layer::LayerEventType::Click));
+        assert_eq!(layer.events[0].actions.len(), 1);
+        match &layer.events[0].actions[0] {
+            vidra_ir::layer::LayerAction::SetVar { name, expr } => {
+                assert_eq!(name, "count");
+                assert!(expr.contains("count"));
+            }
+        }
+    }
+
+    #[test]
+    fn test_compile_spritesheet_layer() {
+        let project = compile(
+            r#"
+            project(640, 360, 30) {
+                scene("main", 1s) {
+                    layer("fx") {
+                        spritesheet("assets/sheet.png", frameWidth: 32, frameHeight: 16, fps: 10, start: 2, frameCount: 8)
+                    }
+                }
+            }
+        "#,
+        );
+
+        let layer = &project.scenes[0].layers[0];
+        match &layer.content {
+            vidra_ir::layer::LayerContent::Spritesheet {
+                asset_id,
+                frame_width,
+                frame_height,
+                fps,
+                start_frame,
+                frame_count,
+            } => {
+                assert_eq!(asset_id.0, "assets/sheet.png");
+                assert_eq!(*frame_width, 32);
+                assert_eq!(*frame_height, 16);
+                assert!((*fps - 10.0).abs() < 1e-6);
+                assert_eq!(*start_frame, 2);
+                assert_eq!(*frame_count, Some(8));
+            }
+            other => panic!("expected Spritesheet content, got {:?}", other),
+        }
     }
 }

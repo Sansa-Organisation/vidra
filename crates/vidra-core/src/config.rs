@@ -92,6 +92,139 @@ impl Default for AuthConfig {
     }
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct OpenAiProviderConfig {
+    /// API base URL (supports OpenAI-compatible providers).
+    /// Examples:
+    /// - https://api.openai.com
+    /// - https://api.groq.com/openai
+    #[serde(default)]
+    pub base_url: String,
+    /// Environment variable that contains the API key.
+    /// Default: OPENAI_API_KEY
+    #[serde(default)]
+    pub api_key_env: String,
+    /// Text-to-speech model name.
+    #[serde(default)]
+    pub tts_model: String,
+    /// Audio format requested from the provider (mp3|wav).
+    #[serde(default)]
+    pub tts_format: String,
+    /// Audio transcription model (Whisper-compatible).
+    #[serde(default)]
+    pub transcribe_model: String,
+}
+
+impl Default for OpenAiProviderConfig {
+    fn default() -> Self {
+        Self {
+            base_url: "https://api.openai.com".to_string(),
+            api_key_env: "OPENAI_API_KEY".to_string(),
+            tts_model: "gpt-4o-mini-tts".to_string(),
+            tts_format: "mp3".to_string(),
+            transcribe_model: "whisper-1".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ElevenLabsProviderConfig {
+    #[serde(default)]
+    pub base_url: String,
+    /// Environment variable that contains the API key.
+    /// Default: ELEVENLABS_API_KEY
+    #[serde(default)]
+    pub api_key_env: String,
+}
+
+impl Default for ElevenLabsProviderConfig {
+    fn default() -> Self {
+        Self {
+            base_url: "https://api.elevenlabs.io".to_string(),
+            api_key_env: "ELEVENLABS_API_KEY".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RemoveBgProviderConfig {
+    #[serde(default)]
+    pub base_url: String,
+    /// Environment variable that contains the API key.
+    /// Default: REMOVEBG_API_KEY
+    #[serde(default)]
+    pub api_key_env: String,
+}
+
+impl Default for RemoveBgProviderConfig {
+    fn default() -> Self {
+        Self {
+            base_url: "https://api.remove.bg".to_string(),
+            api_key_env: "REMOVEBG_API_KEY".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GeminiProviderConfig {
+    #[serde(default)]
+    pub base_url: String,
+    /// Environment variable that contains the API key.
+    /// Default: GEMINI_API_KEY
+    #[serde(default)]
+    pub api_key_env: String,
+    /// Gemini model name (without the `models/` prefix).
+    #[serde(default)]
+    pub model: String,
+    /// Optional: post-process caption segments (punctuation/casing) after transcription.
+    ///
+    /// When enabled, Vidra will call Gemini during `vidra render` and cache the refined
+    /// output under the AI cache directory.
+    #[serde(default)]
+    pub caption_refine: bool,
+}
+
+impl Default for GeminiProviderConfig {
+    fn default() -> Self {
+        Self {
+            base_url: "https://generativelanguage.googleapis.com".to_string(),
+            api_key_env: "GEMINI_API_KEY".to_string(),
+            model: "gemini-1.5-flash".to_string(),
+            caption_refine: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AiConfig {
+    /// Master enable switch for AI materialization (TTS, captions, background removal).
+    pub enabled: bool,
+    /// Optional override for where AI outputs are cached.
+    /// If unset, Vidra uses `resources.cache_dir`.
+    pub cache_dir: Option<String>,
+    #[serde(default)]
+    pub openai: OpenAiProviderConfig,
+    #[serde(default)]
+    pub elevenlabs: ElevenLabsProviderConfig,
+    #[serde(default)]
+    pub removebg: RemoveBgProviderConfig,
+    #[serde(default)]
+    pub gemini: GeminiProviderConfig,
+}
+
+impl Default for AiConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            cache_dir: None,
+            openai: OpenAiProviderConfig::default(),
+            elevenlabs: ElevenLabsProviderConfig::default(),
+            removebg: RemoveBgProviderConfig::default(),
+            gemini: GeminiProviderConfig::default(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct VidraConfig {
     pub project: ProjectConfig,
@@ -107,6 +240,8 @@ pub struct VidraConfig {
     pub resources: ResourcesConfig,
     #[serde(default)]
     pub auth: AuthConfig,
+    #[serde(default)]
+    pub ai: AiConfig,
 }
 
 impl VidraConfig {

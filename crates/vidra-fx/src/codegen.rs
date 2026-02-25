@@ -163,6 +163,28 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 let factor = arg_strs.get(1).unwrap_or(&"1.0".to_string()).clone();
                 Ok(format!("({} * vec4<f32>({}, {}, {}, 1.0))", input, factor, factor, factor))
             }
+            "grayscale" => {
+                let input = arg_strs
+                    .get(0)
+                    .unwrap_or(&"vec4<f32>(0.0)".to_string())
+                    .clone();
+                let intensity = arg_strs.get(1).unwrap_or(&"1.0".to_string()).clone();
+                Ok(format!(
+                    "vec4<f32>(mix(({}).rgb, vec3<f32>(dot(({}).rgb, vec3<f32>(0.299, 0.587, 0.114))), {}), ({}).a)",
+                    input, input, intensity, input
+                ))
+            }
+            "invert" => {
+                let input = arg_strs
+                    .get(0)
+                    .unwrap_or(&"vec4<f32>(0.0)".to_string())
+                    .clone();
+                let intensity = arg_strs.get(1).unwrap_or(&"1.0".to_string()).clone();
+                Ok(format!(
+                    "vec4<f32>(mix(({}).rgb, (vec3<f32>(1.0) - ({}).rgb), {}), ({}).a)",
+                    input, input, intensity, input
+                ))
+            }
             "tint" => {
                 let input = arg_strs.get(0).unwrap_or(&"vec4<f32>(0.0)".to_string()).clone();
                 let color = arg_strs.get(1).unwrap_or(&"vec4<f32>(1.0)".to_string()).clone();

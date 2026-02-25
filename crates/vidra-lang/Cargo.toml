@@ -9,6 +9,7 @@ license.workspace = true
 [dependencies]
 vidra-core = { workspace = true }
 vidra-ir = { workspace = true }
+vidra-fx = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 fasteval = "0.2.4"

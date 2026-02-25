@@ -56,24 +56,43 @@ Transforming Vidra from a tool into a platform.
 ## Phase 4 — Frontier 
 Next-generation differentiators for the video engine.
 
-- [ ] **AI-Native Video Capabilities**
-  - [ ] AI Background Removal (`effect(removeBackground)`).
-  - [ ] AutoCaptions (via Whisper inference model).
-  - [ ] TTS (Text-to-Speech) generation layer.
-  - [ ] AI Style Transfer and AI Object Tracking.
-  - [ ] Text-to-Audio / AI Music generation integration.
-- [ ] **Advanced Audio Features**
-  - [ ] Waveform visualization layers.
-  - [ ] Audio-Reactive animation driver (`1 + audio.amplitude`).
-  - [ ] Audio ducking and mixer timeline controls.
-- [ ] **Live & Interactive Mode**
-  - [ ] Evaluate state like `@mouse.x` and `@mouse.y`.
-  - [ ] Reactive elements (`@on click { set count = count + 1 }`).
-- [ ] **2.5D Layer Transforms**
-  - [ ] Add perspective GPU projection (translateZ, rotateY, rotateX) for planar layer warping.
-- [ ] **Asset Management Enhancements**
-  - [ ] Remote asset fetching & local caching (`@assets { fetch(...) }`).
-  - [ ] LUT pipeline for cinematic color grading.
-  - [ ] Spritesheet decoding logic for UI / VFX animations.
-- [ ] **Collaborative Architecture**
-  - [ ] Flesh out existing CRDT module for real-time multiplayer editing or branched undo workflows.
+- [x] **AI-Native Video Capabilities (Native + WASM)**
+  - [x] **AI Provider Layer (shared)**
+    - [x] Deterministic cache keys + local cache layout for AI outputs (audio, captions, masks).
+    - [x] Provider config in `vidra.config.toml` + env var support (keys never stored in repo).
+    - [x] OpenAI-compatible HTTP clients (base_url override for OpenAI/Groq/other compatibles).
+    - [x] Gemini provider (HTTP) for captioning / image tasks.
+    - [x] ElevenLabs provider (HTTP) for high-quality TTS.
+    - [x] WASM/JS bridge plan: API calls in JS (React Native/Expo/web) with the same cache keys.
+  - [x] **TTS (Text-to-Speech)**
+    - [x] Materialize `LayerContent::TTS` → muxed audio track in exported video.
+    - [x] Support OpenAI TTS + ElevenLabs as providers.
+    - [x] Cache & reuse identical TTS across batch renders (`--data`).
+  - [x] **AutoCaptions (Whisper / provider-backed)**
+    - [x] Materialize `LayerContent::AutoCaption` into timed text layers (word/segment timestamps).
+    - [x] OpenAI Whisper API (or compatible) transcription with `verbose_json` timestamps.
+    - [x] VTT/JSON caption asset caching + deterministic IDs.
+    - [x] WASM/JS runtime: captions generation in web/RN and feed IR patches to renderer.
+  - [x] **AI Background Removal**
+    - [x] Add `removeBackground` effect (image-first) and a deterministic cached alpha-mask output.
+    - [x] Provider-backed implementation (e.g. remove.bg / Clipdrop / Gemini) + local fallbacks.
+    - [x] WASM path: remote API call returns PNG-with-alpha (or mask) for compositing.
+  - [x] **Plugin migration**
+    - [x] Migrate 2–3 hardcoded effects into VidraFX DSL to validate the new plugin pipeline.
+- [x] **Advanced Audio Features**
+  - [x] Waveform visualization layers.
+  - [x] Audio-Reactive animation driver (`1 + audio.amplitude`).
+  - [x] Audio ducking and mixer timeline controls.
+- [x] **Live & Interactive Mode**
+  - [x] WASM API: set/get mouse position.
+  - [x] Evaluate state like `@mouse.x` and `@mouse.y`.
+  - [x] Reactive elements (`@on click { set count = count + 1 }`).
+- [x] **2.5D Layer Transforms**
+  - [x] Add perspective GPU projection (translateZ, rotateY, rotateX) for planar layer warping.
+  - [x] CPU homography fallback for 2.5D (native + WASM) to validate semantics end-to-end.
+- [x] **Asset Management Enhancements**
+  - [x] Remote asset fetching & local caching (http/https asset paths cached under `resources.cache_dir`).
+  - [x] LUT pipeline for cinematic color grading.
+  - [x] Spritesheet decoding logic for UI / VFX animations.
+- [x] **Collaborative Architecture**
+  - [x] Flesh out existing CRDT module for real-time multiplayer editing or branched undo workflows.

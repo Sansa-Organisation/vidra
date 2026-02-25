@@ -163,11 +163,17 @@ impl Formatter {
             LayerContentNode::Image { path, args, .. } => {
                 self.format_content_func("image", path, args);
             }
+            LayerContentNode::Spritesheet { path, args } => {
+                self.format_content_func("spritesheet", path, args);
+            }
             LayerContentNode::Video { path, args, .. } => {
                 self.format_content_func("video", path, args);
             }
             LayerContentNode::Audio { path, args, .. } => {
                 self.format_content_func("audio", path, args);
+            }
+            LayerContentNode::Waveform { audio_source, args } => {
+                self.format_content_func("waveform", audio_source, args);
             }
             LayerContentNode::Shape { shape_type, args, .. } => {
                 let type_ident = ValueNode::Identifier(shape_type.clone());
@@ -278,6 +284,16 @@ impl Formatter {
             }
             PropertyNode::Wait { duration, .. } => {
                 self.push_line(&format!("wait({})", self.format_value(duration)));
+            }
+            PropertyNode::OnEvent { event, actions, .. } => {
+                self.indent();
+                self.push(&format!("@on {} {{\n", event));
+                self.indent_level += 1;
+                for a in actions {
+                    self.push_line(&format!("set {} = {}", a.name, a.expr));
+                }
+                self.indent_level -= 1;
+                self.push_line("}");
             }
         }
     }

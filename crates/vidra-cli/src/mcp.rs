@@ -3,6 +3,37 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
+/// Duplicate the real stdout file descriptor and then redirect fd 1 (stdout)
+/// to fd 2 (stderr).  Returns an owned `std::fs::File` wrapping the duplicated
+/// fd so the MCP server can write JSON-RPC on the original stdout while every
+/// other `println!` / `print!` in the process goes to stderr.
+#[cfg(unix)]
+pub fn redirect_stdout_to_stderr() -> std::fs::File {
+    use std::os::unix::io::FromRawFd;
+    unsafe {
+        // dup(1) → new fd that points at the real stdout
+        let saved = libc::dup(1);
+        assert!(saved >= 0, "dup(1) failed");
+        // redirect fd 1 → fd 2 (stderr)
+        libc::dup2(2, 1);
+        std::fs::File::from_raw_fd(saved)
+    }
+}
+
+#[cfg(not(unix))]
+pub fn redirect_stdout_to_stderr() -> std::fs::File {
+    // On non-unix, fall back to regular stdout (best-effort).
+    // Windows MCP hosts typically use named pipes, not stdio.
+    let stdout = std::io::stdout();
+    // This is a fallback — it won't truly redirect, but it's the
+    // best we can do without platform-specific Windows HANDLEs.
+    unsafe {
+        use std::os::windows::io::{AsRawHandle, FromRawHandle};
+        let h = stdout.as_raw_handle();
+        std::fs::File::from_raw_handle(h)
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 struct JsonRpcRequest {
     jsonrpc: String,
@@ -40,9 +71,11 @@ struct ServerInfo {
     version: String,
 }
 
-pub async fn run_mcp_server() -> Result<()> {
+pub async fn run_mcp_server(saved_stdout: std::fs::File) -> Result<()> {
     let stdin = tokio::io::stdin();
-    let mut stdout = tokio::io::stdout();
+    // Use the saved (real) stdout fd for JSON-RPC output.  Regular stdout
+    // has already been redirected to stderr by redirect_stdout_to_stderr().
+    let mut stdout = tokio::io::BufWriter::new(tokio::fs::File::from_std(saved_stdout));
     let mut reader = BufReader::new(stdin).lines();
 
     tracing::info!("Starting MCP Server...");
@@ -114,7 +147,8 @@ async fn handle_request(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                         "type": "object",
                         "properties": {
                             "name": { "type": "string" },
-                            "duration_seconds": { "type": "number" }
+                            "duration_seconds": { "type": "number" },
+                            "project_file": { "type": "string", "default": "main.vidra" }
                         },
                         "required": ["name", "duration_seconds"]
                     }
@@ -138,7 +172,8 @@ async fn handle_request(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                         "properties": {
                             "scene_id": { "type": "string" },
                             "layer_path": { "type": "string" },
-                            "properties": { "type": "object" }
+                            "properties": { "type": "object" },
+                            "project_file": { "type": "string", "default": "main.vidra" }
                         },
                         "required": ["scene_id", "layer_path", "properties"]
                     }
@@ -150,7 +185,8 @@ async fn handle_request(req: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                         "type": "object",
                         "properties": {
                             "target_id": { "type": "string" },
-                            "style_props": { "type": "object" }
+                            "style_props": { "type": "object" },
+                            "project_file": { "type": "string", "default": "main.vidra" }
                         },
                         "required": ["target_id", "style_props"]
                     }
@@ -292,50 +328,178 @@ async fn execute_tool(name: &str, args: Value) -> String {
     match name {
         "vidra-create_project" => {
             let pd_name = args.get("name").and_then(|v| v.as_str()).unwrap_or("project");
-            format!("✅ Project '{}' created successfully.", pd_name)
+            let width = args.get("width").and_then(|v| v.as_u64()).unwrap_or(1920) as u32;
+            let height = args.get("height").and_then(|v| v.as_u64()).unwrap_or(1080) as u32;
+            let fps = args.get("fps").and_then(|v| v.as_u64()).unwrap_or(60) as u32;
+            match crate::mcp_tools::create_project(pd_name, width, height, fps) {
+                Ok(path) => format!("✅ Project '{}' created at {}", pd_name, path.display()),
+                Err(e) => format!("❌ Failed to create project '{}': {:#}", pd_name, e),
+            }
         }
         "vidra-add_scene" => {
             let scene_name = args.get("name").and_then(|v| v.as_str()).unwrap_or("scene");
-            format!("✅ Scene '{}' added.", scene_name)
+            let duration_seconds = args.get("duration_seconds").and_then(|v| v.as_f64()).unwrap_or(3.0);
+            let project_file = args.get("project_file").and_then(|v| v.as_str()).unwrap_or("main.vidra");
+            let file = std::path::PathBuf::from(project_file);
+            match crate::mcp_tools::add_scene_to_vidra_file(&file, scene_name, duration_seconds) {
+                Ok(()) => format!("✅ Scene '{}' added to {}", scene_name, file.display()),
+                Err(e) => format!("❌ Failed to add scene '{}': {:#}", scene_name, e),
+            }
         }
         "vidra-render_preview" => {
             let file = args.get("project_file").and_then(|v| v.as_str()).unwrap_or("main.vidra");
-            format!("✅ Render preview started for '{}'.", file)
+            let path = std::path::PathBuf::from(file);
+            match crate::cmd_preview(path, false) {
+                Ok(()) => "✅ Preview rendered at output/preview.mp4".to_string(),
+                Err(e) => format!("❌ Preview render failed: {:#}", e),
+            }
         }
         "vidra-edit_layer" => {
-            let path = args.get("layer_path").and_then(|v| v.as_str()).unwrap_or("layer");
-            format!("✅ Edited layer at '{}'.", path)
+            let scene_id = args.get("scene_id").and_then(|v| v.as_str()).unwrap_or("main");
+            let layer_path = args.get("layer_path").and_then(|v| v.as_str()).unwrap_or("layer");
+            let props = args.get("properties").cloned().unwrap_or_else(|| serde_json::json!({}));
+            let project_file = args.get("project_file").and_then(|v| v.as_str()).unwrap_or("main.vidra");
+            let file = std::path::PathBuf::from(project_file);
+            let root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let apply_msg = match crate::mcp_tools::apply_layer_properties_to_vidra_file(&file, layer_path, &props) {
+                Ok(true) => format!("updated {}", file.display()),
+                Ok(false) => "no direct file change (layer not found or unsupported property keys)".to_string(),
+                Err(e) => format!("direct edit failed: {:#}", e),
+            };
+            match crate::mcp_tools::record_layer_edit(&root, scene_id, layer_path, props) {
+                Ok(path) => format!("✅ Layer edit recorded for '{}' at {} ({})", layer_path, path.display(), apply_msg),
+                Err(e) => format!("❌ Failed to record layer edit '{}': {:#}", layer_path, e),
+            }
         }
         "vidra-set_style" => {
             let target = args.get("target_id").and_then(|v| v.as_str()).unwrap_or("target");
-            format!("✅ Styles updated on '{}'.", target)
+            let style_props = args.get("style_props").cloned().unwrap_or_else(|| serde_json::json!({}));
+            let project_file = args.get("project_file").and_then(|v| v.as_str()).unwrap_or("main.vidra");
+            let file = std::path::PathBuf::from(project_file);
+            let root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let apply_msg = match crate::mcp_tools::apply_layer_properties_to_vidra_file(&file, target, &style_props) {
+                Ok(true) => format!("updated {}", file.display()),
+                Ok(false) => "no direct file change (target not found or unsupported style keys)".to_string(),
+                Err(e) => format!("direct style edit failed: {:#}", e),
+            };
+            match crate::mcp_tools::record_style_set(&root, target, style_props) {
+                Ok(path) => format!("✅ Style update recorded for '{}' at {} ({})", target, path.display(), apply_msg),
+                Err(e) => format!("❌ Failed to record style update '{}': {:#}", target, e),
+            }
         }
         "vidra-apply_brand_kit" => {
             let kit = args.get("kit_name").and_then(|v| v.as_str()).unwrap_or("default");
-            format!("✅ Brand kit '{}' applied to project context.", kit)
+            match crate::cmd_brand_apply(kit) {
+                Ok(()) => format!("✅ Brand kit '{}' applied.", kit),
+                Err(e) => format!("❌ Failed to apply brand kit '{}': {:#}", kit, e),
+            }
         }
         "vidra-add_asset" => {
             let id = args.get("id").and_then(|v| v.as_str()).unwrap_or("asset");
-            format!("✅ Asset '{}' registered.", id)
+            let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
+            let asset_type = args.get("type").and_then(|v| v.as_str()).unwrap_or("unknown");
+            if path.is_empty() {
+                return "❌ Missing required `path`".to_string();
+            }
+            let root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let reg = crate::mcp_tools::register_asset(&root, id, path, asset_type);
+            let queue = crate::sync_tools::enqueue_upload_path(&root, std::path::Path::new(path));
+            match (reg, queue) {
+                (Ok(meta), Ok(n)) => format!("✅ Asset '{}' registered at {} ({} file(s) queued for upload)", id, meta.display(), n),
+                (Ok(meta), Err(_)) => format!("✅ Asset '{}' registered at {}", id, meta.display()),
+                (Err(e), _) => format!("❌ Failed to register asset '{}': {:#}", id, e),
+            }
         }
         "vidra-list_templates" => {
-            "✅ Available templates: social-post, lower-third, branded-intro".to_string()
+            let names: Vec<&str> = crate::template_manager::available_templates()
+                .into_iter()
+                .map(|t| t.name)
+                .collect();
+            format!("✅ Available templates: {}", names.join(", "))
         }
         "vidra-share" => {
             let file = args.get("file").and_then(|v| v.as_str()).unwrap_or("preview.mp4");
-            format!("✅ Share link for '{}': https://share.vidra.dev/p/a8f3c9e2", file)
+            let path = std::path::PathBuf::from(file);
+            if !path.exists() {
+                return format!("❌ File not found: {}", path.display());
+            }
+
+            let project_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let _ = crate::sync_tools::enqueue_upload_path(&project_root, &path)
+                .map_err(|e| format!("❌ Failed to queue upload: {:#}", e))
+                .map(|_| ());
+
+            let hash = match crate::sha256_file_prefixed(&path) {
+                Ok(h) => h,
+                Err(e) => return format!("❌ Failed to hash file: {:#}", e),
+            };
+            let share_id = hash.trim_start_matches("sha256:");
+            let link = if let Some(base) = crate::sync_cloud::cloud_base_url_from_env() {
+                match crate::sync_cloud::push_uploads_to_cloud(&project_root, &base) {
+                    Ok(res) if !res.failures.is_empty() => {
+                        return format!(
+                            "⚠️ Share queued but upload had failures ({}). Link (may not be live yet): {}/share/{}",
+                            res.failures.len(),
+                            base,
+                            share_id
+                        );
+                    }
+                    Ok(_) => format!("{}/share/{}", base, share_id),
+                    Err(e) => {
+                        return format!(
+                            "⚠️ Share queued locally but cloud upload failed: {:#}. Link (may not be live yet): {}/share/{}",
+                            e,
+                            base,
+                            share_id
+                        );
+                    }
+                }
+            } else {
+                format!("vidra://share/{}", share_id)
+            };
+
+            format!("✅ Share link for '{}': {}", file, link)
         }
         "vidra-add_resource" => {
             let res = args.get("resource_id").and_then(|v| v.as_str()).unwrap_or("resource");
-            format!("✅ Resource '{}' pulled from Vidra Commons.", res)
+            // Local-first: treat resources as built-in templates for now.
+            let known = crate::template_manager::available_templates()
+                .into_iter()
+                .any(|t| t.name == res);
+            if !known {
+                return format!("❌ Unknown resource '{}'. Try: vidra-list_resources", res);
+            }
+            match crate::template_manager::execute_add(res) {
+                Ok(()) => format!("✅ Added resource '{}' to current project.", res),
+                Err(e) => format!("❌ Failed to add resource '{}': {:#}", res, e),
+            }
         }
         "vidra-list_resources" => {
             let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
-            format!("✅ Search results for '{}': [1] neon-glow [2] youtube-intro", query)
+            let q = query.to_lowercase();
+            let templates = crate::template_manager::available_templates();
+            let mut matches: Vec<&'static str> = templates
+                .into_iter()
+                .filter(|t| q.is_empty() || t.name.contains(&q) || t.description.to_lowercase().contains(&q))
+                .map(|t| t.name)
+                .collect();
+            matches.sort();
+            if matches.is_empty() {
+                return format!("✅ Search results for '{}': (none)", query);
+            }
+            format!("✅ Search results for '{}': {}", query, matches.join(", "))
         }
         "vidra-storyboard" => {
             let prompt = args.get("prompt").and_then(|v| v.as_str()).unwrap_or("default");
-            format!("✅ Storyboard generated for prompt: '{}'", prompt)
+            let out = args
+                .get("output")
+                .and_then(|v| v.as_str())
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| std::path::PathBuf::from("storyboard.png"));
+            match crate::storyboard_tools::generate_storyboard_png(prompt, &out) {
+                Ok(()) => format!("✅ Storyboard saved to '{}'", out.display()),
+                Err(e) => format!("❌ Failed to generate storyboard: {:#}", e),
+            }
         }
         _ => {
             format!("❌ Unknown tool '{}'", name)

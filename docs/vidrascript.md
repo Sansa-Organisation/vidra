@@ -41,6 +41,7 @@ Every layer contains exactly one **Layer Content**, followed by optional propert
 | Solid | `solid(#hex)` | A solid color background. |
 | Text | `text("String", font: "Inter", size: 48, color: #ffffff)` | Render text with automatic font management. |
 | Image | `image("path/to.png")` | Load a static image (.png, .jpeg). |
+| Spritesheet | `spritesheet("path/to.png", frameWidth: 64, frameHeight: 64, fps: 12)` | Animate tiles from a sheet image. |
 | Video | `video("path/to.mp4", trim_start: 0s, trim_end: 5s)` | Load and play a video clip. |
 | Audio | `audio("path/to.mp3", volume: 1.0)` | Play audio. Cannot be transformed visually. |
 | TTS | `tts("Text to speak", "en-US-Standard-A")` | AI text-to-speech. Uses cloud orchestration. |
@@ -57,6 +58,15 @@ Properties apply transformations and animations to layers.
 *   `animation(property, from: val, to: val, duration: time, easing: type)` animates the layer.
 *   `effect(type, intensity)` applies a visual post-process effect (e.g., `blur`, `grayscale`, `invert`).
 
+Color grading (LUT):
+
+```javascript
+layer("grade") {
+    image("assets/shot.png")
+    effect(lut, "assets/film.cube", 1.0)
+}
+```
+
 Example:
 
 ```javascript
@@ -69,6 +79,89 @@ layer("logo") {
     effect(blur, 10.0)
 }
 ```
+
+Spritesheet example:
+
+```javascript
+layer("spark") {
+    spritesheet("assets/sparks.png", frameWidth: 64, frameHeight: 64, fps: 24)
+    position(960, 540)
+}
+```
+
+Notes:
+
+- Asset paths can also be remote URLs (e.g. `image("https://...")`). The Rust CLI/dev server will download and cache them under `resources.cache_dir` automatically.
+
+### Expression Animations
+
+You can also drive an animation with an expression:
+
+```javascript
+layer("follow_mouse") {
+    text("@mouse.x", size: 48)
+    animation(x, expr: "@mouse.x", duration: 10.0)
+    animation(y, expr: "@mouse.y", duration: 10.0)
+}
+```
+
+Available expression variables:
+
+- `t`: seconds since the animation started
+- `p`: progress from 0 → 1 over the animation duration
+- `T`: the animation duration in seconds
+- `@mouse.x`, `@mouse.y`: mouse position in pixels (runtime; in non-interactive renders these default to `0`)
+
+### 2.5D Transforms
+
+Vidra supports simple planar 2.5D transforms to “tilt” a layer in 3D:
+
+- `translateZ(z)`
+- `rotateX(deg)`
+- `rotateY(deg)`
+- `perspective(distance)`
+
+Example:
+
+```javascript
+layer("card") {
+    image("assets/card.png")
+    position(960, 540)
+    anchor(0.5, 0.5)
+
+    perspective(900)
+    rotateY(25)
+    translateZ(80)
+}
+```
+
+You can also animate these via `animation(...)` by using properties:
+
+- `translateZ`
+- `rotateX`
+- `rotateY`
+- `perspective`
+
+### Reactive Events
+
+You can attach interactive handlers to a layer:
+
+```javascript
+layer("button") {
+    solid(#ffffff)
+    position(100, 100)
+
+    @on click {
+        set count = count + 1
+    }
+}
+```
+
+Notes:
+
+- Reactive events are primarily for WASM previews right now.
+- Hosts should call the exported WASM API `dispatch_click(irJson, frameIndex, x, y)`.
+- Runtime state vars can be seeded/read via `set_state_var(name, value)` and `get_state_var(name)`.
 
 ## Components
 

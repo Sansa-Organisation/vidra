@@ -97,6 +97,103 @@ layer("captions") {
 
 Vidra sends the audio to a Whisper (or similar) model, receives word-level timestamps, and dynamically compiles an animation graph triggering `opacity` / `scale` keyframes on each word perfectly synchronized with the audio.
 
+## Local AI Providers (Phase 4)
+
+Vidra can materialize AI primitives (like `tts(...)`) into real cached assets during `vidra render`.
+
+### Enable AI materialization
+
+In your project folder, set `ai.enabled = true` in `vidra.config.toml`:
+
+```toml
+[ai]
+enabled = true
+
+[ai.openai]
+# OpenAI-compatible base URL (can be OpenAI, Groq OpenAI-compatible, etc.)
+base_url = "https://api.openai.com"
+api_key_env = "OPENAI_API_KEY"
+tts_model = "gpt-4o-mini-tts"
+tts_format = "mp3"
+transcribe_model = "whisper-1"
+
+[ai.gemini]
+# Optional: Gemini provider (HTTP). Used today for caption text refinement after transcription.
+base_url = "https://generativelanguage.googleapis.com"
+api_key_env = "GEMINI_API_KEY"
+model = "gemini-1.5-flash"
+caption_refine = false
+
+[ai.removebg]
+base_url = "https://api.remove.bg"
+api_key_env = "REMOVEBG_API_KEY"
+```
+
+Then export the key in your shell:
+
+```bash
+export OPENAI_API_KEY="..."
+
+# Optional, only if ai.gemini.caption_refine = true
+export GEMINI_API_KEY="..."
+```
+
+For ElevenLabs TTS, set:
+
+```bash
+export ELEVENLABS_API_KEY="..."
+```
+
+And use an ElevenLabs voice id by prefixing the `tts` voice with `eleven:`:
+
+```javascript
+layer("narration") {
+  tts("Hello from ElevenLabs", "eleven:YOUR_VOICE_ID")
+}
+```
+
+Rendered TTS audio is cached under `resources.cache_dir` (or `ai.cache_dir` if set) so repeated renders and `--data` batch runs reuse the same output.
+
+### AutoCaptions
+
+When your script contains:
+
+```javascript
+layer("captions") {
+  autocaption("assets/voiceover.mp3", font: "Inter", size: 48, color: #ffffff)
+}
+```
+
+`vidra render` will:
+- Transcribe the audio via the OpenAI-compatible transcription endpoint.
+- Cache the `verbose_json` response in the AI cache.
+- Replace the `AutoCaption` node with timed text child layers (segment-based) so captions render in the normal pipeline.
+
+### Background removal (remove.bg)
+
+Use it as an effect on an `image(...)` layer:
+
+```javascript
+layer("person") {
+  image("assets/person.png")
+  effect(removeBackground)
+}
+```
+
+When enabled, `vidra render` calls remove.bg, caches the returned PNG-with-alpha, and swaps the layer’s image asset to the cached cutout.
+
+## WASM / JS bridge (web / React Native)
+
+In web/mobile runtimes, Vidra expects the host (JS) to perform network calls (provider APIs) and caching, then feed the results into the WASM engine as IR patches.
+
+- Cache keys: use the same deterministic SHA-256 key strings as the Rust CLI so outputs are stable across platforms.
+- Storage: use IndexedDB (recommended) or another persistent cache.
+- Patch flow:
+  - AutoCaptions: JS transcribes audio → calls `materialize_autocaption_layer(irJson, layerId, segmentsJson)`.
+  - Background removal: JS calls provider → `load_image_asset(newAssetId, pngBytes)` → `apply_remove_background_patch(irJson, layerId, newAssetId)`.
+
+The `@sansavision/vidra-player` package exposes cache-key helpers in `src/ai.ts` that mirror the Rust CLI’s key derivations.
+
 ## Future: Generative Video and Image Assets
 
 Vidra is asset-agnostic. In the future, rather than `image("assets/bg.png")`, you can write:

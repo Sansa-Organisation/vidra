@@ -216,6 +216,286 @@ impl FrameBuffer {
             }
         }
     }
+
+    /// Alpha-composite `src` onto `self` by projecting the source rectangle into an arbitrary
+    /// quad on the destination.
+    ///
+    /// `dst_corners` are in pixel coordinates, ordered: top-left, top-right, bottom-right, bottom-left.
+    ///
+    /// This is a CPU fallback intended for 2.5D transforms (perspective/tilt). It uses inverse
+    /// mapping + bilinear sampling.
+    pub fn composite_over_projected(&mut self, src: &FrameBuffer, dst_corners: [[f64; 2]; 4]) {
+        if self.format != PixelFormat::Rgba8 || src.format != PixelFormat::Rgba8 {
+            return;
+        }
+        if src.width == 0 || src.height == 0 || self.width == 0 || self.height == 0 {
+            return;
+        }
+
+        let w = src.width as f64;
+        let h = src.height as f64;
+
+        let src_pts = [[0.0, 0.0], [w, 0.0], [w, h], [0.0, h]];
+
+        let Some(h_mat) = homography_from_points(src_pts, dst_corners) else {
+            return;
+        };
+        let Some(inv) = invert_3x3(h_mat) else {
+            return;
+        };
+
+        let mut min_x = dst_corners[0][0];
+        let mut max_x = dst_corners[0][0];
+        let mut min_y = dst_corners[0][1];
+        let mut max_y = dst_corners[0][1];
+        for p in &dst_corners[1..] {
+            min_x = min_x.min(p[0]);
+            max_x = max_x.max(p[0]);
+            min_y = min_y.min(p[1]);
+            max_y = max_y.max(p[1]);
+        }
+
+        // Expand a tiny bit to account for rounding.
+        let min_x = (min_x.floor() as i32).saturating_sub(1);
+        let max_x = (max_x.ceil() as i32).saturating_add(1);
+        let min_y = (min_y.floor() as i32).saturating_sub(1);
+        let max_y = (max_y.ceil() as i32).saturating_add(1);
+
+        let dst_w = self.width as i32;
+        let dst_h = self.height as i32;
+
+        let start_x = min_x.clamp(0, dst_w);
+        let end_x = max_x.clamp(0, dst_w);
+        let start_y = min_y.clamp(0, dst_h);
+        let end_y = max_y.clamp(0, dst_h);
+        if start_x >= end_x || start_y >= end_y {
+            return;
+        }
+
+        let dst_stride = (self.width as usize) * 4;
+        for y in start_y..end_y {
+            let row_off = (y as usize) * dst_stride;
+            for x in start_x..end_x {
+                // Map destination pixel center to source coordinates.
+                let sx_sy_sw = mul_3x3_vec(inv, [x as f64 + 0.5, y as f64 + 0.5, 1.0]);
+                let sw = sx_sy_sw[2];
+                if sw.abs() < 1e-9 {
+                    continue;
+                }
+                let sx = sx_sy_sw[0] / sw;
+                let sy = sx_sy_sw[1] / sw;
+                if sx < 0.0 || sy < 0.0 || sx >= w || sy >= h {
+                    continue;
+                }
+
+                let s = sample_bilinear_rgba8(src, sx, sy);
+                let sa = s[3] as u32;
+                if sa == 0 {
+                    continue;
+                }
+
+                let dst_idx = row_off + (x as usize) * 4;
+                let d = [
+                    self.data[dst_idx],
+                    self.data[dst_idx + 1],
+                    self.data[dst_idx + 2],
+                    self.data[dst_idx + 3],
+                ];
+
+                if sa == 255 {
+                    self.data[dst_idx..dst_idx + 4].copy_from_slice(&s);
+                    continue;
+                }
+
+                let da = d[3] as u32;
+                let inv_sa = 255 - sa;
+                let out_a = sa + ((da * inv_sa) / 255);
+                if out_a == 0 {
+                    continue;
+                }
+
+                let s_r = s[0] as u32;
+                let s_g = s[1] as u32;
+                let s_b = s[2] as u32;
+                let d_r = d[0] as u32;
+                let d_g = d[1] as u32;
+                let d_b = d[2] as u32;
+
+                let out_r = (s_r * sa * 255 + d_r * da * inv_sa) / (out_a * 255);
+                let out_g = (s_g * sa * 255 + d_g * da * inv_sa) / (out_a * 255);
+                let out_b = (s_b * sa * 255 + d_b * da * inv_sa) / (out_a * 255);
+
+                self.data[dst_idx] = out_r as u8;
+                self.data[dst_idx + 1] = out_g as u8;
+                self.data[dst_idx + 2] = out_b as u8;
+                self.data[dst_idx + 3] = out_a as u8;
+            }
+        }
+    }
+}
+
+fn sample_bilinear_rgba8(src: &FrameBuffer, x: f64, y: f64) -> [u8; 4] {
+    let w = src.width as i32;
+    let h = src.height as i32;
+    let x0 = (x.floor() as i32).clamp(0, w.saturating_sub(1));
+    let y0 = (y.floor() as i32).clamp(0, h.saturating_sub(1));
+    let x1 = (x0 + 1).clamp(0, w.saturating_sub(1));
+    let y1 = (y0 + 1).clamp(0, h.saturating_sub(1));
+    let fx = (x - x0 as f64).clamp(0.0, 1.0) as f32;
+    let fy = (y - y0 as f64).clamp(0.0, 1.0) as f32;
+
+    let p00 = src.get_pixel(x0 as u32, y0 as u32).unwrap_or([0, 0, 0, 0]);
+    let p10 = src.get_pixel(x1 as u32, y0 as u32).unwrap_or([0, 0, 0, 0]);
+    let p01 = src.get_pixel(x0 as u32, y1 as u32).unwrap_or([0, 0, 0, 0]);
+    let p11 = src.get_pixel(x1 as u32, y1 as u32).unwrap_or([0, 0, 0, 0]);
+
+    let mut out = [0u8; 4];
+    for c in 0..4 {
+        let a = p00[c] as f32;
+        let b = p10[c] as f32;
+        let c0 = p01[c] as f32;
+        let d = p11[c] as f32;
+        let top = a + (b - a) * fx;
+        let bottom = c0 + (d - c0) * fx;
+        let v = top + (bottom - top) * fy;
+        out[c] = v.round().clamp(0.0, 255.0) as u8;
+    }
+    out
+}
+
+fn mul_3x3_vec(m: [f64; 9], v: [f64; 3]) -> [f64; 3] {
+    [
+        m[0] * v[0] + m[1] * v[1] + m[2] * v[2],
+        m[3] * v[0] + m[4] * v[1] + m[5] * v[2],
+        m[6] * v[0] + m[7] * v[1] + m[8] * v[2],
+    ]
+}
+
+fn invert_3x3(m: [f64; 9]) -> Option<[f64; 9]> {
+    let a = m[0];
+    let b = m[1];
+    let c = m[2];
+    let d = m[3];
+    let e = m[4];
+    let f = m[5];
+    let g = m[6];
+    let h = m[7];
+    let i = m[8];
+
+    let det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+    if det.abs() < 1e-12 {
+        return None;
+    }
+    let inv_det = 1.0 / det;
+
+    let m00 = (e * i - f * h) * inv_det;
+    let m01 = (c * h - b * i) * inv_det;
+    let m02 = (b * f - c * e) * inv_det;
+
+    let m10 = (f * g - d * i) * inv_det;
+    let m11 = (a * i - c * g) * inv_det;
+    let m12 = (c * d - a * f) * inv_det;
+
+    let m20 = (d * h - e * g) * inv_det;
+    let m21 = (b * g - a * h) * inv_det;
+    let m22 = (a * e - b * d) * inv_det;
+
+    Some([m00, m01, m02, m10, m11, m12, m20, m21, m22])
+}
+
+fn homography_from_points(src: [[f64; 2]; 4], dst: [[f64; 2]; 4]) -> Option<[f64; 9]> {
+    // Solve for h11..h32 with h33 = 1 using 8 equations.
+    //
+    // x' = (h11 x + h12 y + h13) / (h31 x + h32 y + 1)
+    // y' = (h21 x + h22 y + h23) / (h31 x + h32 y + 1)
+    //
+    // Rearranged linear system A * h = b.
+    let mut a = [[0.0f64; 9]; 8];
+    let mut b = [0.0f64; 8];
+
+    for i in 0..4 {
+        let x = src[i][0];
+        let y = src[i][1];
+        let xp = dst[i][0];
+        let yp = dst[i][1];
+
+        // Row 2i
+        a[2 * i][0] = x;
+        a[2 * i][1] = y;
+        a[2 * i][2] = 1.0;
+        a[2 * i][6] = -x * xp;
+        a[2 * i][7] = -y * xp;
+        b[2 * i] = xp;
+
+        // Row 2i+1
+        a[2 * i + 1][3] = x;
+        a[2 * i + 1][4] = y;
+        a[2 * i + 1][5] = 1.0;
+        a[2 * i + 1][6] = -x * yp;
+        a[2 * i + 1][7] = -y * yp;
+        b[2 * i + 1] = yp;
+
+        // h33 is fixed to 1.0; move to RHS implicitly.
+        // (It's already accounted for by leaving column 8 as 0 and treating it as constant 1.)
+    }
+
+    // Solve 8x8 by augmenting a last column? We'll build an 8x8 by taking first 8 unknowns.
+    // Unknown vector: [h11 h12 h13 h21 h22 h23 h31 h32]
+    let mut m = [[0.0f64; 9]; 8];
+    for r in 0..8 {
+        for c in 0..8 {
+            m[r][c] = a[r][c];
+        }
+        m[r][8] = b[r];
+    }
+
+    // Gauss-Jordan elimination.
+    for col in 0..8 {
+        // Pivot.
+        let mut pivot = col;
+        let mut best = m[col][col].abs();
+        for r in (col + 1)..8 {
+            let v = m[r][col].abs();
+            if v > best {
+                best = v;
+                pivot = r;
+            }
+        }
+        if best < 1e-12 {
+            return None;
+        }
+        if pivot != col {
+            m.swap(pivot, col);
+        }
+
+        let div = m[col][col];
+        for c in col..=8 {
+            m[col][c] /= div;
+        }
+        for r in 0..8 {
+            if r == col {
+                continue;
+            }
+            let factor = m[r][col];
+            if factor.abs() < 1e-12 {
+                continue;
+            }
+            for c in col..=8 {
+                m[r][c] -= factor * m[col][c];
+            }
+        }
+    }
+
+    let h11 = m[0][8];
+    let h12 = m[1][8];
+    let h13 = m[2][8];
+    let h21 = m[3][8];
+    let h22 = m[4][8];
+    let h23 = m[5][8];
+    let h31 = m[6][8];
+    let h32 = m[7][8];
+
+    Some([h11, h12, h13, h21, h22, h23, h31, h32, 1.0])
 }
 
 /// Represents a frame in a video timeline.
@@ -311,6 +591,19 @@ mod tests {
         assert!(pixel[0] > 200); // high red
         assert!(pixel[1] > 50 && pixel[1] < 200); // some green from white
         assert!(pixel[2] > 50 && pixel[2] < 200); // some blue from white
+    }
+
+    #[test]
+    fn test_composite_over_projected_simple_quad() {
+        let mut dst = FrameBuffer::new(6, 6, PixelFormat::Rgba8);
+        let mut src = FrameBuffer::new(1, 1, PixelFormat::Rgba8);
+        src.set_pixel(0, 0, [10, 20, 30, 255]);
+
+        // Project a 1x1 source rect onto the pixel at (2, 3).
+        let corners = [[2.0, 3.0], [3.0, 3.0], [3.0, 4.0], [2.0, 4.0]];
+        dst.composite_over_projected(&src, corners);
+
+        assert_eq!(dst.get_pixel(2, 3), Some([10, 20, 30, 255]));
     }
 
     #[test]

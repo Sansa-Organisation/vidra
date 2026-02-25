@@ -1,6 +1,24 @@
 mod dev_server;
 mod test_runner;
 mod auth;
+mod ai;
+mod media;
+mod remote_assets;
+mod sync_tools;
+mod sync_cloud;
+mod jobs_tools;
+mod jobs_cloud;
+mod telemetry_tools;
+mod brand_tools;
+mod plugin_tools;
+mod workspace_tools;
+mod publish_tools;
+mod licenses_tools;
+mod storyboard_tools;
+mod mcp_tools;
+
+#[cfg(test)]
+mod test_support;
 pub mod receipt;
 pub mod mcp;
 
@@ -9,6 +27,7 @@ use std::time::Instant;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use sha2::Digest;
 
 #[derive(Parser)]
 #[command(
@@ -386,8 +405,7 @@ enum WorkspaceCommands {
     },
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     let cli = Cli::parse();
 
     let is_mcp_or_lsp = matches!(cli.command, Commands::Mcp | Commands::Lsp);
@@ -399,7 +417,9 @@ async fn main() -> Result<()> {
         );
 
     if is_mcp_or_lsp {
-        subscriber.with_writer(std::io::stderr).init();
+        // MCP/LSP: write logs to stderr with no ANSI colors to avoid polluting
+        // the JSON-RPC stream on stdout.
+        subscriber.with_ansi(false).with_writer(std::io::stderr).init();
     } else {
         subscriber.init();
     }
@@ -413,14 +433,23 @@ async fn main() -> Result<()> {
         Commands::Add { template } => template_manager::execute_add(&template),
         Commands::Info => cmd_info(),
         Commands::Init { name, kit } => cmd_init(&name, kit),
-        Commands::Dev { file } => dev_server::run_dev_server(file).await,
+        Commands::Dev { file } => run_async(dev_server::run_dev_server(file)),
         Commands::Lsp => {
-            vidra_lsp::start_lsp().await;
-            Ok(())
+            run_async(async {
+                vidra_lsp::start_lsp().await;
+                Ok(())
+            })
         },
         Commands::Mcp => {
-            mcp::run_mcp_server().await?;
-            Ok(())
+            // Redirect stdout → stderr so that any println! from sub-tools
+            // (e.g. cmd_render, cmd_preview) goes to stderr instead of
+            // contaminating the JSON-RPC stream.  The saved fd is the
+            // *real* stdout that run_mcp_server will use for JSON-RPC.
+            let saved_stdout = mcp::redirect_stdout_to_stderr();
+            run_async(async move {
+                mcp::run_mcp_server(saved_stdout).await?;
+                Ok(())
+            })
         },
         Commands::Inspect { file, frame } => cmd_inspect(file, frame),
         Commands::Auth { command } => match command {
@@ -481,93 +510,277 @@ async fn main() -> Result<()> {
     }
 }
 
+fn run_async<F>(future: F) -> Result<()>
+where
+    F: std::future::Future<Output = Result<()>>,
+{
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .context("failed to initialize async runtime")?;
+    runtime.block_on(future)
+}
+
 fn cmd_share(file: Option<PathBuf>) -> Result<()> {
     let target = file.unwrap_or_else(|| PathBuf::from("output/output.mp4"));
-    println!("🔗 Generating shareable link for {}...", target.display());
-    println!("   Uploading to Vidra Cloud...");
-    println!("   ✓ Upload complete.");
-    println!();
-    println!("   Your link: https://share.vidra.dev/p/a8f3c9e2");
-    println!("   (Copied to clipboard)");
+    if !target.exists() {
+        anyhow::bail!("file not found: {}", target.display());
+    }
+
+    let project_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let enqueued = sync_tools::enqueue_upload_path(&project_root, &target)?;
+
+    let hash = sha256_file_prefixed(&target)?;
+    let share_id = hash.trim_start_matches("sha256:");
+    let base_link = if let Some(base) = sync_cloud::cloud_base_url_from_env() {
+        format!("{}/share/{}", base, share_id)
+    } else {
+        format!("vidra://share/{}", share_id)
+    };
+
+    println!("🔗 Shareable link for {}", target.display());
+    if enqueued > 0 {
+        println!("   ✓ Queued for upload: {} file(s)", enqueued);
+    } else {
+        println!("   ✓ Already queued (or previously uploaded)");
+    }
+
+    if let Some(base) = sync_cloud::cloud_base_url_from_env() {
+        let uploaded = sync_cloud::push_uploads_to_cloud(&project_root, &base)?;
+        if uploaded.uploaded > 0 {
+            println!("   ✓ Uploaded: {} file(s)", uploaded.uploaded);
+        }
+        if !uploaded.failures.is_empty() {
+            println!("   ⚠️  Upload failures ({}):", uploaded.failures.len());
+            for f in &uploaded.failures {
+                println!("      - {}", f);
+            }
+            anyhow::bail!("share upload completed with failures");
+        }
+        println!("   Your link: {}", base_link);
+        return Ok(());
+    }
+
+    println!("   Your link: {}", base_link);
+    println!("   (Set VIDRA_CLOUD_URL then run `vidra sync push` to publish)");
     Ok(())
 }
 
 fn cmd_preview(file: PathBuf, share: bool) -> Result<()> {
     println!("🎬 Generating local preview for {}...", file.display());
-    println!("   Rendering low-res fast preview...");
-    // Mock rendering here
-    println!("   ✓ Rendered preview in 200ms.");
-    
+    let out = std::path::PathBuf::from("output").join("preview.mp4");
+    cmd_render(file, Some(out.clone()), Some("mp4".to_string()), None, false, None)?;
+
     if share {
-        println!("🔗 Uploading preview to Vidra Cloud...");
-        println!("   ✓ Upload complete.");
-        println!();
-        println!("   Your preview link: https://share.vidra.dev/prev/a8f3c9e2");
-        println!("   (Copied to clipboard)");
+        println!("🔗 Sharing preview...");
+        cmd_share(Some(out))?;
     } else {
-        println!("   Preview ready at output/preview.mp4");
+        println!("   Preview ready at {}", out.display());
     }
-    
+
     Ok(())
 }
 
 fn telemetry_show() -> Result<()> {
+    let cfg = telemetry_tools::load_telemetry_config()?;
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let snapshot = telemetry_tools::compute_snapshot(&cwd)?;
+
     println!("📊 Vidra Telemetry Configuration");
-    println!("   Current Tier: identified");
-    println!("   Pending Upload: 3 render receipts");
+    println!("   Current Tier: {}", cfg.tier.as_str());
+    println!("   Updated: {}", cfg.updated_at.to_rfc3339());
+    println!(
+        "   Pending Upload: {} render receipt(s), {} upload(s)",
+        snapshot.receipts_queued, snapshot.uploads_queued
+    );
     Ok(())
 }
 
 fn telemetry_set(tier: &str) -> Result<()> {
-    match tier {
-        "anonymous" | "identified" | "diagnostics" | "off" => {
-            println!("✅ Telemetry tier successfully set to: {}", tier);
-        }
-        _ => {
-            anyhow::bail!("Invalid telemetry tier. Choose: anonymous, identified, diagnostics, off.");
-        }
-    }
+    let t = telemetry_tools::parse_tier(tier)?;
+    let cfg = telemetry_tools::save_telemetry_config(t)?;
+    println!("✅ Telemetry tier successfully set to: {}", cfg.tier.as_str());
     Ok(())
 }
 
 fn telemetry_export() -> Result<()> {
-    println!("📦 Exporting telemetry data to vidra_telemetry_export.zip...");
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let out = std::path::PathBuf::from("vidra_telemetry_export.zip");
+    telemetry_tools::export_telemetry_zip(&cwd, &out)?;
+    println!("📦 Exported telemetry data to {}", out.display());
     Ok(())
 }
 
 fn telemetry_delete() -> Result<()> {
-    println!("🗑️  Telemetry data deletion requested. Please confirm via email.");
+    telemetry_tools::delete_local_telemetry_data()?;
+    println!("🗑️  Local telemetry config deleted.");
+    println!("   (Note: receipts/uploads queues are retained; use `vidra sync` to manage sync state.)");
     Ok(())
 }
 
 fn cmd_doctor() -> Result<()> {
-    println!();
-    println!("   ✓ GPU: NVIDIA RTX 4070 (12GB VRAM) — driver 550.54 ✓");
-    println!("   ✓ Renderer: wgpu 0.19 — Vulkan backend");
-    println!("   ✓ VRAM available: 10.2 GB");
-    println!("   ✓ RAM available: 24.1 GB");
-    println!("   ✓ VLT: valid — expires 2026-03-15 — plan: pro");
-    println!("   ✓ Asset cache: 1.2 GB — integrity OK");
-    println!("   ✓ Conformance: 147/147 tests passed");
-    println!("   ✓ Cloud sync: connected — last sync 4 minutes ago");
-    println!("   ✓ CLI version: {} (latest)", env!("CARGO_PKG_VERSION"));
-    println!();
-    println!("   All systems nominal.");
-    println!();
+    use std::path::Path;
+
+    let mut warnings: Vec<String> = Vec::new();
+
+    println!("🩺 Vidra Doctor");
+    println!("   CLI version: {}", env!("CARGO_PKG_VERSION"));
+    println!("   OS: {} ({})", std::env::consts::OS, std::env::consts::ARCH);
+
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    println!("   CWD: {}", cwd.display());
+
+    let has_toml = Path::new("vidra.config.toml").exists();
+    let has_json = Path::new("vidra.config.json").exists();
+    let has_config = has_toml || has_json;
+    println!(
+        "   Project config: {}",
+        if has_config {
+            if has_toml {
+                "vidra.config.toml"
+            } else {
+                "vidra.config.json"
+            }
+        } else {
+            "(none found)"
+        }
+    );
+    if !has_config {
+        warnings.push("no vidra.config.* in current directory".to_string());
+    }
+
+    if let Some(url) = sync_cloud::cloud_base_url_from_env() {
+        println!("   Cloud endpoint: {}", url);
+    } else {
+        println!("   Cloud endpoint: (unset) — local-first mode");
+    }
+
+    // Basic writeability checks for common directories.
+    if let Err(e) = std::fs::create_dir_all("output") {
+        warnings.push(format!("failed to create output/: {}", e));
+    }
+    if let Err(e) = std::fs::create_dir_all(".vidra") {
+        warnings.push(format!("failed to create .vidra/: {}", e));
+    } else {
+        let probe = std::path::PathBuf::from(".vidra").join("doctor_write_test.tmp");
+        match std::fs::write(&probe, b"ok") {
+            Ok(()) => {
+                let _ = std::fs::remove_file(&probe);
+            }
+            Err(e) => warnings.push(format!(".vidra not writable: {}", e)),
+        }
+    }
+
+    // Receipt signing key (used for render receipts).
+    match crate::receipt::load_or_create_device_signing_key() {
+        Ok(_) => println!("   Receipt signing key: OK"),
+        Err(e) => warnings.push(format!("receipt signing key unavailable: {:#}", e)),
+    }
+
+    // VLT token (plan + offline validation).
+    match crate::auth::Vlt::load_local().and_then(|v| v.validate_offline().map(|_| v)) {
+        Ok(vlt) => println!("   VLT: {} (plan: {})", vlt.payload.vlt_id, vlt.payload.plan),
+        Err(e) => warnings.push(format!("VLT: {:#}", e)),
+    }
+
+    // Receipts queue status.
+    if let Some(dir) = sync_tools::receipts_root_dir() {
+        match sync_tools::receipt_sync_status(&dir) {
+            Ok(s) => println!("   Render receipts: {} queued, {} sent", s.queued, s.sent),
+            Err(e) => warnings.push(format!("failed to read receipts queue: {:#}", e)),
+        }
+    } else {
+        warnings.push("failed to resolve receipts directory (~/.vidra/receipts)".to_string());
+    }
+
+    // Upload queue status (project-local).
+    match sync_tools::upload_sync_status(&cwd) {
+        Ok(s) => println!("   Upload queue: {} queued, {} sent", s.queued, s.sent),
+        Err(e) => warnings.push(format!("failed to read upload queue: {:#}", e)),
+    }
+
+    // Asset manifest status.
+    let manifest_path = std::path::PathBuf::from(".vidra").join("asset_manifest.json");
+    if manifest_path.exists() {
+        match sync_tools::read_asset_manifest(&manifest_path) {
+            Ok(m) => {
+                let stats = sync_tools::asset_manifest_stats_from_manifest(&m);
+                println!(
+                    "   Asset manifest: {} assets ({} missing, {} remote-url) — {}",
+                    stats.total,
+                    stats.missing,
+                    stats.remote_urls,
+                    m.generated_at.to_rfc3339()
+                );
+            }
+            Err(e) => warnings.push(format!("asset manifest unreadable ({}): {:#}", manifest_path.display(), e)),
+        }
+    } else {
+        println!("   Asset manifest: (none) — run `vidra sync assets`");
+    }
+
+    // Jobs queue status (local-first).
+    if let Some(jobs_root) = jobs_tools::jobs_root_dir() {
+        match jobs_tools::list_queued_jobs(&jobs_root) {
+            Ok(j) => println!("   Jobs queue: {} queued", j.len()),
+            Err(e) => warnings.push(format!("failed to read jobs queue: {:#}", e)),
+        }
+    }
+
+    if warnings.is_empty() {
+        println!("   Status: OK");
+        return Ok(());
+    }
+
+    println!("   Status: WARN ({} issue(s))", warnings.len());
+    for w in &warnings {
+        println!("   - {}", w);
+    }
     Ok(())
 }
 
 fn cmd_render(file: PathBuf, output: Option<PathBuf>, format: Option<String>, targets: Option<String>, cloud: bool, data: Option<PathBuf>) -> Result<()> {
     let start = Instant::now();
 
+    // Best-effort config load (rendering a standalone file without a project folder is allowed).
+    let config = vidra_core::VidraConfig::load_from_file(std::path::Path::new("vidra.config.toml"))
+        .unwrap_or_default();
+
     if cloud {
-        println!("☁️  Submitting render job to Vidra Cloud...");
-        // Mocking the cloud render API 
-        println!("   ✓ Project payload zipped (1.4MB)");
-        println!("   ✓ Uploaded to s3://vidra-cloud-ingest/projects/job_x9y8z7");
-        println!("   ✓ Auto-scaling render cluster provisioning GPU instance...");
-        println!("   ✓ Estimated cost: $0.14 (32 render-seconds)");
-        println!("   > Job ID: job_x9y8z7");
+        let Some(jobs_root) = jobs_tools::jobs_root_dir() else {
+            anyhow::bail!("failed to resolve ~/.vidra/jobs");
+        };
+        jobs_tools::ensure_jobs_dirs(&jobs_root)?;
+
+        let project_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+        let job_id = {
+            let ts = chrono::Utc::now().to_rfc3339();
+            let mut hasher = sha2::Sha256::new();
+            hasher.update(project_root.to_string_lossy().as_bytes());
+            hasher.update(file.to_string_lossy().as_bytes());
+            hasher.update(ts.as_bytes());
+            let digest = hasher.finalize();
+            let hex: String = digest.iter().map(|b| format!("{:02x}", b)).collect();
+            format!("job_{}", &hex[..10])
+        };
+
+        let spec = jobs_tools::JobSpec {
+            job_id: job_id.clone(),
+            project_root: project_root.clone(),
+            vidra_file: file.clone(),
+            output,
+            format,
+            targets,
+            data,
+            created_at: chrono::Utc::now(),
+        };
+
+        let _path = jobs_tools::write_job_to_dir(&jobs_tools::jobs_queued_dir(&jobs_root), &spec)?;
+        println!("☁️  Enqueued render job (local queue)");
+        println!("   Job ID: {}", job_id);
+        println!("   Project: {}", project_root.display());
+        println!("   File: {}", file.display());
+        println!("   Next: run `vidra jobs run` (or `vidra jobs watch`)" );
         return Ok(());
     }
 
@@ -687,7 +900,7 @@ fn cmd_render(file: PathBuf, output: Option<PathBuf>, format: Option<String>, ta
     let multiple_targets = target_list.len() > 1;
 
     for target in target_list {
-        let project = if let Some(ref mut a) = ast {
+        let mut project = if let Some(ref mut a) = ast {
             if target != "default" {
                 if let Some((w_str, h_str)) = target.split_once(':') {
                     if let (Ok(x), Ok(y)) = (w_str.parse::<f64>(), h_str.parse::<f64>()) {
@@ -752,12 +965,73 @@ fn cmd_render(file: PathBuf, output: Option<PathBuf>, format: Option<String>, ta
         );
         println!("   └ {} total frames", project.total_frames());
 
+        // Resolve relative asset paths against the .vidra file's directory so that
+        // assets referenced as e.g. "music.mp3" work regardless of the CWD.
+        let source_dir = file.parent().unwrap_or(std::path::Path::new("."));
+        for asset in project.assets.all_mut() {
+            if asset.path.is_relative() && !asset.path.exists() {
+                let resolved = source_dir.join(&asset.path);
+                if resolved.exists() {
+                    asset.path = resolved;
+                }
+            }
+        }
+
         // Phase 3: Validate
         vidra_ir::validate::validate_project(&project).map_err(|errors| {
             let msgs: Vec<String> = errors.into_iter().map(|e| e.to_string()).collect();
             anyhow::anyhow!("IR validation errors:\n  {}", msgs.join("\n  "))
         })?;
         println!("   ✓ IR validated");
+
+        // Phase 4: Remote asset fetching + caching (http/https -> local cache paths)
+        let remote_report = remote_assets::prepare_project_remote_assets(&mut project, &config)?;
+        if remote_report.downloaded > 0 || remote_report.reused_from_cache > 0 {
+            println!(
+                "   ✓ Remote assets: {} downloaded, {} cached",
+                remote_report.downloaded, remote_report.reused_from_cache
+            );
+        }
+
+        // Phase 3.25: Media materialization (waveforms, etc)
+        let media_report = media::prepare_project_media(&mut project, &config)?;
+        if media_report.waveforms_materialized > 0 {
+            println!(
+                "   ✓ Media materialized: {} waveform(s)",
+                media_report.waveforms_materialized
+            );
+        }
+
+        // Phase 3.5: AI materialization (TTS/captions/etc) — gated by config.ai.enabled
+        let ai_report = ai::prepare_project_ai(&mut project, &config)?;
+        if ai_report.tts_layers_materialized > 0 {
+            println!(
+                "   ✓ AI materialized: {} TTS layer(s)",
+                ai_report.tts_layers_materialized
+            );
+        }
+        if ai_report.autocaption_layers_materialized > 0 {
+            println!(
+                "   ✓ AI materialized: {} AutoCaption layer(s)",
+                ai_report.autocaption_layers_materialized
+            );
+        }
+        if ai_report.bg_removals_materialized > 0 {
+            println!(
+                "   ✓ AI materialized: {} background removal(s)",
+                ai_report.bg_removals_materialized
+            );
+        }
+
+        // Hash the final IR (after all materialization) for render receipts.
+        let ir_hash = {
+            let bytes = serde_json::to_vec(&project).unwrap_or_default();
+            let mut hasher = sha2::Sha256::new();
+            hasher.update(&bytes);
+            let digest = hasher.finalize();
+            let hex: String = digest.iter().map(|b| format!("{:02x}", b)).collect();
+            format!("sha256:{}", hex)
+        };
 
         // Phase 4: Render
         let render_start = Instant::now();
@@ -893,25 +1167,40 @@ fn cmd_render(file: PathBuf, output: Option<PathBuf>, format: Option<String>, ta
         );
         println!("   📦 Output: {}", output_path.display());
 
-        // Generate Render Receipt (1.5.9)
-        if let Some(dir) = dirs::home_dir() {
-            let receipts_dir = dir.join(".vidra").join("receipts");
-            let mock_bytes = [7u8; 32];
-            let signing_key = ed25519_dalek::SigningKey::from_bytes(&mock_bytes);
-            
-            // Generate a simple hash of the file output
-            let output_hash = format!("{:x}", md5::compute(std::fs::read(&output_path).unwrap_or_default()));
-            
-            if let Ok(receipt) = crate::receipt::RenderReceipt::new(
-                "vlt_mock_12345".to_string(), // mocked VLT ID
-                "mock_ir_hash".to_string(), // In reality we'd hash the compiled IR
-                Some(output_hash),
-                "Metal (Apple M1 Max)".to_string(), // mocked HW info
-                render_time.as_millis() as u64,
-                &signing_key,
-            ) {
-                if receipt.save_to_dir(&receipts_dir).is_ok() {
-                     println!("   🧾 Generated Render Receipt (signed)");
+        // Generate Render Receipt (PRD 8.5)
+        if let Some(receipts_dir) = crate::receipt::receipts_dir() {
+            let signing_key = crate::receipt::load_or_create_device_signing_key();
+
+            let output_hash = sha256_file_prefixed(&output_path)
+                .unwrap_or_else(|_| "sha256:".to_string());
+            let vlt_id = match crate::auth::Vlt::load_local().and_then(|v| v.validate_offline().map(|_| v)) {
+                Ok(vlt) => vlt.payload.vlt_id,
+                Err(_) => "vlt_missing".to_string(),
+            };
+
+            if let Ok(signing_key) = signing_key {
+                let output_format = format!(
+                    "{}_{}x{}_{}fps",
+                    out_ext,
+                    project.settings.width,
+                    project.settings.height,
+                    project.settings.fps
+                );
+
+                if let Ok(receipt) = crate::receipt::RenderReceipt::new(
+                    project.id.clone(),
+                    ir_hash.clone(),
+                    output_hash,
+                    output_format,
+                    render_time.as_millis() as u64,
+                    result.frame_count as u64,
+                    crate::receipt::HardwareInfo::basic(),
+                    vlt_id,
+                    &signing_key,
+                ) {
+                    if receipt.save_to_dir(&receipts_dir).is_ok() {
+                        println!("   🧾 Generated Render Receipt (signed)");
+                    }
                 }
             }
         }
@@ -934,15 +1223,48 @@ fn extract_audio_tracks(project: &vidra_ir::Project) -> Vec<vidra_encode::ffmpeg
 }
 
 fn extract_layer_audio(layer: &vidra_ir::layer::Layer, project: &vidra_ir::Project, time_offset: f64, tracks: &mut Vec<vidra_encode::ffmpeg::AudioTrack>) {
-    if let vidra_ir::layer::LayerContent::Audio { asset_id, trim_start, trim_end, volume } = &layer.content {
-        if let Some(asset) = project.assets.get(asset_id) {
-            tracks.push(vidra_encode::ffmpeg::AudioTrack {
-                path: std::path::PathBuf::from(&asset.path),
-                trim_start: time_offset + trim_start.as_seconds(),
-                trim_end: trim_end.map(|d| d.as_seconds()),
-                volume: *volume,
-            });
+    match &layer.content {
+        vidra_ir::layer::LayerContent::Audio {
+            asset_id,
+            trim_start,
+            trim_end,
+            volume,
+            role,
+            duck,
+        } => {
+            if let Some(asset) = project.assets.get(asset_id) {
+                tracks.push(vidra_encode::ffmpeg::AudioTrack {
+                    path: std::path::PathBuf::from(&asset.path),
+                    trim_start: time_offset + trim_start.as_seconds(),
+                    trim_end: trim_end.map(|d| d.as_seconds()),
+                    volume: *volume,
+                    role: role.clone(),
+                    duck: *duck,
+                });
+            }
         }
+        vidra_ir::layer::LayerContent::TTS {
+            volume,
+            audio_asset_id: Some(asset_id),
+            ..
+        } => {
+            if let Some(asset) = project.assets.get(asset_id) {
+                tracks.push(vidra_encode::ffmpeg::AudioTrack {
+                    path: std::path::PathBuf::from(&asset.path),
+                    trim_start: time_offset,
+                    trim_end: None,
+                    volume: *volume,
+                    role: Some("narration".to_string()),
+                    duck: None,
+                });
+            } else {
+                tracing::warn!(
+                    "TTS layer references missing audio asset_id: {}",
+                    asset_id
+                );
+            }
+        }
+        _ => {}
     }
     for child in &layer.children {
         extract_layer_audio(child, project, time_offset, tracks);
@@ -1211,6 +1533,15 @@ fn print_layer(layer: &vidra_ir::layer::Layer, prefix: &str, is_last: bool, eval
         vidra_ir::layer::LayerContent::Image { asset_id } => format!("Image (asset: {})", asset_id),
         vidra_ir::layer::LayerContent::Video { asset_id, .. } => format!("Video (asset: {})", asset_id),
         vidra_ir::layer::LayerContent::Audio { asset_id, volume, .. } => format!("Audio (asset: {}, vol: {:.2})", asset_id, volume),
+        vidra_ir::layer::LayerContent::Waveform { asset_id, width, height, .. } => {
+            format!("Waveform (audio: {}, {}x{})", asset_id, width, height)
+        }
+        vidra_ir::layer::LayerContent::Spritesheet { asset_id, frame_width, frame_height, fps, .. } => {
+            format!(
+                "Spritesheet (asset: {}, tile: {}x{}, fps: {:.2})",
+                asset_id, frame_width, frame_height, fps
+            )
+        }
         vidra_ir::layer::LayerContent::Shape { shape, .. } => format!("Shape ({:?})", shape),
         vidra_ir::layer::LayerContent::Solid { color } => format!("Solid ({})", color),
         vidra_ir::layer::LayerContent::TTS { text, voice, .. } => format!("TTS (\"{}\" voice: {})", text, voice),
@@ -1329,128 +1660,489 @@ pub(crate) fn parse_and_resolve_imports(file: &std::path::Path) -> Result<vidra_
     Ok(ast)
 }
 
+#[allow(dead_code)]
 fn cmd_format(file: PathBuf) -> Result<()> {
     println!("✨ Formatting {}", file.display());
     Ok(())
 }
 
+fn sha256_file_prefixed(path: &std::path::Path) -> Result<String> {
+    use std::io::Read;
+
+    let mut f = std::fs::File::open(path)
+        .with_context(|| format!("failed to open file for hashing: {}", path.display()))?;
+
+    let mut hasher = sha2::Sha256::new();
+    let mut buf = [0u8; 1024 * 64];
+    loop {
+        let n = f.read(&mut buf).context("failed to read file for hashing")?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    let digest = hasher.finalize();
+    let hex: String = digest.iter().map(|b| format!("{:02x}", b)).collect();
+    Ok(format!("sha256:{}", hex))
+}
+
 fn cmd_sync_push() -> Result<()> {
     println!("☁️  Pushing local changes to Vidra Cloud...");
-    println!("   ✓ Metadata synced.");
+
+    let project_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+
+    if sync_cloud::cloud_base_url_from_env().is_some() {
+        let report = sync_cloud::push_all_to_cloud(&project_root)?;
+        println!(
+            "   ✓ Uploaded to cloud: {} receipt(s), {} upload(s)",
+            report.receipts_uploaded, report.uploads_uploaded
+        );
+        if !report.receipt_failures.is_empty() || !report.upload_failures.is_empty() {
+            if !report.receipt_failures.is_empty() {
+                println!("   ⚠️  Receipt failures ({}):", report.receipt_failures.len());
+                for f in &report.receipt_failures {
+                    println!("      - {}", f);
+                }
+            }
+            if !report.upload_failures.is_empty() {
+                println!("   ⚠️  Upload failures ({}):", report.upload_failures.len());
+                for f in &report.upload_failures {
+                    println!("      - {}", f);
+                }
+            }
+            anyhow::bail!("cloud push completed with failures");
+        }
+        return Ok(());
+    }
+
+    if let Some(dir) = sync_tools::receipts_root_dir() {
+        let moved = sync_tools::push_receipts_local(&dir).unwrap_or(0);
+        println!("   ✓ Queued receipts pushed (local): {}", moved);
+    } else {
+        println!("   ⚠️  Could not resolve receipts directory");
+    }
+    let moved_uploads = sync_tools::push_uploads_local(&project_root).unwrap_or(0);
+    if moved_uploads > 0 {
+        println!("   ✓ Queued uploads pushed (local): {}", moved_uploads);
+    }
     Ok(())
 }
 
 fn cmd_sync_pull() -> Result<()> {
-    println!("☁️  Pulling remote changes from Vidra Cloud...");
-    println!("   ✓ Project up-to-date. Merged 2 changes.");
+    println!("☁️  Pulling remote changes...");
+    let project_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+
+    if sync_cloud::cloud_base_url_from_env().is_some() {
+        let report = sync_cloud::pull_all_from_cloud(&project_root)?;
+        println!(
+            "   ✓ Downloaded: {} receipt(s), {} upload(s)",
+            report.receipts_downloaded, report.uploads_downloaded
+        );
+        if !report.receipt_failures.is_empty() || !report.upload_failures.is_empty() {
+            if !report.receipt_failures.is_empty() {
+                println!("   ⚠️  Receipt failures ({}):", report.receipt_failures.len());
+                for f in &report.receipt_failures {
+                    println!("      - {}", f);
+                }
+            }
+            if !report.upload_failures.is_empty() {
+                println!("   ⚠️  Upload failures ({}):", report.upload_failures.len());
+                for f in &report.upload_failures {
+                    println!("      - {}", f);
+                }
+            }
+            anyhow::bail!("cloud pull completed with failures");
+        }
+        return Ok(());
+    }
+
+    println!("   Cloud endpoint: (unset) — nothing to pull.");
+    println!("   Tip: set VIDRA_CLOUD_URL to enable cloud pull.");
     Ok(())
 }
 
 fn cmd_sync_status() -> Result<()> {
     println!("☁️  Vidra Cloud Sync Status:");
-    println!("   Local branch: main (ahead by 1 commit)");
-    println!("   Assets: 5 fully synced, 2 pending hydration");
+    println!("   Local branch: main");
+
+    if let Some(url) = sync_cloud::cloud_base_url_from_env() {
+        println!("   Cloud endpoint: {}", url);
+    } else {
+        println!("   Cloud endpoint: (unset) — local-only queues");
+    }
+
+    if let Some(dir) = sync_tools::receipts_root_dir() {
+        let status = sync_tools::receipt_sync_status(&dir).unwrap_or(sync_tools::ReceiptSyncStatus { queued: 0, sent: 0 });
+        println!("   Render receipts: {} queued, {} sent", status.queued, status.sent);
+    } else {
+        println!("   Render receipts: (unknown)");
+    }
+
+    let manifest_path = std::path::PathBuf::from(".vidra").join("asset_manifest.json");
+    if manifest_path.exists() {
+        match sync_tools::read_asset_manifest(&manifest_path) {
+            Ok(m) => {
+                let stats = sync_tools::asset_manifest_stats_from_manifest(&m);
+                println!(
+                    "   Assets: {} total ({} missing, {} hashed, {} remote-url) — manifest updated {}",
+                    stats.total,
+                    stats.missing,
+                    stats.hashed,
+                    stats.remote_urls,
+                    m.generated_at.to_rfc3339()
+                );
+            }
+            Err(_) => {
+                println!("   Assets: manifest unreadable ({})", manifest_path.display());
+            }
+        }
+    } else {
+        println!("   Assets: no manifest (run `vidra sync assets`)");
+    }
+
+    let project_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    if let Ok(s) = sync_tools::upload_sync_status(&project_root) {
+        println!("   Upload queue: {} queued, {} sent", s.queued, s.sent);
+    }
     Ok(())
 }
 
 fn cmd_sync_assets() -> Result<()> {
     println!("📥 Hydrating missing assets...");
-    println!("   Downloading 'brand_logo.png' (1.2MB)...");
-    println!("   ✓ Hydration complete.");
-    Ok(())
-}
 
-fn cmd_jobs_list() -> Result<()> {
-    println!("☁️  Vidra Cloud Pending Jobs:");
-    println!("   ID: job_a1b2c3 | Project: marketing_video | Priority: High | Queued: 5m ago");
-    println!("   ID: job_d4e5f6 | Project: social_clip     | Priority: Low  | Queued: 1h ago");
-    println!();
-    println!("   2 pending jobs.");
-    Ok(())
-}
+    let config_path = std::path::PathBuf::from("vidra.config.toml");
+    if !config_path.exists() {
+        anyhow::bail!("vidra.config.toml not found in current directory");
+    }
+    let config = vidra_core::VidraConfig::load_from_file(&config_path)
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-fn cmd_jobs_run(all: bool) -> Result<()> {
-    if all {
-        println!("🚀 Pulling and running 2 pending jobs...");
-        println!("   [1/2] job_a1b2c3 -> ✓ Finished in 1m12s -> Uploaded receipt.");
-        println!("   [2/2] job_d4e5f6 -> ✓ Finished in 32s -> Uploaded receipt.");
+    let entry = if std::path::Path::new("main.vidra").exists() {
+        std::path::PathBuf::from("main.vidra")
     } else {
-        println!("🚀 Pulling next pending job...");
-        println!("   job_a1b2c3 -> ✓ Finished in 1m12s -> 🔗 Uploaded receipt.");
+        // Fallback: first .vidra file in cwd.
+        let mut found: Option<std::path::PathBuf> = None;
+        for e in std::fs::read_dir(".").context("failed to read current directory")? {
+            let p = e?.path();
+            if p.extension().and_then(|x| x.to_str()) == Some("vidra") {
+                found = Some(p);
+                break;
+            }
+        }
+        found.ok_or_else(|| anyhow::anyhow!("no entry .vidra file found (expected main.vidra)") )?
+    };
+
+    let ast = parse_and_resolve_imports(&entry)?;
+    let mut project = vidra_lang::Compiler::compile(&ast).map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    // Hydrate remote URLs to local cache paths.
+    let remote_report = remote_assets::prepare_project_remote_assets(&mut project, &config)?;
+    if remote_report.downloaded > 0 || remote_report.reused_from_cache > 0 {
+        println!(
+            "   ✓ Remote assets: {} downloaded, {} cached",
+            remote_report.downloaded, remote_report.reused_from_cache
+        );
+    }
+
+    let (manifest, stats) = sync_tools::generate_asset_manifest(&project.id, &project.assets)?;
+    let out_path = std::path::PathBuf::from(".vidra").join("asset_manifest.json");
+    sync_tools::write_asset_manifest(&out_path, &manifest)?;
+
+    println!("   ✓ Asset manifest: {}", out_path.display());
+    println!("   ✓ Assets: {} total ({} missing, {} hashed)", stats.total, stats.missing, stats.hashed);
+    if stats.missing > 0 {
+        println!("   ⚠️  Some assets are missing on disk");
     }
     Ok(())
 }
 
-fn cmd_jobs_watch() -> Result<()> {
-    println!("👀 Starting Vidra Job Daemon...");
-    println!("   Polling for new jobs every 15s...");
-    println!("   (Press Ctrl+C to exit)");
-    std::thread::sleep(std::time::Duration::from_secs(2));
-    println!("   New job detected: job_g7h8i9! Rendering...");
+fn cmd_jobs_list() -> Result<()> {
+    let Some(jobs_root) = jobs_tools::jobs_root_dir() else {
+        anyhow::bail!("failed to resolve home dir for ~/.vidra/jobs");
+    };
+
+    if let Some(base) = sync_cloud::cloud_base_url_from_env() {
+        match jobs_cloud::fetch_jobs_from_cloud(&base)
+            .and_then(|jobs| jobs_cloud::enqueue_cloud_jobs(&jobs_root, jobs, None))
+        {
+            Ok(added) if added > 0 => println!("☁️  Synced {} cloud job(s) into local queue", added),
+            Ok(_) => {}
+            Err(e) => println!("⚠️  Cloud jobs fetch failed: {:#}", e),
+        }
+    }
+
+    let queued = jobs_tools::list_queued_jobs(&jobs_root)?;
+    println!("☁️  Pending Jobs (local queue):");
+
+    if queued.is_empty() {
+        println!("   (none)");
+        println!();
+        println!("   0 pending jobs.");
+        return Ok(());
+    }
+
+    for j in &queued {
+        println!(
+            "   ID: {} | Project: {} | File: {} | Queued: {}",
+            j.spec.job_id,
+            j.spec
+                .project_root
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("(project)"),
+            j.spec.vidra_file.display(),
+            j.spec.created_at.to_rfc3339()
+        );
+    }
+    println!();
+    println!("   {} pending job(s).", queued.len());
     Ok(())
 }
 
+fn cmd_jobs_run(all: bool) -> Result<()> {
+    let Some(jobs_root) = jobs_tools::jobs_root_dir() else {
+        anyhow::bail!("failed to resolve home dir for ~/.vidra/jobs");
+    };
+
+    // Best-effort cloud pull before local execution.
+    if let Some(base) = sync_cloud::cloud_base_url_from_env() {
+        let limit = if all { None } else { Some(1) };
+        if let Ok(jobs) = jobs_cloud::fetch_jobs_from_cloud(&base) {
+            let _ = jobs_cloud::enqueue_cloud_jobs(&jobs_root, jobs, limit);
+        }
+    }
+
+    let mut ran_any = false;
+    loop {
+        let Some(claimed) = jobs_tools::claim_next_job(&jobs_root)? else {
+            if !ran_any {
+                println!("🚀 No pending jobs.");
+            }
+            break;
+        };
+        ran_any = true;
+
+        let job_id = claimed.spec.job_id.clone();
+        println!("🚀 Running job {}...", job_id);
+
+        let prev_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+        if let Err(e) = std::env::set_current_dir(&claimed.spec.project_root) {
+            let msg = format!("failed to set current dir to {}: {}", claimed.spec.project_root.display(), e);
+            let _ = jobs_tools::mark_job_failed(&jobs_root, &claimed, &msg);
+            anyhow::bail!(msg);
+        }
+
+        let started = Instant::now();
+        let render_result = cmd_render(
+            claimed.spec.vidra_file.clone(),
+            claimed.spec.output.clone(),
+            claimed.spec.format.clone(),
+            claimed.spec.targets.clone(),
+            false,
+            claimed.spec.data.clone(),
+        );
+
+        // Restore cwd even if render fails.
+        let _ = std::env::set_current_dir(&prev_dir);
+
+        match render_result {
+            Ok(()) => {
+                let elapsed = started.elapsed();
+                let _ = jobs_tools::mark_job_sent(&jobs_root, &claimed);
+                println!("   ✓ Finished in {:.2?} (receipt queued)", elapsed);
+            }
+            Err(e) => {
+                let msg = format!("render failed: {:#}", e);
+                let _ = jobs_tools::mark_job_failed(&jobs_root, &claimed, &msg);
+                println!("   ✗ Job {} failed", job_id);
+                // Keep going for RunAll; fail fast for single-run.
+                if !all {
+                    return Err(e);
+                }
+            }
+        }
+
+        if !all {
+            break;
+        }
+    }
+
+    Ok(())
+}
+
+fn cmd_jobs_watch() -> Result<()> {
+    println!("👀 Starting Vidra Job Daemon (local queue)...");
+    println!("   Polling for new jobs every 15s...");
+    println!("   (Press Ctrl+C to exit)");
+
+    loop {
+        // Run all queued jobs, then sleep.
+        let _ = cmd_jobs_run(true);
+        std::thread::sleep(std::time::Duration::from_secs(15));
+    }
+}
+
 fn cmd_upload(path: &std::path::Path) -> Result<()> {
-    println!("☁️  Uploading '{}' to Vidra Cloud storage...", path.display());
-    println!("   ✓ Upload complete.");
+    let project_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let count = sync_tools::enqueue_upload_path(&project_root, path)?;
+    println!("☁️  Queued '{}' for upload...", path.display());
+    println!("   ✓ Enqueued {} file(s) (local queue)", count);
     Ok(())
 }
 
 fn cmd_assets_list() -> Result<()> {
-    println!("📦 Cloud Assets:");
-    println!("   - intro_music.mp3 (4.2MB)");
-    println!("   - brand_logo.png (1.2MB)");
-    println!("   - overlay.mov (12MB)");
+    println!("📦 Assets:");
+
+    let manifest_path = std::path::PathBuf::from(".vidra").join("asset_manifest.json");
+    if manifest_path.exists() {
+        if let Ok(m) = sync_tools::read_asset_manifest(&manifest_path) {
+            let stats = sync_tools::asset_manifest_stats_from_manifest(&m);
+            println!(
+                "   Manifest: {} assets ({} missing)",
+                stats.total, stats.missing
+            );
+            for a in m.assets.iter().take(50) {
+                let status = if a.exists { "✓" } else { "✗" };
+                let size = a.size_bytes.map(|s| format!("{}B", s)).unwrap_or_else(|| "?".to_string());
+                println!("   - [{}] {} ({}, {})", status, a.path, a.asset_type, size);
+            }
+            if m.assets.len() > 50 {
+                println!("   … ({} more)", m.assets.len() - 50);
+            }
+        } else {
+            println!("   Manifest: unreadable ({})", manifest_path.display());
+        }
+    } else {
+        println!("   Manifest: none (run `vidra sync assets`)");
+    }
+
+    let project_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    if let Ok(s) = sync_tools::upload_sync_status(&project_root) {
+        println!("   Upload queue: {} queued, {} sent", s.queued, s.sent);
+    }
     Ok(())
 }
 
 fn cmd_assets_pull(name: &str) -> Result<()> {
-    println!("📥 Pulling '{}' from Vidra Cloud...", name);
-    println!("   ✓ Saved to assets/{}", name);
+    let project_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let Some((blob_path, suggested_name)) = sync_tools::resolve_upload_blob(&project_root, name)? else {
+        anyhow::bail!("asset '{}' not found in local upload queue", name);
+    };
+
+    let out_dir = std::path::PathBuf::from("assets");
+    std::fs::create_dir_all(&out_dir).context("failed to create assets dir")?;
+
+    let out_path = out_dir.join(suggested_name);
+    std::fs::copy(&blob_path, &out_path)
+        .with_context(|| format!("failed to copy asset blob to {}", out_path.display()))?;
+
+    println!("📥 Pulled '{}' from local cache", name);
+    println!("   ✓ Saved to {}", out_path.display());
     Ok(())
 }
 
 fn cmd_search(query: &str) -> Result<()> {
-    println!("🔍 Searching Vidra Commons for '{}'...", query);
-    println!("   Found 3 results:");
-    println!("   - component: 'social-post' (12.4k installs)");
-    println!("   - component: 'lower-third-pro' (8.1k installs)");
-    println!("   - font: 'Inter' (120k installs)");
+    let q = query.to_lowercase();
+    let templates = template_manager::available_templates();
+    let matches: Vec<_> = templates
+        .into_iter()
+        .filter(|t| t.name.contains(&q) || t.description.to_lowercase().contains(&q))
+        .collect();
+
+    println!("🔍 Searching local templates for '{}'...", query);
+    if matches.is_empty() {
+        println!("   No matches.");
+        println!("   Tip: run `vidra explore` to see all built-in templates.");
+        return Ok(());
+    }
+
+    println!("   Found {} result(s):", matches.len());
+    for t in matches {
+        println!("   - template: '{}' ({})", t.name, t.description);
+    }
     Ok(())
 }
 
 fn cmd_explore() -> Result<()> {
-    println!("🌟 Exploring Vidra Commons...");
-    println!("   Trending this week:");
-    println!("   1. 'neon-glow' effect package");
-    println!("   2. 'youtube-intro' starter kit");
-    println!("   3. 'motion-blur-pro' component");
+    let templates = template_manager::available_templates();
+    println!("🌟 Templates (built-in):");
+    for (i, t) in templates.iter().enumerate() {
+        println!("   {}. '{}' — {}", i + 1, t.name, t.description);
+    }
+    println!();
+    println!("   Install one with: vidra add <template>");
     Ok(())
 }
 
 fn cmd_licenses() -> Result<()> {
-    println!("📜 Project Asset Licenses:");
-    println!("   - Inter Font: SIL Open Font License 1.1");
-    println!("   - Brand Logo: Proprietary");
-    println!("   - Test Sequence: MIT");
+    println!("📜 Project Asset Licenses (local)");
+
+    let manifest_path = std::path::PathBuf::from(".vidra").join("asset_manifest.json");
+    if !manifest_path.exists() {
+        println!("   No manifest found at {}", manifest_path.display());
+        println!("   Run `vidra sync assets` first.");
+        return Ok(());
+    }
+
+    let licensed = licenses_tools::licenses_from_manifest_path(&manifest_path)?;
+    if licensed.is_empty() {
+        println!("   (no assets in manifest)");
+        return Ok(());
+    }
+
+    let mut known = 0usize;
+    let mut unknown = 0usize;
+    let mut missing = 0usize;
+
+    for a in licensed {
+        match a.status {
+            licenses_tools::LicenseStatus::Known(s) => {
+                known += 1;
+                println!("   - [{}] {} — {}", a.asset_type, a.path, s);
+            }
+            licenses_tools::LicenseStatus::Unknown => {
+                unknown += 1;
+                println!("   - [{}] {} — (unknown)", a.asset_type, a.path);
+            }
+            licenses_tools::LicenseStatus::MissingAsset => {
+                missing += 1;
+                println!("   - [{}] {} — (missing on disk)", a.asset_type, a.path);
+            }
+        }
+    }
+
+    println!();
+    println!("   Summary: {} known, {} unknown, {} missing", known, unknown, missing);
+    if unknown > 0 {
+        println!("   Tip: add a sidecar file like <asset>.license.txt with the license identifier/text.");
+    }
     Ok(())
 }
 
 fn cmd_brand_create(name: &str) -> Result<()> {
-    println!("✨ Creating new brand kit: '{}'", name);
-    println!("   Saved locally to ~/.vidra/brands/{}.json", name);
+    let path = brand_tools::create_brand_kit(name)?;
+    println!("✨ Created brand kit: '{}'", name);
+    println!("   Saved locally to {}", path.display());
     Ok(())
 }
 
 fn cmd_brand_list() -> Result<()> {
+    let kits = brand_tools::list_brand_kits()?;
     println!("🎨 Your Brand Kits:");
-    println!("   - default (system)");
-    println!("   - company-primary");
-    println!("   - social-neon");
+    if kits.is_empty() {
+        println!("   (none)");
+        return Ok(());
+    }
+    for k in kits {
+        println!("   - {} ({})", k.name, k.created_at.to_rfc3339());
+    }
     Ok(())
 }
 
 fn cmd_brand_apply(name: &str) -> Result<()> {
+    if !brand_tools::brand_kit_exists(name)? {
+        anyhow::bail!("brand kit '{}' not found (run `vidra brand list`) ", name);
+    }
     let path = std::path::PathBuf::from("vidra.config.toml");
     if !path.exists() {
         anyhow::bail!("vidra.config.toml not found in current directory");
@@ -1466,94 +2158,201 @@ fn cmd_brand_apply(name: &str) -> Result<()> {
 }
 
 fn cmd_workspace_create(name: &str) -> Result<()> {
-    println!("🏢 Created team workspace: '{}'", name);
-    println!("   Active workspace is now '{}'.", name);
+    let s = workspace_tools::create_workspace(name)?;
+    println!("🏢 Created workspace: '{}'", name);
+    if let Some(active) = s.active {
+        println!("   Active workspace: {}", active);
+    }
     Ok(())
 }
 
 fn cmd_workspace_list() -> Result<()> {
+    let s = workspace_tools::list_workspaces()?;
     println!("🏢 Your Workspaces:");
-    println!("   > Personal (free)");
-    println!("     Acme Corp (pro)");
+    if s.workspaces.is_empty() {
+        println!("   (none)");
+        return Ok(());
+    }
+    for w in s.workspaces {
+        let marker = if s.active.as_deref() == Some(&w.name) { ">" } else { " " };
+        println!("   {} {}", marker, w.name);
+    }
     Ok(())
 }
 
 fn cmd_workspace_switch(name: &str) -> Result<()> {
-    println!("🔄 Switched active workspace to '{}'.", name);
+    let s = workspace_tools::switch_workspace(name)?;
+    println!("🔄 Switched active workspace to '{}'", name);
+    if let Some(active) = s.active {
+        println!("   Active workspace: {}", active);
+    }
     Ok(())
 }
 
 fn cmd_workspace_invite(email: &str) -> Result<()> {
+    workspace_tools::invite_to_active_workspace(email)?;
     println!("✉️  Invited {} to current workspace.", email);
     Ok(())
 }
 
 fn cmd_publish(path: &PathBuf) -> Result<()> {
     println!("📦 Publishing resource: {}", path.display());
-    println!("   ✓ Package validated (metadata, license, render test)");
-    println!("   ✓ Content policy check passed");
-    println!("   ✓ Uploaded to Vidra Commons registry");
-    println!();
-    println!("✅ Resource published! Available at: https://commons.vidra.dev/r/my-resource");
+    let project_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+
+    let (pkg_path, is_tmp) = publish_tools::package_for_publish(path)?;
+    let pkg_sha = sha256_file_prefixed(&pkg_path)?;
+    let resource_id = publish_tools::resource_id_from_sha256_prefixed(&pkg_sha);
+
+    let enqueued = sync_tools::enqueue_upload_path(&project_root, &pkg_path)?;
+    if is_tmp {
+        let _ = std::fs::remove_file(&pkg_path);
+    }
+
+    println!("   ✓ Packaged: {}", pkg_sha);
+    println!("   ✓ Queued for upload: {} file(s)", enqueued);
+
+    if let Some(base) = sync_cloud::cloud_base_url_from_env() {
+        let uploaded = sync_cloud::push_uploads_to_cloud(&project_root, &base)?;
+        if !uploaded.failures.is_empty() {
+            println!("   ⚠️  Upload failures ({}):", uploaded.failures.len());
+            for f in &uploaded.failures {
+                println!("      - {}", f);
+            }
+            anyhow::bail!("publish upload completed with failures");
+        }
+        println!("✅ Resource published! ID: {}", resource_id);
+        println!("   URL: {}/commons/resources/{}", base, resource_id);
+        return Ok(());
+    }
+
+    println!("✅ Resource queued. ID: {}", resource_id);
+    println!("   Link: vidra://commons/{}", resource_id);
+    println!("   (Set VIDRA_CLOUD_URL then run `vidra sync push` to publish)");
     Ok(())
 }
 
 fn cmd_plugin_list() -> Result<()> {
+    let plugins = plugin_tools::list_plugins()?;
     println!("🔌 Installed Plugins:");
-    println!("   [1] vidra-ai-captions  v0.3.0  ✓ loaded");
-    println!("   [2] vidra-color-grade  v1.1.0  ✓ loaded");
-    println!("   [3] vidra-lottie       v0.2.1  ✓ loaded");
+    if plugins.is_empty() {
+        println!("   (none)");
+        return Ok(());
+    }
+    for (i, p) in plugins.iter().enumerate() {
+        println!("   [{}] {}  v{}", i + 1, p.name, p.version);
+    }
     Ok(())
 }
 
 fn cmd_plugin_install(name: &str) -> Result<()> {
-    println!("🔌 Installing plugin '{}'...", name);
-    println!("   ✓ Downloaded from plugin registry");
-    println!("   ✓ WASM sandbox verified");
-    println!("   ✓ Plugin '{}' installed and loaded.", name);
+    let path = plugin_tools::install_plugin(name, None)?;
+    println!("🔌 Installed plugin '{}'", name);
+    println!("   Manifest: {}", path.display());
     Ok(())
 }
 
 fn cmd_plugin_remove(name: &str) -> Result<()> {
+    plugin_tools::remove_plugin(name)?;
     println!("🗑️  Removed plugin '{}'.", name);
     Ok(())
 }
 
 fn cmd_plugin_info(name: &str) -> Result<()> {
-    println!("🔌 Plugin: {}", name);
-    println!("   Version:     0.3.0");
-    println!("   Author:      Vidra Team");
-    println!("   License:     MIT");
-    println!("   IR Hooks:    LayerContent::AutoCaption, LayerContent::TTS");
-    println!("   Sandbox:     WASM (verified)");
+    let m = plugin_tools::read_plugin_manifest(name)?;
+    println!("🔌 Plugin: {}", m.name);
+    println!("   Version:     {}", m.version);
+    println!("   Installed:   {}", m.installed_at.to_rfc3339());
     Ok(())
 }
 
 fn cmd_dashboard() -> Result<()> {
-    println!("📊 Render Observability Dashboard");
+    println!("📊 Render Observability Dashboard (local)");
+
+    let now = chrono::Utc::now();
+    let cutoff = now - chrono::Duration::hours(24);
+
+    let mut receipts_last_24h: Vec<crate::receipt::RenderReceipt> = Vec::new();
+    if let Some(root) = sync_tools::receipts_root_dir() {
+        for dir in [root.clone(), sync_tools::receipts_sent_dir(&root)] {
+            if !dir.exists() {
+                continue;
+            }
+            if let Ok(entries) = std::fs::read_dir(&dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if !path.is_file() {
+                        continue;
+                    }
+                    if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                        continue;
+                    }
+                    let Ok(raw) = std::fs::read_to_string(&path) else {
+                        continue;
+                    };
+                    let Ok(r) = serde_json::from_str::<crate::receipt::RenderReceipt>(&raw) else {
+                        continue;
+                    };
+                    if r.payload.timestamp >= cutoff {
+                        receipts_last_24h.push(r);
+                    }
+                }
+            }
+        }
+    }
+
+    let render_count = receipts_last_24h.len();
+    let avg_ms = if render_count == 0 {
+        None
+    } else {
+        Some(
+            receipts_last_24h
+                .iter()
+                .map(|r| r.payload.render_duration_ms)
+                .sum::<u64>()
+                / (render_count as u64),
+        )
+    };
+
     println!();
-    println!("   Renders (last 24h):   142");
-    println!("   Avg render time:      3.2s");
-    println!("   GPU utilization:      78%");
-    println!("   Peak VRAM:            4.1 GB");
-    println!("   Cloud cost (MTD):     $12.40");
-    println!("   Error rate:           0.7%");
+    println!("   Renders (last 24h):   {}", render_count);
+    if let Some(ms) = avg_ms {
+        println!("   Avg render time:      {:.2}s", (ms as f64) / 1000.0);
+    } else {
+        println!("   Avg render time:      n/a");
+    }
+
+    // Local-first queue status
+    if let Some(dir) = sync_tools::receipts_root_dir() {
+        if let Ok(s) = sync_tools::receipt_sync_status(&dir) {
+            println!("   Receipts queue:       {} queued, {} sent", s.queued, s.sent);
+        }
+    }
+    let project_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    if let Ok(s) = sync_tools::upload_sync_status(&project_root) {
+        println!("   Upload queue:         {} queued, {} sent", s.queued, s.sent);
+    }
+    if let Some(jobs_root) = jobs_tools::jobs_root_dir() {
+        if let Ok(j) = jobs_tools::list_queued_jobs(&jobs_root) {
+            println!("   Jobs queue:           {} queued", j.len());
+        }
+    }
+
     println!();
-    println!("   View full dashboard: https://app.vidra.dev/dashboard");
+    if sync_cloud::cloud_base_url_from_env().is_some() {
+        println!("   Cloud dashboard: (set) — use `vidra sync status` for endpoint");
+    } else {
+        println!("   Cloud dashboard: (unset) — set VIDRA_CLOUD_URL to enable uploads");
+    }
     Ok(())
 }
 
 fn cmd_storyboard(prompt: &str, output: Option<PathBuf>) -> Result<()> {
     let out = output.unwrap_or_else(|| PathBuf::from("storyboard.png"));
-    
+
     println!("🎨 Generating Storyboard...");
     println!("   Prompt: \"{}\"", prompt);
-    println!("   > Querying Vidra AI language model...");
-    println!("   > Generating 6 keyframes grid...");
-    println!("   > Mapping stylistic references...");
-    println!();
-    println!("✅ Storyboard key frame grid saved to '{}'", out.display());
-    println!("   Tip: Run `vidra storyboard --iterate` to accept, reject, or modify specific frames.");
+    storyboard_tools::generate_storyboard_png(prompt, &out)?;
+    println!("✅ Storyboard grid saved to '{}'", out.display());
     Ok(())
 }
 

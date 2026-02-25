@@ -93,6 +93,7 @@ impl LayerBuilder {
                 transform: Transform2D::identity(),
                 blend_mode: BlendMode::Normal,
                 animations: Vec::new(),
+                events: Vec::new(),
                 effects: Vec::new(),
                 visible: true,
                 children: Vec::new(),
@@ -156,6 +157,8 @@ impl AnimationBuilder {
             animation: Animation { 
                 property,
                 keyframes: Vec::new(),
+                expr: None,
+                expr_duration: None,
                 delay: Duration::zero(),
             },
         }

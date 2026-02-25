@@ -169,7 +169,7 @@ struct Uniforms {{
             wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
         );
 
-        let submission_idx = self.gpu.queue.submit(Some(encoder.finish()));
+        let _submission_idx = self.gpu.queue.submit(Some(encoder.finish()));
         
         // Wait and map
         let slice = texture_out_buf.slice(..);

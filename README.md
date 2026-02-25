@@ -102,8 +102,6 @@ First-class `tts()` and `autocaption()` nodes in the render graph. Text-to-speec
 
 ### 🔌 MCP Server
 Full Model Context Protocol integration — any AI agent can create projects, add scenes, edit layers, apply brands, and trigger renders.
-
-### 🎭 Brand Kit System
 Define colors, fonts, logos, and motion styles once. Reference them with `@brand.*` across all projects.
 
 ### 📐 Responsive Video
@@ -122,15 +120,11 @@ Extend the engine with WASM-sandboxed plugins. Custom layer types, effects, and 
 A community resource library — components, templates, fonts, sounds. Install with `vidra add <package>`.
 
 ### 🏢 Enterprise Ready
-SSO (SAML/OIDC), audit logs, RBAC, team workspaces, machine seat licensing.
 
 ---
 
 ## 🏗 Architecture
 
-Vidra is built as a modular Rust workspace:
-
-```
 crates/
 ├── vidra-core      # Core types, color, transforms, duration
 ├── vidra-lang      # VidraScript lexer, parser, checker, compiler, formatter
@@ -152,8 +146,6 @@ packages/
 VidraScript / TypeScript SDK / MCP
          ↓
     [ Parser + Checker ] ───── or ───── [ SDK → IR JSON ]
-         ↓                                    ↓
-    [ Compiler → IR ] ◀──────────────────────┘
          ↓                    ↓
     [ GPU Render ]      [ WASM Render ]
          ↓                    ↓
@@ -317,6 +309,12 @@ vidra info                   Version and engine info
 # Run all tests
 cargo test
 
+# Run local quality gate (no GitHub Actions required)
+./scripts/local_ci.sh
+
+# One-command wrapper for teams
+npm run local:ci
+
 # Run language tests only
 cargo test -p vidra-lang
 
@@ -326,6 +324,9 @@ cargo test -p vidra-render
 # Run benchmarks
 cargo bench -p vidra-render
 ```
+
+This repository keeps GitHub workflows disabled (`.github/workflows/*.disabled`) to avoid hosted CI costs.
+Use the local quality gate script above in your own local/dev infrastructure instead.
 
 ---
 

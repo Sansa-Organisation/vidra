@@ -1,0 +1,84 @@
+{
+    "name": "vidra-kitchen-sink-showcase",
+    "updated": "2026-02-25",
+    "provenance": {
+        "lastFreshRun": "2026-02-25",
+        "freshRunCommand": "bash showcase/render_showcase.sh --fresh",
+        "freshArtifacts": [
+            "showcase/videos_curated/anchor_centered_fresh.mp4"
+        ]
+    },
+    "defaultSet": "curated",
+    "notes": [
+        "Use videos_curated for demos/investor materials.",
+        "Legacy videos may include known quality defects and are retained for reference only."
+    ],
+    "sources": {
+        "app": "packages/vidra-examples",
+        "benchmarkBaseline": "tests/snapshots/benchmarks.json"
+    },
+    "videosCurated": [
+        {
+            "id": "anchor_centered",
+            "path": "showcase/videos_curated/anchor_centered.mp4",
+            "source": "issues/001-anchor-point-mismatch/proof/result.mp4",
+            "category": "layout-proof"
+        },
+        {
+            "id": "audio_muxing_verified",
+            "path": "showcase/videos_curated/audio_muxing_verified.mp4",
+            "source": "issues/003-audio-muxing-silent/proof/result.mp4",
+            "category": "audio-proof"
+        },
+        {
+            "id": "image_decode_fixed",
+            "path": "showcase/videos_curated/image_decode_fixed.mp4",
+            "source": "issues/002-strict-image-decoding/proof/result_fixed_text.mp4",
+            "category": "decode-proof"
+        },
+        {
+            "id": "app_flow",
+            "path": "showcase/videos_curated/app_flow.mp4",
+            "source": "output/test_app.mp4",
+            "category": "app"
+        },
+        {
+            "id": "brand_flow",
+            "path": "showcase/videos_curated/brand_flow.mp4",
+            "source": "output/test_brand.mp4",
+            "category": "brand"
+        },
+        {
+            "id": "multi_target_16x9",
+            "path": "showcase/videos_curated/multi_target_16x9.mp4",
+            "source": "output/multi_target_test_16x9.mp4",
+            "category": "multi-target"
+        },
+        {
+            "id": "multi_target_9x16",
+            "path": "showcase/videos_curated/multi_target_9x16.mp4",
+            "source": "output/multi_target_test_9x16.mp4",
+            "category": "multi-target"
+        }
+    ],
+    "videosLegacy": [
+        {
+            "id": "demo_legacy",
+            "path": "showcase/videos/demo.mp4",
+            "source": "output/demo.mp4",
+            "category": "legacy"
+        },
+        {
+            "id": "bench_1080p_legacy",
+            "path": "showcase/videos/bench_1080p.mp4",
+            "source": "benchmark/bench_1080p.mp4",
+            "category": "legacy"
+        },
+        {
+            "id": "bench_4k_legacy",
+            "path": "showcase/videos/bench_4k.mp4",
+            "source": "benchmark/bench_4k.mp4",
+            "category": "legacy"
+        }
+    ]
+}

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vidra Kitchen Sink Showcase</title>
+    <style>
+      body {
+        font-family:
+          Inter,
+          system-ui,
+          -apple-system,
+          sans-serif;
+        margin: 24px;
+        background: #0f1115;
+        color: #e5e7eb;
+      }
+      h1 {
+        margin-bottom: 8px;
+      }
+      p {
+        color: #aab1bf;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: 16px;
+        margin-top: 20px;
+      }
+      .card {
+        background: #171a21;
+        border: 1px solid #2b3140;
+        border-radius: 12px;
+        padding: 12px;
+      }
+      .title {
+        font-size: 14px;
+        margin: 0 0 10px;
+        color: #dbe1ef;
+      }
+      video {
+        width: 100%;
+        border-radius: 8px;
+        background: #000;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Vidra Kitchen Sink Showcase</h1>
+    <p>
+      Curated demo set for stakeholder review. Legacy files with known quality
+      defects are excluded from this page. For claim boundaries, see
+      <a href="../bench_amrs.md" style="color: #8ab4ff">bench_amrs.md</a> and
+      <a href="../investor.md" style="color: #8ab4ff">investor.md</a>.
+    </p>
+    <div class="grid">
+      <div class="card">
+        <p class="title">Anchor Centering (Proof)</p>
+        <video controls src="videos_curated/anchor_centered.mp4"></video>
+      </div>
+      <div class="card">
+        <p class="title">Audio Muxing (Proof)</p>
+        <video controls src="videos_curated/audio_muxing_verified.mp4"></video>
+      </div>
+      <div class="card">
+        <p class="title">Image Decode Robustness (Proof)</p>
+        <video controls src="videos_curated/image_decode_fixed.mp4"></video>
+      </div>
+      <div class="card">
+        <p class="title">App Flow</p>
+        <video controls src="videos_curated/app_flow.mp4"></video>
+      </div>
+      <div class="card">
+        <p class="title">Brand Flow</p>
+        <video controls src="videos_curated/brand_flow.mp4"></video>
+      </div>
+      <div class="card">
+        <p class="title">Multi Target 16:9</p>
+        <video controls src="videos_curated/multi_target_16x9.mp4"></video>
+      </div>
+      <div class="card">
+        <p class="title">Multi Target 9:16</p>
+        <video controls src="videos_curated/multi_target_9x16.mp4"></video>
+      </div>
+    </div>
+  </body>
+</html>

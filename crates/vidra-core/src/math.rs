@@ -61,6 +61,21 @@ pub struct Transform2D {
     pub scale: Point2D,
     /// Rotation in degrees.
     pub rotation: f64,
+
+    /// 2.5D Z translation (pixels-ish). Only meaningful when `perspective > 0`.
+    #[serde(default)]
+    pub translate_z: f64,
+    /// 2.5D rotation around X axis (degrees). Only meaningful when `perspective > 0`.
+    #[serde(default)]
+    pub rotate_x: f64,
+    /// 2.5D rotation around Y axis (degrees). Only meaningful when `perspective > 0`.
+    #[serde(default)]
+    pub rotate_y: f64,
+    /// Perspective distance. When <= 0, perspective is disabled and the transform behaves as 2D.
+    ///
+    /// Interpreted as a focal-length-like distance in pixels.
+    #[serde(default)]
+    pub perspective: f64,
     /// Anchor point (0.0–1.0 normalized, 0.5/0.5 = center).
     pub anchor: Point2D,
     /// Opacity (0.0–1.0).
@@ -74,6 +89,10 @@ impl Transform2D {
             position: Point2D::zero(),
             scale: Point2D::new(1.0, 1.0),
             rotation: 0.0,
+            translate_z: 0.0,
+            rotate_x: 0.0,
+            rotate_y: 0.0,
+            perspective: 0.0,
             anchor: Point2D::new(0.5, 0.5),
             opacity: 1.0,
         }
@@ -86,9 +105,87 @@ impl Transform2D {
             position: self.position.lerp(&other.position, t),
             scale: self.scale.lerp(&other.scale, t),
             rotation: self.rotation + (other.rotation - self.rotation) * t,
+            translate_z: self.translate_z + (other.translate_z - self.translate_z) * t,
+            rotate_x: self.rotate_x + (other.rotate_x - self.rotate_x) * t,
+            rotate_y: self.rotate_y + (other.rotate_y - self.rotate_y) * t,
+            perspective: self.perspective + (other.perspective - self.perspective) * t,
             anchor: self.anchor.lerp(&other.anchor, t),
             opacity: self.opacity + (other.opacity - self.opacity) * t,
         }
+    }
+
+    /// Project the 4 corners of a layer's local rectangle into screen space.
+    ///
+    /// - `width`/`height` are the layer's pixel dimensions (after any CPU scaling).
+    /// - The layer's anchor defines the pivot within that rectangle.
+    /// - The returned points are ordered: top-left, top-right, bottom-right, bottom-left.
+    pub fn project_corners(&self, width: f64, height: f64) -> [[f64; 2]; 4] {
+        // Local corners in pixels, with pivot at anchor.
+        let ax = self.anchor.x;
+        let ay = self.anchor.y;
+        let left = -ax * width;
+        let right = (1.0 - ax) * width;
+        let top = -ay * height;
+        let bottom = (1.0 - ay) * height;
+
+        let corners = [
+            [left, top, 0.0],
+            [right, top, 0.0],
+            [right, bottom, 0.0],
+            [left, bottom, 0.0],
+        ];
+
+        let rz = self.rotation.to_radians();
+        let rx = self.rotate_x.to_radians();
+        let ry = self.rotate_y.to_radians();
+
+        let (sz, cz) = rz.sin_cos();
+        let (sx, cx) = rx.sin_cos();
+        let (sy, cy) = ry.sin_cos();
+
+        let persp = self.perspective;
+
+        let mut out = [[0.0; 2]; 4];
+        for (i, c) in corners.iter().enumerate() {
+            let mut x = c[0];
+            let mut y = c[1];
+            let mut z = c[2];
+
+            // Rotate Z (2D rotation).
+            let xz = x * cz - y * sz;
+            let yz = x * sz + y * cz;
+            x = xz;
+            y = yz;
+
+            // Rotate X.
+            let yx = y * cx - z * sx;
+            let zx = y * sx + z * cx;
+            y = yx;
+            z = zx;
+
+            // Rotate Y.
+            let xy = x * cy + z * sy;
+            let zy = -x * sy + z * cy;
+            x = xy;
+            z = zy;
+
+            // Translate.
+            x += self.position.x;
+            y += self.position.y;
+            z += self.translate_z;
+
+            // Perspective projection.
+            if persp > 0.0 {
+                let denom = (persp + z).max(1e-6);
+                let f = persp / denom;
+                x = self.position.x + (x - self.position.x) * f;
+                y = self.position.y + (y - self.position.y) * f;
+            }
+
+            out[i] = [x, y];
+        }
+
+        out
     }
 }
 

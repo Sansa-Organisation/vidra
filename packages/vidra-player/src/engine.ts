@@ -8,8 +8,16 @@ import init, {
     render_frame_from_source,
     get_project_info,
     load_image_asset,
+    materialize_autocaption_layer,
+    apply_remove_background_patch,
     version,
 } from "../wasm/vidra_wasm.js";
+
+export interface CaptionSegment {
+    start_s: number;
+    end_s: number;
+    text: string;
+}
 
 export interface ProjectInfo {
     width: number;
@@ -37,6 +45,32 @@ export class VidraEngine {
     private currentFrame: number = 0;
     private animId: number = 0;
     private state: PlayerState = "idle";
+
+    /**
+     * Materialize an `autocaption(...)` layer from host-provided segments.
+     *
+     * This updates the engine's in-memory IR JSON (no re-compile needed).
+     */
+    materializeAutoCaptionLayer(layerId: string, segments: CaptionSegment[]) {
+        if (!this.irJson) {
+            throw new Error("Engine IR not loaded");
+        }
+        const segmentsJson = JSON.stringify(segments);
+        this.irJson = materialize_autocaption_layer(this.irJson, layerId, segmentsJson);
+    }
+
+    /**
+     * Apply a background-removal patch to an image layer.
+     *
+     * The caller provides the PNG-with-alpha bytes and a new asset id.
+     */
+    applyRemoveBackgroundPatch(layerId: string, newAssetId: string, pngBytes: Uint8Array) {
+        if (!this.irJson) {
+            throw new Error("Engine IR not loaded");
+        }
+        load_image_asset(newAssetId, pngBytes);
+        this.irJson = apply_remove_background_patch(this.irJson, layerId, newAssetId);
+    }
     private lastFrameTime: number = 0;
     private events: EngineEvents;
     private wasmReady: boolean = false;

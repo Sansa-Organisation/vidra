@@ -1,4 +1,4 @@
-project(1920x1080, 60) {
+project(1920, 1080, 60) {
     scene("main", 5s) {
         // A simple text layer welcoming you to Vidra
         layer("welcome_text") {

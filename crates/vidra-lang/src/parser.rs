@@ -638,7 +638,7 @@ impl Parser {
         let mut content = LayerContentNode::Empty;
         
         let is_content = match self.peek() {
-            TokenKind::Text | TokenKind::Image | TokenKind::Video | TokenKind::Audio | TokenKind::Solid | TokenKind::Shape | TokenKind::Shader | TokenKind::Slot | TokenKind::TTS | TokenKind::AutoCaption => true,
+            TokenKind::Text | TokenKind::Image | TokenKind::Spritesheet | TokenKind::Video | TokenKind::Audio | TokenKind::Solid | TokenKind::Shape | TokenKind::Shader | TokenKind::Slot | TokenKind::TTS | TokenKind::AutoCaption => true,
             TokenKind::Identifier(name) if name != "position" && name != "animation" && name != "size" && name != "scale" => true,
             _ => false,
         };
@@ -695,6 +695,14 @@ impl Parser {
                 self.expect(&TokenKind::RightParen)?;
                 Ok(LayerContentNode::Image { path, args })
             }
+            TokenKind::Spritesheet => {
+                self.advance();
+                self.expect(&TokenKind::LeftParen)?;
+                let path = self.parse_value()?;
+                let args = self.parse_trailing_named_args()?;
+                self.expect(&TokenKind::RightParen)?;
+                Ok(LayerContentNode::Spritesheet { path, args })
+            }
             TokenKind::Video => {
                 self.advance();
                 self.expect(&TokenKind::LeftParen)?;
@@ -710,6 +718,14 @@ impl Parser {
                 let args = self.parse_trailing_named_args()?;
                 self.expect(&TokenKind::RightParen)?;
                 Ok(LayerContentNode::Audio { path, args })
+            }
+            TokenKind::Waveform => {
+                self.advance();
+                self.expect(&TokenKind::LeftParen)?;
+                let audio_source = self.parse_value()?;
+                let args = self.parse_trailing_named_args()?;
+                self.expect(&TokenKind::RightParen)?;
+                Ok(LayerContentNode::Waveform { audio_source, args })
             }
             TokenKind::TTS => {
                 self.advance();
@@ -803,6 +819,58 @@ impl Parser {
     fn parse_property(&mut self) -> Result<PropertyNode, VidraError> {
         let span = self.current_span();
         match self.peek().clone() {
+            TokenKind::At => {
+                self.advance(); // '@'
+                let kw = self.parse_identifier()?;
+                if kw != "on" {
+                    return Err(VidraError::parse(
+                        format!("expected '@on', got '@{}'", kw),
+                        &self.file,
+                        span.line,
+                        span.column,
+                    ));
+                }
+
+                let event = self.parse_identifier()?;
+                self.skip_newlines();
+                self.expect(&TokenKind::LeftBrace)?;
+                self.skip_newlines();
+
+                let mut actions = Vec::new();
+                while self.peek() != &TokenKind::RightBrace && self.peek() != &TokenKind::Eof {
+                    self.skip_newlines();
+                    if self.peek() == &TokenKind::RightBrace {
+                        break;
+                    }
+
+                    let action_span = self.current_span();
+                    let stmt = self.parse_identifier()?;
+                    if stmt != "set" {
+                        return Err(VidraError::parse(
+                            format!("expected 'set' inside @on block, got '{}'", stmt),
+                            &self.file,
+                            action_span.line,
+                            action_span.column,
+                        ));
+                    }
+
+                    let name = self.parse_identifier()?;
+                    self.skip_newlines();
+                    self.expect(&TokenKind::Equals)?;
+                    self.skip_newlines();
+                    let expr = self.collect_expr_until_terminator();
+                    self.skip_newlines();
+
+                    actions.push(SetActionNode {
+                        name,
+                        expr,
+                        span: action_span,
+                    });
+                }
+
+                self.expect(&TokenKind::RightBrace)?;
+                Ok(PropertyNode::OnEvent { event, actions, span })
+            }
             TokenKind::Identifier(ref name) if name == "position" => {
                 self.advance();
                 self.expect(&TokenKind::LeftParen)?;
@@ -905,6 +973,56 @@ impl Parser {
                 span.column,
             )),
         }
+    }
+
+    fn collect_expr_until_terminator(&mut self) -> String {
+        // Collect tokens into a raw expression string until a newline or block terminator.
+        // This is used for reactive `set name = <expr>` statements.
+        let mut out = String::new();
+        let mut prev_alnum = false;
+
+        while self.peek() != &TokenKind::Newline
+            && self.peek() != &TokenKind::RightBrace
+            && self.peek() != &TokenKind::Eof
+        {
+            let kind = self.peek().clone();
+
+            let is_alnum = matches!(
+                kind,
+                TokenKind::Identifier(_)
+                    | TokenKind::StringLiteral(_)
+                    | TokenKind::NumberLiteral(_)
+                    | TokenKind::DurationLiteral(_)
+                    | TokenKind::ColorLiteral(_)
+            );
+
+            match kind {
+                TokenKind::Dot => {
+                    out.push('.');
+                    prev_alnum = false;
+                    self.advance();
+                }
+                TokenKind::Plus | TokenKind::Minus | TokenKind::Star | TokenKind::Slash => {
+                    if !out.is_empty() && !out.ends_with(' ') {
+                        out.push(' ');
+                    }
+                    out.push_str(&format!("{}", kind));
+                    out.push(' ');
+                    prev_alnum = false;
+                    self.advance();
+                }
+                _ => {
+                    if !out.is_empty() && prev_alnum && is_alnum {
+                        out.push(' ');
+                    }
+                    out.push_str(&format!("{}", kind));
+                    prev_alnum = is_alnum;
+                    self.advance();
+                }
+            }
+        }
+
+        out.trim().to_string()
     }
 
     // --- Helper parsers ---

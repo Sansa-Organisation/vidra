@@ -63,6 +63,7 @@ pub fn compile_expression(
     property: AnimatableProperty,
     expr_str: &str,
     duration: f64,
+    audio_amp_samples: Option<&[f64]>,
 ) -> Animation {
     let mut anim = Animation::new(property);
     
@@ -87,6 +88,14 @@ pub fn compile_expression(
         let p = if duration > 0.0 { t / duration } else { 1.0 };
         let _ = context.set_value("p".to_string(), evalexpr::Value::Float(p));
         let _ = context.set_value("T".to_string(), evalexpr::Value::Float(duration));
+
+        if let Some(samples) = audio_amp_samples {
+            let idx = ((t / dt).round() as usize).min(samples.len().saturating_sub(1));
+            let amp = samples.get(idx).copied().unwrap_or(0.0);
+            let _ = context.set_value("audio_amp".to_string(), evalexpr::Value::Float(amp));
+        } else {
+            let _ = context.set_value("audio_amp".to_string(), evalexpr::Value::Float(0.0));
+        }
 
         let value = match compiled.eval_with_context(&context) {
             Ok(v) => v.as_number().unwrap_or(0.0),

@@ -130,7 +130,14 @@ fn compile_and_load(file: &PathBuf) -> Result<Project> {
         anyhow::anyhow!("Type errors:\n  {}", msgs.join("\n  "))
     })?;
 
-    let project = vidra_lang::Compiler::compile(&ast).map_err(|e| anyhow::anyhow!("{}", e))?;
+    let mut project = vidra_lang::Compiler::compile(&ast).map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    // Best-effort config load (dev server can run from a standalone file).
+    let config = vidra_core::VidraConfig::load_from_file(std::path::Path::new("vidra.config.toml"))
+        .unwrap_or_default();
+
+    // Ensure any remote assets are fetched into the local cache so the renderer can load them.
+    crate::remote_assets::prepare_project_remote_assets(&mut project, &config)?;
 
     vidra_ir::validate::validate_project(&project).map_err(|errors| {
         let msgs: Vec<String> = errors.into_iter().map(|e| e.to_string()).collect();

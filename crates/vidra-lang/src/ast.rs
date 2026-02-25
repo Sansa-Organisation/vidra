@@ -161,8 +161,16 @@ pub enum LayerContentNode {
         path: ValueNode,
         args: Vec<NamedArg>,
     },
+    Spritesheet {
+        path: ValueNode,
+        args: Vec<NamedArg>,
+    },
     Audio {
         path: ValueNode,
+        args: Vec<NamedArg>,
+    },
+    Waveform {
+        audio_source: ValueNode,
         args: Vec<NamedArg>,
     },
     AutoCaption {
@@ -201,6 +209,15 @@ pub enum LayerContentNode {
 pub struct NamedArg {
     pub name: String,
     pub value: ValueNode,
+    pub span: Span,
+}
+
+/// A reactive action: `set name = expr`.
+#[derive(Debug, Clone)]
+pub struct SetActionNode {
+    pub name: String,
+    /// Raw expression string (evaluated at runtime by interactive renderers).
+    pub expr: String,
     pub span: Span,
 }
 
@@ -251,6 +268,13 @@ pub enum PropertyNode {
     /// `wait(duration)`
     Wait {
         duration: ValueNode,
+        span: Span,
+    },
+
+    /// `@on click { set count = count + 1 }`
+    OnEvent {
+        event: String,
+        actions: Vec<SetActionNode>,
         span: Span,
     },
 }

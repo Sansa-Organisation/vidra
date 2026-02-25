@@ -42,4 +42,21 @@ mod tests {
         
         println!("Generated WGSL:\n{}", wgsl);
     }
+
+    #[test]
+    fn test_compile_invert_and_grayscale() {
+        let src = r#"
+        @effect basic() {
+            let a = source() -> grayscale(1.0)
+            let b = a -> invert(0.5)
+            b
+        }
+        "#;
+
+        let wgsl = compile(src).expect("Compilation failed");
+        assert!(wgsl.contains("dot"));
+        assert!(wgsl.contains("mix"));
+        assert!(wgsl.contains("textureLoad"));
+        assert!(wgsl.contains("textureStore"));
+    }
 }

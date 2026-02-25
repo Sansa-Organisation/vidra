@@ -81,6 +81,9 @@ impl WebmEncoder {
         if !audio_tracks.is_empty() {
             let mut filter_complex = String::new();
             let mut mix_inputs = String::new();
+            let mut narr_inputs = Vec::new();
+            let mut music_inputs = Vec::new();
+            let mut music_duck = 1.0_f64;
 
             for (i, track) in audio_tracks.iter().enumerate() {
                 let input_idx = i + 1;
@@ -92,12 +95,45 @@ impl WebmEncoder {
                     input_idx, delay_ms, track.volume, filter_name
                 ));
                 mix_inputs.push_str(&filter_name);
+
+                let role = track.role.as_deref().unwrap_or("narration");
+                if role == "music" || track.duck.is_some() {
+                    music_inputs.push(filter_name);
+                    if let Some(d) = track.duck {
+                        music_duck = music_duck.min(d.max(0.0).min(1.0));
+                    }
+                } else {
+                    narr_inputs.push(filter_name);
+                }
             }
 
-            filter_complex.push_str(&format!(
-                "{}amix=inputs={}:duration=first:dropout_transition=3[aout]",
-                mix_inputs, audio_tracks.len()
-            ));
+            let should_duck = !music_inputs.is_empty() && !narr_inputs.is_empty() && music_duck < 1.0;
+            if should_duck {
+                filter_complex.push_str(&format!(
+                    "{}amix=inputs={}:duration=first:dropout_transition=3[narr];",
+                    narr_inputs.join(""),
+                    narr_inputs.len()
+                ));
+                filter_complex.push_str(&format!(
+                    "{}amix=inputs={}:duration=first:dropout_transition=3[music];",
+                    music_inputs.join(""),
+                    music_inputs.len()
+                ));
+                filter_complex.push_str(
+                    "[music][narr]sidechaincompress=threshold=0.02:ratio=8:attack=20:release=250[ducked];",
+                );
+                filter_complex.push_str(&format!(
+                    "[ducked]volume={}[duckv];",
+                    music_duck
+                ));
+                filter_complex.push_str("[duckv][narr]amix=inputs=2:duration=first:dropout_transition=3[aout]");
+            } else {
+                filter_complex.push_str(&format!(
+                    "{}amix=inputs={}:duration=first:dropout_transition=3[aout]",
+                    mix_inputs,
+                    audio_tracks.len()
+                ));
+            }
 
             cmd.args(["-filter_complex", &filter_complex]);
             cmd.args(["-map", "0:v", "-map", "[aout]"]);

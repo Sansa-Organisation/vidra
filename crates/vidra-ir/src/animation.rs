@@ -9,6 +9,10 @@ pub enum AnimatableProperty {
     ScaleX,
     ScaleY,
     Rotation,
+    TranslateZ,
+    RotateX,
+    RotateY,
+    Perspective,
     Opacity,
     FontSize,
     ColorR,
@@ -34,6 +38,10 @@ impl std::fmt::Display for AnimatableProperty {
             AnimatableProperty::ScaleX => write!(f, "scale.x"),
             AnimatableProperty::ScaleY => write!(f, "scale.y"),
             AnimatableProperty::Rotation => write!(f, "rotation"),
+            AnimatableProperty::TranslateZ => write!(f, "translateZ"),
+            AnimatableProperty::RotateX => write!(f, "rotateX"),
+            AnimatableProperty::RotateY => write!(f, "rotateY"),
+            AnimatableProperty::Perspective => write!(f, "perspective"),
             AnimatableProperty::Opacity => write!(f, "opacity"),
             AnimatableProperty::FontSize => write!(f, "fontSize"),
             AnimatableProperty::ColorR => write!(f, "colorR"),
@@ -86,6 +94,17 @@ pub struct Animation {
     pub property: AnimatableProperty,
     /// Ordered keyframes (must be sorted by time).
     pub keyframes: Vec<Keyframe>,
+    /// Optional runtime expression (evaluated per frame by the renderer).
+    ///
+    /// When present, renderers should evaluate this expression instead of interpolating keyframes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expr: Option<String>,
+    /// Duration (seconds) used for runtime expressions (for `t`, `p`, `T`).
+    ///
+    /// Keyframed animations derive duration from keyframes; expression animations need an
+    /// explicit duration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expr_duration: Option<vidra_core::Duration>,
     /// Delay before the animation starts (relative to scene start).
     pub delay: vidra_core::Duration,
 }
@@ -96,6 +115,8 @@ impl Animation {
         Self {
             property,
             keyframes: Vec::new(),
+            expr: None,
+            expr_duration: None,
             delay: vidra_core::Duration::zero(),
         }
     }
@@ -114,6 +135,8 @@ impl Animation {
                 Keyframe::new(vidra_core::Duration::zero(), from),
                 Keyframe::new(duration, to).with_easing(easing),
             ],
+            expr: None,
+            expr_duration: None,
             delay: vidra_core::Duration::zero(),
         }
     }

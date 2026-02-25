@@ -97,6 +97,15 @@ impl LanguageServer for Backend {
                 ..Default::default()
             },
             CompletionItem {
+                label: "spritesheet".to_string(),
+                kind: Some(CompletionItemKind::FUNCTION),
+                detail: Some(
+                    "spritesheet(path, frameWidth: 64, frameHeight: 64, fps: 12, start: 0, frameCount: 16)"
+                        .to_string(),
+                ),
+                ..Default::default()
+            },
+            CompletionItem {
                 label: "component".to_string(),
                 kind: Some(CompletionItemKind::KEYWORD),
                 detail: Some("component(name) { ... }".to_string()),
@@ -117,7 +126,13 @@ impl LanguageServer for Backend {
             CompletionItem {
                 label: "audio".to_string(),
                 kind: Some(CompletionItemKind::FUNCTION),
-                detail: Some("audio(path, trim_start: 0, trim_end: 1, volume: 1)".to_string()),
+                detail: Some("audio(path, trim_start: 0, trim_end: 1, volume: 1, role: \"music\", duck: 0.35)".to_string()),
+                ..Default::default()
+            },
+            CompletionItem {
+                label: "waveform".to_string(),
+                kind: Some(CompletionItemKind::FUNCTION),
+                detail: Some("waveform(audio_path, width: 1024, height: 256, color: #ffffff)".to_string()),
                 ..Default::default()
             },
             CompletionItem {

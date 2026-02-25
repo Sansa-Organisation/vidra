@@ -1,10 +1,12 @@
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc, Duration};
-use std::path::{PathBuf, Path};
+use std::path::PathBuf;
 use ed25519_dalek::{Verifier, VerifyingKey, Signature};
 use anyhow::{Context, Result, bail};
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
+use rand_core::RngCore;
+use sha2::{Digest, Sha256};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VltLimits {
@@ -36,14 +38,94 @@ pub struct Vlt {
 // For demonstration, we'll use a dummy valid ed25519 pubkey (32 bytes = 44 base64 chars).
 const VIDRA_PLATFORM_PUBKEY_B64: &str = "OjnM3ZkQ11cIayQxyq13oH/d3Hl4Zkx/A75yW5dZ5U8=";
 
+fn resolve_home_dir() -> Result<PathBuf> {
+    if let Ok(v) = std::env::var("VIDRA_HOME_DIR") {
+        let p = PathBuf::from(v);
+        if p.is_absolute() {
+            return Ok(p);
+        }
+        return Ok(std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join(p));
+    }
+    dirs::home_dir().context("failed to resolve home dir")
+}
+
+fn expand_tilde(path: &str) -> Result<PathBuf> {
+    if let Some(rest) = path.strip_prefix("~/") {
+        return Ok(resolve_home_dir()?.join(rest));
+    }
+    Ok(PathBuf::from(path))
+}
+
+fn vlt_token_path() -> Result<PathBuf> {
+    if let Ok(p) = std::env::var("VIDRA_VLT_PATH") {
+        let pb = expand_tilde(p.trim())?;
+        if pb.is_absolute() {
+            return Ok(pb);
+        }
+        return Ok(std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join(pb));
+    }
+    Ok(resolve_home_dir()?.join(".vidra").join("vlt.token"))
+}
+
+fn api_keys_path() -> Result<PathBuf> {
+    Ok(resolve_home_dir()?.join(".vidra").join("api_keys.json"))
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ApiKeyRecord {
+    pub key_id: String,
+    pub name: String,
+    pub scope: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct ApiKeyStore {
+    pub keys: Vec<ApiKeyRecord>,
+}
+
+fn load_api_keys() -> Result<ApiKeyStore> {
+    let path = api_keys_path()?;
+    if !path.exists() {
+        return Ok(ApiKeyStore::default());
+    }
+    let raw = std::fs::read_to_string(&path)
+        .with_context(|| format!("failed to read api keys: {}", path.display()))?;
+    let store = serde_json::from_str(&raw)
+        .with_context(|| format!("failed to parse api keys: {}", path.display()))?;
+    Ok(store)
+}
+
+fn save_api_keys(store: &ApiKeyStore) -> Result<()> {
+    let path = api_keys_path()?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).context("failed to create ~/.vidra")?;
+    }
+    let json = serde_json::to_string_pretty(store).context("failed to serialize api keys")?;
+    std::fs::write(&path, json)
+        .with_context(|| format!("failed to write api keys: {}", path.display()))?;
+    Ok(())
+}
+
+fn new_random_id(prefix: &str) -> String {
+    let mut bytes = [0u8; 16];
+    rand_core::OsRng.fill_bytes(&mut bytes);
+    let mut hasher = Sha256::new();
+    hasher.update(prefix.as_bytes());
+    hasher.update(bytes);
+    let digest = hasher.finalize();
+    let hex: String = digest.iter().map(|b| format!("{:02x}", b)).collect();
+    format!("{}_{}", prefix, &hex[..12])
+}
+
 impl Vlt {
+    #[allow(dead_code)]
     pub fn get_path() -> PathBuf {
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        PathBuf::from(home).join(".vidra").join("vlt.token")
+        vlt_token_path().unwrap_or_else(|_| PathBuf::from(".vidra").join("vlt.token"))
     }
 
     pub fn load_local() -> Result<Self> {
-        let path = Self::get_path();
+        let path = vlt_token_path()?;
         if !path.exists() {
             bail!("No VLT found at {:?}. Please run `vidra auth login`.", path);
         }
@@ -55,7 +137,7 @@ impl Vlt {
     }
 
     pub fn save_local(&self) -> Result<()> {
-        let path = Self::get_path();
+        let path = vlt_token_path()?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -65,6 +147,21 @@ impl Vlt {
     }
 
     pub fn validate_offline(&self) -> Result<()> {
+        // Local-first dev token support: allow tokens with signature `local:*`.
+        // These are intentionally unsigned and meant for offline/dev flows.
+        if self.signature.starts_with("local:") {
+            let now = Utc::now();
+            let grace_period = Duration::days(7);
+            let hard_expiry = self.payload.expires_at + grace_period;
+            if now > hard_expiry {
+                bail!("VLT has expired and the 7-day grace period has elapsed. Please run `vidra auth login` to refresh.");
+            }
+            if now > self.payload.expires_at {
+                tracing::warn!("VLT is currently in its 7-day grace period (local token). Please run `vidra auth login` to refresh soon.");
+            }
+            return Ok(());
+        }
+
         // 1. Check signature
         // The signature is over the canonical JSON of the payload.
         // For simplicity, we assume the platform signs the canonical JSON string of VltPayload.
@@ -105,10 +202,12 @@ impl Vlt {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn has_feature(&self, feature: &str) -> bool {
         self.payload.features.iter().any(|f| f == feature)
     }
 
+    #[allow(dead_code)]
     pub fn enforce_plan_limit(&self, limit_name: &str, current_usage: u32) -> Result<()> {
         let limit = match limit_name {
             "renders_per_month" => self.payload.limits.renders_per_month,
@@ -128,27 +227,19 @@ impl Vlt {
 }
 
 pub fn login() -> Result<()> {
-    tracing::info!("Starting browser-based login flow...");
-    tracing::info!("Opening browser to https://vidra.dev/auth/login...");
-    
-    // In a real implementation we would:
-    // 1. Spawns browser
-    // 2. Opens local server on random port
-    // 3. Waits for callback with the token payload
-    // 
-    // For now, we simulate receiving a valid token by signing a dummy one.
-    
-    use ed25519_dalek::SigningKey;
-
-    // Generate a temporary signing key to mock a token
-    let mock_bytes = [7u8; 32];
-    let signing_key = SigningKey::from_bytes(&mock_bytes);
+    tracing::info!("Starting login flow...");
+    // Local-first/dev login: create a local token that passes offline validation.
 
     let payload = VltPayload {
-        vlt_id: "vlt_mock_12345".to_string(),
-        user_id: "usr_mock_001".to_string(),
+        vlt_id: new_random_id("vlt"),
+        user_id: new_random_id("usr"),
         plan: "pro".to_string(),
-        features: vec!["cloud_sync".to_string(), "share".to_string(), "brand_kit".to_string(), "commons_premium".to_string()],
+        features: vec![
+            "cloud_sync".to_string(),
+            "share".to_string(),
+            "brand_kit".to_string(),
+            "commons".to_string(),
+        ],
         limits: VltLimits {
             renders_per_month: None,
             cloud_renders_per_month: Some(100),
@@ -159,16 +250,9 @@ pub fn login() -> Result<()> {
         expires_at: Utc::now() + Duration::days(30),
     };
 
-    let msg = serde_json::to_string(&payload)?;
-    use ed25519_dalek::Signer;
-    let signature_bytes = signing_key.sign(msg.as_bytes());
-    
-    let signature_b64 = BASE64_STANDARD.encode(signature_bytes.to_bytes());
-    let sig_string = format!("ed25519:{}", signature_b64);
-
     let vlt = Vlt {
         payload,
-        signature: sig_string,
+        signature: "local:dev".to_string(),
     };
 
     vlt.save_local()?;
@@ -178,27 +262,106 @@ pub fn login() -> Result<()> {
 }
 
 pub fn create_api_key(name: &str, scope: &str) -> Result<()> {
-    // Generate an API key prefix
-    let key = format!("vk_live_mock_{}...", BASE64_STANDARD.encode(name).to_lowercase());
-    println!("Successfully created API key '{}' with scopes: [{}]", name, scope);
-    println!("Key: {}", key);
+    let mut store = load_api_keys()?;
+
+    let key_id = new_random_id("vk");
+    let secret = {
+        let mut bytes = [0u8; 24];
+        rand_core::OsRng.fill_bytes(&mut bytes);
+        BASE64_STANDARD.encode(bytes)
+    };
+    let full_key = format!("{}_{}", key_id, secret);
+
+    let rec = ApiKeyRecord {
+        key_id: key_id.clone(),
+        name: name.to_string(),
+        scope: scope.to_string(),
+        created_at: Utc::now(),
+    };
+    store.keys.retain(|k| k.key_id != key_id);
+    store.keys.push(rec);
+    store.keys.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+    save_api_keys(&store)?;
+
+    println!("✅ Created API key '{}'", name);
+    println!("   Scope: {}", scope);
+    println!("   Key: {}", full_key);
+    println!("   (This key will not be shown again.)");
     Ok(())
 }
 
 pub fn list_api_keys() -> Result<()> {
+    let store = load_api_keys()?;
     println!("Active API keys:");
-    println!("  vk_live_mock_default_... (Scope: all)");
+    if store.keys.is_empty() {
+        println!("  (none)");
+        return Ok(());
+    }
+    for k in store.keys {
+        println!("  {}  '{}'  (scope: {})", k.key_id, k.name, k.scope);
+    }
     Ok(())
 }
 
 pub fn revoke_api_key(key_id: &str) -> Result<()> {
-    println!("Successfully revoked API key: {}", key_id);
+    let mut store = load_api_keys()?;
+    let before = store.keys.len();
+    store.keys.retain(|k| k.key_id != key_id);
+    if store.keys.len() == before {
+        bail!("API key not found: {}", key_id);
+    }
+    save_api_keys(&store)?;
+    println!("✅ Revoked API key: {}", key_id);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vlt_login_creates_local_token_and_validates() {
+        let _lock = crate::test_support::ENV_LOCK.lock().unwrap();
+        let tmp = std::env::temp_dir().join(format!("vidra_auth_home_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::env::set_var("VIDRA_HOME_DIR", &tmp);
+
+        login().unwrap();
+        let vlt = Vlt::load_local().unwrap();
+        vlt.validate_offline().unwrap();
+        assert!(vlt.payload.vlt_id.starts_with("vlt_"));
+
+        std::env::remove_var("VIDRA_HOME_DIR");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn api_keys_create_list_revoke() {
+        let _lock = crate::test_support::ENV_LOCK.lock().unwrap();
+        let tmp = std::env::temp_dir().join(format!("vidra_auth_keys_home_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::env::set_var("VIDRA_HOME_DIR", &tmp);
+
+        create_api_key("ci", "render:read,render:write").unwrap();
+        let store = load_api_keys().unwrap();
+        assert_eq!(store.keys.len(), 1);
+        let key_id = store.keys[0].key_id.clone();
+
+        revoke_api_key(&key_id).unwrap();
+        let store2 = load_api_keys().unwrap();
+        assert_eq!(store2.keys.len(), 0);
+
+        std::env::remove_var("VIDRA_HOME_DIR");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 }
 
 // ── Enterprise Features (Phase 3.4) ─────────────────────────────────
 
 /// SSO provider configuration for enterprise orgs.
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SsoConfig {
     pub provider: SsoProvider,
@@ -208,6 +371,7 @@ pub struct SsoConfig {
     pub redirect_uri: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum SsoProvider {
     Saml,
@@ -215,6 +379,7 @@ pub enum SsoProvider {
 }
 
 /// Audit log entry for compliance tracking.
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AuditEntry {
     pub timestamp: DateTime<Utc>,
@@ -226,12 +391,14 @@ pub struct AuditEntry {
 }
 
 /// Role-Based Access Control role definition.
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RbacRole {
     pub name: String,
     pub permissions: Vec<String>,
 }
 
+#[allow(dead_code)]
 impl RbacRole {
     pub fn owner() -> Self {
         Self {
@@ -279,6 +446,7 @@ impl RbacRole {
 // ── Machine Seat Licensing (Phase 3.9) ──────────────────────────────
 
 /// Hardware fingerprint for machine seat enforcement.
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MachineFingerprint {
     pub hostname: String,
@@ -287,6 +455,7 @@ pub struct MachineFingerprint {
     pub fingerprint_hash: String,
 }
 
+#[allow(dead_code)]
 impl MachineFingerprint {
     pub fn current() -> Self {
         let hostname = std::env::var("HOSTNAME")

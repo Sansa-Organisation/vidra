@@ -1,6 +1,120 @@
 /* @ts-self-types="./vidra_wasm.d.ts" */
 
 /**
+ * Chroma subsampling format
+ * @enum {0 | 1 | 2 | 3}
+ */
+export const ChromaSampling = Object.freeze({
+    /**
+     * Both vertically and horizontally subsampled.
+     */
+    Cs420: 0, "0": "Cs420",
+    /**
+     * Horizontally subsampled.
+     */
+    Cs422: 1, "1": "Cs422",
+    /**
+     * Not subsampled.
+     */
+    Cs444: 2, "2": "Cs444",
+    /**
+     * Monochrome.
+     */
+    Cs400: 3, "3": "Cs400",
+});
+
+/**
+ * Apply a background-removal patch to an image layer.
+ *
+ * The JS host is responsible for calling the remote API (remove.bg / Clipdrop / etc) and
+ * providing the resulting PNG-with-alpha via `load_image_asset(new_asset_id, bytes)`.
+ *
+ * This function updates the IR to:
+ * - swap `image(asset_id)` to the new asset id
+ * - remove `effect(removeBackground)` from the layer
+ *
+ * Returns updated IR JSON.
+ * @param {string} ir_json
+ * @param {string} layer_id
+ * @param {string} new_asset_id
+ * @returns {string}
+ */
+export function apply_remove_background_patch(ir_json, layer_id, new_asset_id) {
+    let deferred5_0;
+    let deferred5_1;
+    try {
+        const ptr0 = passStringToWasm0(ir_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(layer_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passStringToWasm0(new_asset_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ret = wasm.apply_remove_background_patch(ptr0, len0, ptr1, len1, ptr2, len2);
+        var ptr4 = ret[0];
+        var len4 = ret[1];
+        if (ret[3]) {
+            ptr4 = 0; len4 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred5_0 = ptr4;
+        deferred5_1 = len4;
+        return getStringFromWasm0(ptr4, len4);
+    } finally {
+        wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+    }
+}
+
+/**
+ * Dispatch a click event at (x, y) for a given frame.
+ *
+ * Returns a JSON string: { handled: bool, layerId?: string }
+ * @param {string} ir_json
+ * @param {number} frame_index
+ * @param {number} x
+ * @param {number} y
+ * @returns {string}
+ */
+export function dispatch_click(ir_json, frame_index, x, y) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(ir_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.dispatch_click(ptr0, len0, frame_index, x, y);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * Get the last mouse position set via `set_mouse_position`.
+ *
+ * Returns a JSON string: { x, y }
+ * @returns {string}
+ */
+export function get_mouse_position() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.get_mouse_position();
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
+
+/**
  * Get project metadata from IR JSON.
  *
  * Returns a JSON string: { width, height, fps, totalFrames, totalDuration, sceneCount }
@@ -29,6 +143,20 @@ export function get_project_info(ir_json) {
 }
 
 /**
+ * Get a numeric runtime state variable.
+ *
+ * Returns `null` if unset.
+ * @param {string} name
+ * @returns {any}
+ */
+export function get_state_var(name) {
+    const ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.get_state_var(ptr0, len0);
+    return ret;
+}
+
+/**
  * Initialize the WASM module. Call this once before rendering.
  */
 export function init() {
@@ -48,6 +176,47 @@ export function load_image_asset(asset_id, data) {
     const ptr1 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
     const len1 = WASM_VECTOR_LEN;
     wasm.load_image_asset(ptr0, len0, ptr1, len1);
+}
+
+/**
+ * Materialize an `autocaption(...)` layer using caption segments provided by the JS host.
+ *
+ * This enables web / React Native runtimes to do the network call for transcription and then
+ * feed the result into Vidra as a deterministic IR update.
+ *
+ * - `ir_json`: the project IR JSON string.
+ * - `layer_id`: id of the layer whose content is `AutoCaption`.
+ * - `segments_json`: JSON array of objects: { start_s, end_s, text }.
+ *
+ * Returns an updated IR JSON string.
+ * @param {string} ir_json
+ * @param {string} layer_id
+ * @param {string} segments_json
+ * @returns {string}
+ */
+export function materialize_autocaption_layer(ir_json, layer_id, segments_json) {
+    let deferred5_0;
+    let deferred5_1;
+    try {
+        const ptr0 = passStringToWasm0(ir_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(layer_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passStringToWasm0(segments_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ret = wasm.materialize_autocaption_layer(ptr0, len0, ptr1, len1, ptr2, len2);
+        var ptr4 = ret[0];
+        var len4 = ret[1];
+        if (ret[3]) {
+            ptr4 = 0; len4 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred5_0 = ptr4;
+        deferred5_1 = len4;
+        return getStringFromWasm0(ptr4, len4);
+    } finally {
+        wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+    }
 }
 
 /**
@@ -120,6 +289,29 @@ export function render_frame_from_source(source, frame_index) {
 }
 
 /**
+ * Update the current mouse position (in pixel coordinates) for interactive previews.
+ *
+ * Note: this currently does not affect rendering output yet; it is exposed as
+ * plumbing for upcoming interactive expressions and event handling.
+ * @param {number} x
+ * @param {number} y
+ */
+export function set_mouse_position(x, y) {
+    wasm.set_mouse_position(x, y);
+}
+
+/**
+ * Set a numeric runtime state variable used by interactive expressions and event handlers.
+ * @param {string} name
+ * @param {number} value
+ */
+export function set_state_var(name, value) {
+    const ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    wasm.set_state_var(ptr0, len0, value);
+}
+
+/**
  * Get the version string.
  * @returns {string}
  */
@@ -142,7 +334,12 @@ function __wbg_get_imports() {
         __wbg_getRandomValues_3dda8830c2565714: function() { return handleError(function (arg0, arg1) {
             globalThis.crypto.getRandomValues(getArrayU8FromWasm0(arg0, arg1));
         }, arguments); },
-        __wbindgen_cast_0000000000000001: function(arg0, arg1) {
+        __wbindgen_cast_0000000000000001: function(arg0) {
+            // Cast intrinsic for `F64 -> Externref`.
+            const ret = arg0;
+            return ret;
+        },
+        __wbindgen_cast_0000000000000002: function(arg0, arg1) {
             // Cast intrinsic for `Ref(String) -> Externref`.
             const ret = getStringFromWasm0(arg0, arg1);
             return ret;

@@ -3,7 +3,6 @@ use std::path::Path;
 use std::fmt;
 
 use crate::frame::FrameBuffer;
-use crate::types::LayerEffect;
 use crate::VidraError;
 
 // ──────────────────────────────────────────────────────────────────────────────

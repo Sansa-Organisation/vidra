@@ -11,6 +11,8 @@ pub enum LayerType {
     Video,
     /// An audio clip.
     Audio,
+    /// A waveform visualization (derived from an audio clip).
+    Waveform,
     /// A geometric shape (rect, circle, path).
     Shape,
     /// A solid color fill.
@@ -32,6 +34,7 @@ impl std::fmt::Display for LayerType {
             LayerType::Image => write!(f, "image"),
             LayerType::Video => write!(f, "video"),
             LayerType::Audio => write!(f, "audio"),
+            LayerType::Waveform => write!(f, "waveform"),
             LayerType::Shape => write!(f, "shape"),
             LayerType::Solid => write!(f, "solid"),
             LayerType::Component => write!(f, "component"),
@@ -63,6 +66,13 @@ pub enum LayerEffect {
     HueRotate(f64),
     /// Vignette effect (0.0 to 1.0 intensity)
     Vignette(f64),
+    /// AI background removal. Typically materialized into an image with alpha before render.
+    RemoveBackground,
+
+    /// 3D LUT color grading using a .cube file.
+    ///
+    /// `path` may be a local path or an http(s) URL (the CLI/dev server can cache remote URLs).
+    Lut { path: String, intensity: f64 },
 }
 
 /// Blend mode for layer compositing.
