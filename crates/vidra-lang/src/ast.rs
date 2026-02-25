@@ -143,7 +143,7 @@ pub enum LayerBlockItem {
         name: String,
         args: Vec<NamedArg>,
         span: Span,
-    }
+    },
 }
 
 /// The content of a layer.
@@ -191,6 +191,10 @@ pub enum LayerContentNode {
     },
     Shader {
         path: ValueNode,
+        args: Vec<NamedArg>,
+    },
+    Web {
+        source: ValueNode,
         args: Vec<NamedArg>,
     },
     /// A custom component instance
@@ -266,10 +270,7 @@ pub enum PropertyNode {
         span: Span,
     },
     /// `wait(duration)`
-    Wait {
-        duration: ValueNode,
-        span: Span,
-    },
+    Wait { duration: ValueNode, span: Span },
 
     /// `@on click { set count = count + 1 }`
     OnEvent {

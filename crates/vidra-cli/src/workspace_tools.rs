@@ -19,7 +19,9 @@ fn resolve_home_dir() -> Result<PathBuf> {
         if p.is_absolute() {
             return Ok(p);
         }
-        return Ok(std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join(p));
+        return Ok(std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(p));
     }
     dirs::home_dir().context("failed to resolve home dir")
 }
@@ -55,7 +57,8 @@ pub fn save_state(state: &WorkspaceState) -> Result<()> {
     let root = vidra_root_dir()?;
     std::fs::create_dir_all(&root).context("failed to create ~/.vidra")?;
     let path = workspaces_path()?;
-    let json = serde_json::to_string_pretty(state).context("failed to serialize workspaces state")?;
+    let json =
+        serde_json::to_string_pretty(state).context("failed to serialize workspaces state")?;
     std::fs::write(&path, json)
         .with_context(|| format!("failed to write workspaces state: {}", path.display()))?;
     Ok(())

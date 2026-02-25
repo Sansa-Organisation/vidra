@@ -5,14 +5,14 @@
 //! frames, colors, transforms, durations, easing functions, and error types.
 
 pub mod color;
+pub mod config;
 pub mod error;
 pub mod frame;
 pub mod hash;
 pub mod math;
+pub mod plugin;
 pub mod time;
 pub mod types;
-pub mod config;
-pub mod plugin;
 pub mod vfx;
 
 pub use config::*;
@@ -22,4 +22,4 @@ pub use error::{VidraError, VidraResult};
 pub use frame::{Frame, FrameBuffer, PixelFormat};
 pub use math::{Point2D, Size2D, Transform2D};
 pub use time::{Duration, Timestamp};
-pub use types::{BlendMode, LayerType, LayerEffect};
+pub use types::{BlendMode, LayerEffect, LayerType};

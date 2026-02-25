@@ -41,7 +41,7 @@ impl Compiler {
             components: HashMap::new(),
             layer_overrides,
         };
-        
+
         for comp in &ast.components {
             compiler.components.insert(comp.name.clone(), comp.clone());
         }
@@ -78,12 +78,23 @@ impl Compiler {
         Ok(project)
     }
 
-    fn extract_overrides(items: &[LayerBlockItem], overrides: &mut HashMap<String, Vec<PropertyNode>>) {
+    fn extract_overrides(
+        items: &[LayerBlockItem],
+        overrides: &mut HashMap<String, Vec<PropertyNode>>,
+    ) {
         for item in items {
             if let LayerBlockItem::Layer(l) = item {
-                overrides.entry(l.name.clone()).or_default().extend(l.properties.clone());
+                overrides
+                    .entry(l.name.clone())
+                    .or_default()
+                    .extend(l.properties.clone());
                 Self::extract_overrides(&l.children, overrides);
-            } else if let LayerBlockItem::If { then_branch, else_branch, .. } = item {
+            } else if let LayerBlockItem::If {
+                then_branch,
+                else_branch,
+                ..
+            } = item
+            {
                 Self::extract_overrides(then_branch, overrides);
                 if let Some(eb) = else_branch {
                     Self::extract_overrides(eb, overrides);
@@ -92,7 +103,12 @@ impl Compiler {
         }
     }
 
-    fn compile_scene(&self, scene_node: &SceneNode, project: &mut Project, global_env: &HashMap<String, ValueNode>) -> Result<Scene, VidraError> {
+    fn compile_scene(
+        &self,
+        scene_node: &SceneNode,
+        project: &mut Project,
+        global_env: &HashMap<String, ValueNode>,
+    ) -> Result<Scene, VidraError> {
         let dur_val = match &scene_node.duration {
             ValueNode::Identifier(id) => global_env.get(id).unwrap_or(&scene_node.duration),
             other => other,
@@ -103,7 +119,13 @@ impl Compiler {
 
         let mut staggers = Vec::new();
         for item in &scene_node.items {
-            if let crate::ast::LayerBlockItem::Transition { transition_type, duration: dur_val, easing, span: _ } = item {
+            if let crate::ast::LayerBlockItem::Transition {
+                transition_type,
+                duration: dur_val,
+                easing,
+                span: _,
+            } = item
+            {
                 let dur = Self::value_to_f64(dur_val)?;
                 let ease = match easing.as_deref() {
                     Some("easeIn") => vidra_core::types::Easing::EaseIn,
@@ -113,9 +135,15 @@ impl Compiler {
                 };
                 let effect = match transition_type.as_str() {
                     "crossfade" => vidra_ir::transition::TransitionType::Crossfade,
-                    "wipe" => vidra_ir::transition::TransitionType::Wipe { direction: "right".to_string() },
-                    "push" => vidra_ir::transition::TransitionType::Push { direction: "right".to_string() },
-                    "slide" => vidra_ir::transition::TransitionType::Slide { direction: "right".to_string() },
+                    "wipe" => vidra_ir::transition::TransitionType::Wipe {
+                        direction: "right".to_string(),
+                    },
+                    "push" => vidra_ir::transition::TransitionType::Push {
+                        direction: "right".to_string(),
+                    },
+                    "slide" => vidra_ir::transition::TransitionType::Slide {
+                        direction: "right".to_string(),
+                    },
                     _ => vidra_ir::transition::TransitionType::Crossfade,
                 };
                 scene.transition = Some(vidra_ir::transition::Transition {
@@ -123,10 +151,16 @@ impl Compiler {
                     duration: vidra_core::Duration::from_seconds(dur),
                     easing: ease,
                 });
-            } else if let crate::ast::LayerBlockItem::AnimationStagger { args, animations, span: _ } = item {
+            } else if let crate::ast::LayerBlockItem::AnimationStagger {
+                args,
+                animations,
+                span: _,
+            } = item
+            {
                 staggers.push((args.clone(), animations.clone()));
             } else {
-                let compiled_layers = self.compile_layer_block_item(item, project, global_env, &[])?;
+                let compiled_layers =
+                    self.compile_layer_block_item(item, project, global_env, &[])?;
                 for layer in compiled_layers {
                     scene.add_layer(layer);
                 }
@@ -136,7 +170,7 @@ impl Compiler {
         for (args, animations) in staggers {
             let mut offset = 0.0;
             let mut target_layers: Vec<String> = Vec::new();
-            
+
             for arg in &args {
                 if arg.name == "offset" {
                     offset = Self::value_to_f64(&arg.value).unwrap_or(0.0);
@@ -150,17 +184,23 @@ impl Compiler {
                     }
                 }
             }
-            
+
             for (i, layer_name) in target_layers.iter().enumerate() {
-                if let Some(layer) = scene.layers.iter_mut().find(|l| l.id.0.as_str() == layer_name) {
+                if let Some(layer) = scene
+                    .layers
+                    .iter_mut()
+                    .find(|l| l.id.0.as_str() == layer_name)
+                {
                     let total_delay_offset = offset * (i as f64);
-                    
+
                     for anim_node in &animations {
                         if let PropertyNode::Animation { property, args, .. } = anim_node {
                             let anims = Self::compile_animation(property, args, global_env)?;
                             for mut anim in anims {
                                 let existing_delay = anim.delay.as_seconds();
-                                anim.delay = vidra_core::Duration::from_seconds(existing_delay + total_delay_offset);
+                                anim.delay = vidra_core::Duration::from_seconds(
+                                    existing_delay + total_delay_offset,
+                                );
                                 layer.animations.push(anim);
                             }
                         }
@@ -196,7 +236,12 @@ impl Compiler {
                 let l = self.compile_layer(layer_node, project, env, slots)?;
                 Ok(vec![l])
             }
-            crate::ast::LayerBlockItem::If { condition, then_branch, else_branch, .. } => {
+            crate::ast::LayerBlockItem::If {
+                condition,
+                then_branch,
+                else_branch,
+                ..
+            } => {
                 let eval_cond = if let ValueNode::Identifier(id) = condition {
                     env.get(id).unwrap_or(condition)
                 } else {
@@ -206,12 +251,14 @@ impl Compiler {
                 let mut out = Vec::new();
                 if Self::is_truthy(eval_cond) {
                     for child in then_branch {
-                        let mut compiled = self.compile_layer_block_item(child, project, env, slots)?;
+                        let mut compiled =
+                            self.compile_layer_block_item(child, project, env, slots)?;
                         out.append(&mut compiled);
                     }
                 } else if let Some(else_branch) = else_branch {
                     for child in else_branch {
-                        let mut compiled = self.compile_layer_block_item(child, project, env, slots)?;
+                        let mut compiled =
+                            self.compile_layer_block_item(child, project, env, slots)?;
                         out.append(&mut compiled);
                     }
                 }
@@ -225,14 +272,24 @@ impl Compiler {
                 // Ignore for now, handled elsewhere or unused
                 Ok(Vec::new())
             }
-            crate::ast::LayerBlockItem::AnimationStagger { args: _, animations: _, span: _ } => {
+            crate::ast::LayerBlockItem::AnimationStagger {
+                args: _,
+                animations: _,
+                span: _,
+            } => {
                 // To be implemented: apply stagger stagger to scene's matching layers
                 Ok(Vec::new())
             }
         }
     }
 
-    fn compile_layer(&self, layer_node: &LayerNode, project: &mut Project, env: &HashMap<String, ValueNode>, slots: &[Layer]) -> Result<Layer, VidraError> {
+    fn compile_layer(
+        &self,
+        layer_node: &LayerNode,
+        project: &mut Project,
+        env: &HashMap<String, ValueNode>,
+        slots: &[Layer],
+    ) -> Result<Layer, VidraError> {
         let content = self.compile_layer_content(&layer_node.content, project, env)?;
         let mut layer = Layer::new(LayerId::new(&layer_node.name), content);
 
@@ -275,74 +332,144 @@ impl Compiler {
                     if name == "effect" && !args.is_empty() {
                         let eff_name = if let ValueNode::Identifier(id) = &args[0] {
                             env.get(id).unwrap_or(&args[0])
-                        } else { &args[0] };
+                        } else {
+                            &args[0]
+                        };
 
                         if let Ok(effect_type) = Self::value_to_string(eff_name) {
                             match effect_type.as_str() {
                                 "blur" => {
-                                    let radius = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(0.0) } else { 0.0 };
-                                    layer.effects.push(vidra_core::types::LayerEffect::Blur(radius));
+                                    let radius = if args.len() > 1 {
+                                        Self::value_to_f64(&args[1]).unwrap_or(0.0)
+                                    } else {
+                                        0.0
+                                    };
+                                    layer
+                                        .effects
+                                        .push(vidra_core::types::LayerEffect::Blur(radius));
                                 }
                                 "grayscale" => {
-                                    let intensity_val = if args.len() > 1 { Self::value_to_f64(&args[1]) } else { Ok(1.0) };
+                                    let intensity_val = if args.len() > 1 {
+                                        Self::value_to_f64(&args[1])
+                                    } else {
+                                        Ok(1.0)
+                                    };
                                     if let Ok(intensity) = intensity_val {
                                         let src = format!(
                                             "@effect __vidra_grayscale() {{\n    let c = source() -> grayscale({})\n    c\n}}\n",
                                             intensity
                                         );
                                         match vidra_fx::compile(&src) {
-                                            Ok(wgsl) => layer.effects.push(vidra_core::types::LayerEffect::CustomShader { wgsl_source: wgsl }),
-                                            Err(_) => layer.effects.push(vidra_core::types::LayerEffect::Grayscale(intensity)),
+                                            Ok(wgsl) => layer.effects.push(
+                                                vidra_core::types::LayerEffect::CustomShader {
+                                                    wgsl_source: wgsl,
+                                                },
+                                            ),
+                                            Err(_) => layer.effects.push(
+                                                vidra_core::types::LayerEffect::Grayscale(
+                                                    intensity,
+                                                ),
+                                            ),
                                         }
                                     } else {
-                                        layer.effects.push(vidra_core::types::LayerEffect::Grayscale(1.0));
+                                        layer
+                                            .effects
+                                            .push(vidra_core::types::LayerEffect::Grayscale(1.0));
                                     }
                                 }
                                 "invert" => {
-                                    let intensity_val = if args.len() > 1 { Self::value_to_f64(&args[1]) } else { Ok(1.0) };
+                                    let intensity_val = if args.len() > 1 {
+                                        Self::value_to_f64(&args[1])
+                                    } else {
+                                        Ok(1.0)
+                                    };
                                     if let Ok(intensity) = intensity_val {
                                         let src = format!(
                                             "@effect __vidra_invert() {{\n    let c = source() -> invert({})\n    c\n}}\n",
                                             intensity
                                         );
                                         match vidra_fx::compile(&src) {
-                                            Ok(wgsl) => layer.effects.push(vidra_core::types::LayerEffect::CustomShader { wgsl_source: wgsl }),
-                                            Err(_) => layer.effects.push(vidra_core::types::LayerEffect::Invert(intensity)),
+                                            Ok(wgsl) => layer.effects.push(
+                                                vidra_core::types::LayerEffect::CustomShader {
+                                                    wgsl_source: wgsl,
+                                                },
+                                            ),
+                                            Err(_) => layer.effects.push(
+                                                vidra_core::types::LayerEffect::Invert(intensity),
+                                            ),
                                         }
                                     } else {
-                                        layer.effects.push(vidra_core::types::LayerEffect::Invert(1.0));
+                                        layer
+                                            .effects
+                                            .push(vidra_core::types::LayerEffect::Invert(1.0));
                                     }
                                 }
                                 "brightness" => {
-                                    let amount_val = if args.len() > 1 { Self::value_to_f64(&args[1]) } else { Ok(1.0) };
+                                    let amount_val = if args.len() > 1 {
+                                        Self::value_to_f64(&args[1])
+                                    } else {
+                                        Ok(1.0)
+                                    };
                                     if let Ok(amount) = amount_val {
                                         let src = format!(
                                             "@effect __vidra_brightness() {{\n    let c = source() -> brightness({})\n    c\n}}\n",
                                             amount
                                         );
                                         match vidra_fx::compile(&src) {
-                                            Ok(wgsl) => layer.effects.push(vidra_core::types::LayerEffect::CustomShader { wgsl_source: wgsl }),
-                                            Err(_) => layer.effects.push(vidra_core::types::LayerEffect::Brightness(amount)),
+                                            Ok(wgsl) => layer.effects.push(
+                                                vidra_core::types::LayerEffect::CustomShader {
+                                                    wgsl_source: wgsl,
+                                                },
+                                            ),
+                                            Err(_) => layer.effects.push(
+                                                vidra_core::types::LayerEffect::Brightness(amount),
+                                            ),
                                         }
                                     } else {
-                                        layer.effects.push(vidra_core::types::LayerEffect::Brightness(1.0));
+                                        layer
+                                            .effects
+                                            .push(vidra_core::types::LayerEffect::Brightness(1.0));
                                     }
                                 }
                                 "contrast" => {
-                                    let amount = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(1.0) } else { 1.0 };
-                                    layer.effects.push(vidra_core::types::LayerEffect::Contrast(amount));
+                                    let amount = if args.len() > 1 {
+                                        Self::value_to_f64(&args[1]).unwrap_or(1.0)
+                                    } else {
+                                        1.0
+                                    };
+                                    layer
+                                        .effects
+                                        .push(vidra_core::types::LayerEffect::Contrast(amount));
                                 }
                                 "saturation" => {
-                                    let amount = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(1.0) } else { 1.0 };
-                                    layer.effects.push(vidra_core::types::LayerEffect::Saturation(amount));
+                                    let amount = if args.len() > 1 {
+                                        Self::value_to_f64(&args[1]).unwrap_or(1.0)
+                                    } else {
+                                        1.0
+                                    };
+                                    layer
+                                        .effects
+                                        .push(vidra_core::types::LayerEffect::Saturation(amount));
                                 }
                                 "hue_rotate" | "hueRotate" => {
-                                    let degrees = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(0.0) } else { 0.0 };
-                                    layer.effects.push(vidra_core::types::LayerEffect::HueRotate(degrees));
+                                    let degrees = if args.len() > 1 {
+                                        Self::value_to_f64(&args[1]).unwrap_or(0.0)
+                                    } else {
+                                        0.0
+                                    };
+                                    layer
+                                        .effects
+                                        .push(vidra_core::types::LayerEffect::HueRotate(degrees));
                                 }
                                 "vignette" => {
-                                    let amount = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(1.0) } else { 1.0 };
-                                    layer.effects.push(vidra_core::types::LayerEffect::Vignette(amount));
+                                    let amount = if args.len() > 1 {
+                                        Self::value_to_f64(&args[1]).unwrap_or(1.0)
+                                    } else {
+                                        1.0
+                                    };
+                                    layer
+                                        .effects
+                                        .push(vidra_core::types::LayerEffect::Vignette(amount));
                                 }
                                 "removeBackground" | "remove_background" | "remove-bg" => {
                                     layer
@@ -351,14 +478,17 @@ impl Compiler {
                                 }
                                 "lut" | "LUT" => {
                                     if args.len() < 2 {
-                                        tracing::warn!("effect(lut, ...) requires a path or asset id");
+                                        tracing::warn!(
+                                            "effect(lut, ...) requires a path or asset id"
+                                        );
                                     } else {
                                         let lut_ref = if let ValueNode::Identifier(id) = &args[1] {
                                             env.get(id).unwrap_or(&args[1])
                                         } else {
                                             &args[1]
                                         };
-                                        let lut_str = Self::value_to_string(lut_ref).unwrap_or_default();
+                                        let lut_str =
+                                            Self::value_to_string(lut_ref).unwrap_or_default();
 
                                         let lut_path = project
                                             .assets
@@ -389,27 +519,105 @@ impl Compiler {
                     } else if name == "preset" && !args.is_empty() {
                         let preset_name = if let ValueNode::Identifier(id) = &args[0] {
                             env.get(id).unwrap_or(&args[0])
-                        } else { &args[0] };
-                        
-                        let delay = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(0.0) } else { 0.0 };
-                        
+                        } else {
+                            &args[0]
+                        };
+
+                        let delay = if args.len() > 1 {
+                            Self::value_to_f64(&args[1]).unwrap_or(0.0)
+                        } else {
+                            0.0
+                        };
+
                         if let Ok(preset_type) = Self::value_to_string(preset_name) {
                             match preset_type.as_str() {
                                 "fadeInUp" => {
-                                    layer.animations.push(vidra_ir::animation::Animation::from_to(vidra_ir::animation::AnimatableProperty::Opacity, 0.0, 1.0, vidra_core::Duration::from_seconds(0.5), vidra_core::types::Easing::EaseOut).with_delay(vidra_core::Duration::from_seconds(delay)));
-                                    layer.animations.push(vidra_ir::animation::Animation::from_to(vidra_ir::animation::AnimatableProperty::PositionY, 50.0, 0.0, vidra_core::Duration::from_seconds(0.5), vidra_core::types::Easing::EaseOut).with_delay(vidra_core::Duration::from_seconds(delay)));
+                                    layer.animations.push(
+                                        vidra_ir::animation::Animation::from_to(
+                                            vidra_ir::animation::AnimatableProperty::Opacity,
+                                            0.0,
+                                            1.0,
+                                            vidra_core::Duration::from_seconds(0.5),
+                                            vidra_core::types::Easing::EaseOut,
+                                        )
+                                        .with_delay(vidra_core::Duration::from_seconds(delay)),
+                                    );
+                                    layer.animations.push(
+                                        vidra_ir::animation::Animation::from_to(
+                                            vidra_ir::animation::AnimatableProperty::PositionY,
+                                            50.0,
+                                            0.0,
+                                            vidra_core::Duration::from_seconds(0.5),
+                                            vidra_core::types::Easing::EaseOut,
+                                        )
+                                        .with_delay(vidra_core::Duration::from_seconds(delay)),
+                                    );
                                 }
                                 "bounceIn" => {
-                                    layer.animations.push(vidra_ir::animation::Animation::from_to(vidra_ir::animation::AnimatableProperty::ScaleX, 0.0, 1.0, vidra_core::Duration::from_seconds(0.6), vidra_core::types::Easing::EaseOutBack).with_delay(vidra_core::Duration::from_seconds(delay)));
-                                    layer.animations.push(vidra_ir::animation::Animation::from_to(vidra_ir::animation::AnimatableProperty::ScaleY, 0.0, 1.0, vidra_core::Duration::from_seconds(0.6), vidra_core::types::Easing::EaseOutBack).with_delay(vidra_core::Duration::from_seconds(delay)));
-                                    layer.animations.push(vidra_ir::animation::Animation::from_to(vidra_ir::animation::AnimatableProperty::Opacity, 0.0, 1.0, vidra_core::Duration::from_seconds(0.3), vidra_core::types::Easing::Linear).with_delay(vidra_core::Duration::from_seconds(delay)));
+                                    layer.animations.push(
+                                        vidra_ir::animation::Animation::from_to(
+                                            vidra_ir::animation::AnimatableProperty::ScaleX,
+                                            0.0,
+                                            1.0,
+                                            vidra_core::Duration::from_seconds(0.6),
+                                            vidra_core::types::Easing::EaseOutBack,
+                                        )
+                                        .with_delay(vidra_core::Duration::from_seconds(delay)),
+                                    );
+                                    layer.animations.push(
+                                        vidra_ir::animation::Animation::from_to(
+                                            vidra_ir::animation::AnimatableProperty::ScaleY,
+                                            0.0,
+                                            1.0,
+                                            vidra_core::Duration::from_seconds(0.6),
+                                            vidra_core::types::Easing::EaseOutBack,
+                                        )
+                                        .with_delay(vidra_core::Duration::from_seconds(delay)),
+                                    );
+                                    layer.animations.push(
+                                        vidra_ir::animation::Animation::from_to(
+                                            vidra_ir::animation::AnimatableProperty::Opacity,
+                                            0.0,
+                                            1.0,
+                                            vidra_core::Duration::from_seconds(0.3),
+                                            vidra_core::types::Easing::Linear,
+                                        )
+                                        .with_delay(vidra_core::Duration::from_seconds(delay)),
+                                    );
                                 }
                                 "typewriter" => {
-                                    layer.animations.push(vidra_ir::animation::Animation::from_to(vidra_ir::animation::AnimatableProperty::Opacity, 0.0, 1.0, vidra_core::Duration::from_seconds(0.2), vidra_core::types::Easing::Linear).with_delay(vidra_core::Duration::from_seconds(delay)));
+                                    layer.animations.push(
+                                        vidra_ir::animation::Animation::from_to(
+                                            vidra_ir::animation::AnimatableProperty::Opacity,
+                                            0.0,
+                                            1.0,
+                                            vidra_core::Duration::from_seconds(0.2),
+                                            vidra_core::types::Easing::Linear,
+                                        )
+                                        .with_delay(vidra_core::Duration::from_seconds(delay)),
+                                    );
                                 }
                                 "glitch" => {
-                                    layer.animations.push(vidra_ir::animation::Animation::from_to(vidra_ir::animation::AnimatableProperty::PositionX, -10.0, 0.0, vidra_core::Duration::from_seconds(0.2), vidra_core::types::Easing::EaseIn).with_delay(vidra_core::Duration::from_seconds(delay)));
-                                    layer.animations.push(vidra_ir::animation::Animation::from_to(vidra_ir::animation::AnimatableProperty::ScaleX, 1.5, 1.0, vidra_core::Duration::from_seconds(0.2), vidra_core::types::Easing::Linear).with_delay(vidra_core::Duration::from_seconds(delay)));
+                                    layer.animations.push(
+                                        vidra_ir::animation::Animation::from_to(
+                                            vidra_ir::animation::AnimatableProperty::PositionX,
+                                            -10.0,
+                                            0.0,
+                                            vidra_core::Duration::from_seconds(0.2),
+                                            vidra_core::types::Easing::EaseIn,
+                                        )
+                                        .with_delay(vidra_core::Duration::from_seconds(delay)),
+                                    );
+                                    layer.animations.push(
+                                        vidra_ir::animation::Animation::from_to(
+                                            vidra_ir::animation::AnimatableProperty::ScaleX,
+                                            1.5,
+                                            1.0,
+                                            vidra_core::Duration::from_seconds(0.2),
+                                            vidra_core::types::Easing::Linear,
+                                        )
+                                        .with_delay(vidra_core::Duration::from_seconds(delay)),
+                                    );
                                 }
                                 _ => tracing::warn!("Unknown preset: {}", preset_type),
                             }
@@ -417,25 +625,39 @@ impl Compiler {
                     } else if name == "mask" && !args.is_empty() {
                         let mask_layer_name = if let ValueNode::Identifier(id) = &args[0] {
                             env.get(id).unwrap_or(&args[0])
-                        } else { &args[0] };
+                        } else {
+                            &args[0]
+                        };
                         if let Ok(mask_str) = Self::value_to_string(mask_layer_name) {
                             layer.mask = Some(LayerId::new(mask_str));
                         }
                     } else if name == "center" && !args.is_empty() {
                         // center(horizontal), center(vertical), center(both) or center()
-                        let axis_val = Self::value_to_string(&args[0]).unwrap_or_else(|_| "both".to_string());
+                        let axis_val =
+                            Self::value_to_string(&args[0]).unwrap_or_else(|_| "both".to_string());
                         let axis = match axis_val.as_str() {
                             "horizontal" | "h" => vidra_ir::layout::CenterAxis::Horizontal,
                             "vertical" | "v" => vidra_ir::layout::CenterAxis::Vertical,
                             _ => vidra_ir::layout::CenterAxis::Both,
                         };
-                        layer.constraints.push(vidra_ir::layout::LayoutConstraint::Center(axis));
+                        layer
+                            .constraints
+                            .push(vidra_ir::layout::LayoutConstraint::Center(axis));
                     } else if name == "center" && args.is_empty() {
-                        layer.constraints.push(vidra_ir::layout::LayoutConstraint::Center(vidra_ir::layout::CenterAxis::Both));
+                        layer
+                            .constraints
+                            .push(vidra_ir::layout::LayoutConstraint::Center(
+                                vidra_ir::layout::CenterAxis::Both,
+                            ));
                     } else if name == "pin" && !args.is_empty() {
                         // pin(top, 20), pin(left), pin(bottom, 40)
-                        let edge_val = Self::value_to_string(&args[0]).unwrap_or_else(|_| "top".to_string());
-                        let margin = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(0.0) } else { 0.0 };
+                        let edge_val =
+                            Self::value_to_string(&args[0]).unwrap_or_else(|_| "top".to_string());
+                        let margin = if args.len() > 1 {
+                            Self::value_to_f64(&args[1]).unwrap_or(0.0)
+                        } else {
+                            0.0
+                        };
                         let edge = match edge_val.as_str() {
                             "top" => vidra_ir::layout::Edge::Top,
                             "bottom" => vidra_ir::layout::Edge::Bottom,
@@ -443,32 +665,77 @@ impl Compiler {
                             "right" => vidra_ir::layout::Edge::Right,
                             _ => vidra_ir::layout::Edge::Top,
                         };
-                        layer.constraints.push(vidra_ir::layout::LayoutConstraint::Pin { edge, margin });
+                        layer
+                            .constraints
+                            .push(vidra_ir::layout::LayoutConstraint::Pin { edge, margin });
                     } else if name == "below" && !args.is_empty() {
                         let anchor = Self::value_to_string(&args[0])?;
-                        let spacing = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(0.0) } else { 0.0 };
-                        layer.constraints.push(vidra_ir::layout::LayoutConstraint::Below { anchor_layer: anchor, spacing });
+                        let spacing = if args.len() > 1 {
+                            Self::value_to_f64(&args[1]).unwrap_or(0.0)
+                        } else {
+                            0.0
+                        };
+                        layer
+                            .constraints
+                            .push(vidra_ir::layout::LayoutConstraint::Below {
+                                anchor_layer: anchor,
+                                spacing,
+                            });
                     } else if name == "above" && !args.is_empty() {
                         let anchor = Self::value_to_string(&args[0])?;
-                        let spacing = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(0.0) } else { 0.0 };
-                        layer.constraints.push(vidra_ir::layout::LayoutConstraint::Above { anchor_layer: anchor, spacing });
+                        let spacing = if args.len() > 1 {
+                            Self::value_to_f64(&args[1]).unwrap_or(0.0)
+                        } else {
+                            0.0
+                        };
+                        layer
+                            .constraints
+                            .push(vidra_ir::layout::LayoutConstraint::Above {
+                                anchor_layer: anchor,
+                                spacing,
+                            });
                     } else if name == "rightOf" && !args.is_empty() {
                         let anchor = Self::value_to_string(&args[0])?;
-                        let spacing = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(0.0) } else { 0.0 };
-                        layer.constraints.push(vidra_ir::layout::LayoutConstraint::RightOf { anchor_layer: anchor, spacing });
+                        let spacing = if args.len() > 1 {
+                            Self::value_to_f64(&args[1]).unwrap_or(0.0)
+                        } else {
+                            0.0
+                        };
+                        layer
+                            .constraints
+                            .push(vidra_ir::layout::LayoutConstraint::RightOf {
+                                anchor_layer: anchor,
+                                spacing,
+                            });
                     } else if name == "leftOf" && !args.is_empty() {
                         let anchor = Self::value_to_string(&args[0])?;
-                        let spacing = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(0.0) } else { 0.0 };
-                        layer.constraints.push(vidra_ir::layout::LayoutConstraint::LeftOf { anchor_layer: anchor, spacing });
+                        let spacing = if args.len() > 1 {
+                            Self::value_to_f64(&args[1]).unwrap_or(0.0)
+                        } else {
+                            0.0
+                        };
+                        layer
+                            .constraints
+                            .push(vidra_ir::layout::LayoutConstraint::LeftOf {
+                                anchor_layer: anchor,
+                                spacing,
+                            });
                     } else if name == "fill" && !args.is_empty() {
-                        let axis_val = Self::value_to_string(&args[0]).unwrap_or_else(|_| "both".to_string());
-                        let padding = if args.len() > 1 { Self::value_to_f64(&args[1]).unwrap_or(0.0) } else { 0.0 };
+                        let axis_val =
+                            Self::value_to_string(&args[0]).unwrap_or_else(|_| "both".to_string());
+                        let padding = if args.len() > 1 {
+                            Self::value_to_f64(&args[1]).unwrap_or(0.0)
+                        } else {
+                            0.0
+                        };
                         let axis = match axis_val.as_str() {
                             "horizontal" | "h" => vidra_ir::layout::FillAxis::Horizontal,
                             "vertical" | "v" => vidra_ir::layout::FillAxis::Vertical,
                             _ => vidra_ir::layout::FillAxis::Both,
                         };
-                        layer.constraints.push(vidra_ir::layout::LayoutConstraint::Fill { axis, padding });
+                        layer
+                            .constraints
+                            .push(vidra_ir::layout::LayoutConstraint::Fill { axis, padding });
                     } else if name == "scale" {
                         // scale(s) or scale(sx, sy)
                         if !args.is_empty() {
@@ -525,7 +792,10 @@ impl Compiler {
                         tracing::debug!("unhandled function call: {}", name);
                     }
                 }
-                PropertyNode::AnimationGroup { animations, span: _ } => {
+                PropertyNode::AnimationGroup {
+                    animations,
+                    span: _,
+                } => {
                     // All start at 0 (or delay inside)
                     for ag_prop in animations {
                         if let PropertyNode::Animation { property, args, .. } = ag_prop {
@@ -534,7 +804,10 @@ impl Compiler {
                         }
                     }
                 }
-                PropertyNode::AnimationSequence { animations, span: _ } => {
+                PropertyNode::AnimationSequence {
+                    animations,
+                    span: _,
+                } => {
                     let mut current_time = 0.0;
                     for seq_prop in animations {
                         match seq_prop {
@@ -547,8 +820,14 @@ impl Compiler {
                                 for mut anim in anims {
                                     let delay = anim.delay.as_seconds() + current_time;
                                     anim.delay = vidra_core::Duration::from_seconds(delay);
-                                    let d = if let Some(last) = anim.keyframes.last() { last.time.as_seconds() } else { 0.0 };
-                                    if d > max_dur { max_dur = d; }
+                                    let d = if let Some(last) = anim.keyframes.last() {
+                                        last.time.as_seconds()
+                                    } else {
+                                        0.0
+                                    };
+                                    if d > max_dur {
+                                        max_dur = d;
+                                    }
                                     layer.animations.push(anim);
                                 }
                                 current_time += max_dur;
@@ -602,7 +881,7 @@ impl Compiler {
                         comp_env.insert(prop.name.clone(), def_val.clone());
                     }
                 }
-                
+
                 // 1.5 extract variant argument and apply overrides
                 let mut active_variant = None;
                 for arg in args {
@@ -627,7 +906,9 @@ impl Compiler {
                 // 2. apply arguments (resolving from current environment if variables) overriding variants
                 for arg in args {
                     // Do not expose variant to component props explicitly (optional)
-                    if arg.name == "variant" { continue; }
+                    if arg.name == "variant" {
+                        continue;
+                    }
                     let val = match &arg.value {
                         ValueNode::Identifier(id) => env.get(id).unwrap_or(&arg.value).clone(),
                         _ => arg.value.clone(),
@@ -636,9 +917,17 @@ impl Compiler {
                 }
                 // 3. instantiate template layers, passing compiled_slots
                 for comp_layer_item in &comp_def.items {
-                    let compiled = self.compile_layer_block_item(comp_layer_item, project, &comp_env, &compiled_slots)?;
+                    let compiled = self.compile_layer_block_item(
+                        comp_layer_item,
+                        project,
+                        &comp_env,
+                        &compiled_slots,
+                    )?;
                     for mut child_layer in compiled {
-                        child_layer.id = vidra_ir::layer::LayerId::new(format!("{}_{}", layer.id.0, child_layer.id.0));
+                        child_layer.id = vidra_ir::layer::LayerId::new(format!(
+                            "{}_{}",
+                            layer.id.0, child_layer.id.0
+                        ));
                         layer.add_child(child_layer);
                     }
                 }
@@ -688,7 +977,9 @@ impl Compiler {
 
                 let text_val = if let ValueNode::Identifier(id) = text {
                     env.get(id).unwrap_or(text)
-                } else { text };
+                } else {
+                    text
+                };
                 let resolved_text = Self::value_to_string(text_val)?;
 
                 Ok(LayerContent::Text {
@@ -701,16 +992,20 @@ impl Compiler {
             LayerContentNode::Image { path, args: _args } => {
                 let path_val = if let ValueNode::Identifier(id) = path {
                     env.get(id).unwrap_or(path)
-                } else { path };
+                } else {
+                    path
+                };
                 let resolved_path = Self::value_to_string(path_val)?;
                 let asset_id = AssetId::new(resolved_path.clone());
-                
+
                 if project.assets.get(&asset_id).is_none() {
-                    project
-                        .assets
-                        .register(Asset::new(asset_id.clone(), AssetType::Image, resolved_path));
+                    project.assets.register(Asset::new(
+                        asset_id.clone(),
+                        AssetType::Image,
+                        resolved_path,
+                    ));
                 }
-                
+
                 Ok(LayerContent::Image { asset_id })
             }
             LayerContentNode::Spritesheet { path, args } => {
@@ -723,9 +1018,11 @@ impl Compiler {
                 let asset_id = AssetId::new(resolved_path.clone());
 
                 if project.assets.get(&asset_id).is_none() {
-                    project
-                        .assets
-                        .register(Asset::new(asset_id.clone(), AssetType::Image, resolved_path));
+                    project.assets.register(Asset::new(
+                        asset_id.clone(),
+                        AssetType::Image,
+                        resolved_path,
+                    ));
                 }
 
                 let mut frame_width = 64.0;
@@ -743,7 +1040,9 @@ impl Compiler {
                         "frameWidth" | "frame_width" => frame_width = Self::value_to_f64(val)?,
                         "frameHeight" | "frame_height" => frame_height = Self::value_to_f64(val)?,
                         "fps" => fps = Self::value_to_f64(val)?,
-                        "start" | "startFrame" | "start_frame" => start_frame = Self::value_to_f64(val)?,
+                        "start" | "startFrame" | "start_frame" => {
+                            start_frame = Self::value_to_f64(val)?
+                        }
                         "frameCount" | "frame_count" => {
                             frame_count = Some(Self::value_to_f64(val)?.max(0.0) as u32)
                         }
@@ -763,16 +1062,20 @@ impl Compiler {
             LayerContentNode::Video { path, args } => {
                 let path_val = if let ValueNode::Identifier(id) = path {
                     env.get(id).unwrap_or(path)
-                } else { path };
+                } else {
+                    path
+                };
                 let resolved_path = Self::value_to_string(path_val)?;
                 let asset_id = AssetId::new(resolved_path.clone());
-                
+
                 if project.assets.get(&asset_id).is_none() {
-                    project
-                        .assets
-                        .register(Asset::new(asset_id.clone(), AssetType::Video, resolved_path));
+                    project.assets.register(Asset::new(
+                        asset_id.clone(),
+                        AssetType::Video,
+                        resolved_path,
+                    ));
                 }
-                
+
                 let mut trim_start = vidra_core::Duration::zero();
                 let mut trim_end = None;
 
@@ -782,12 +1085,18 @@ impl Compiler {
                         _ => &arg.value,
                     };
                     match arg.name.as_str() {
-                        "trim_start" => trim_start = vidra_core::Duration::from_seconds(Self::value_to_f64(val)?),
-                        "trim_end" => trim_end = Some(vidra_core::Duration::from_seconds(Self::value_to_f64(val)?)),
+                        "trim_start" => {
+                            trim_start =
+                                vidra_core::Duration::from_seconds(Self::value_to_f64(val)?)
+                        }
+                        "trim_end" => {
+                            trim_end =
+                                Some(vidra_core::Duration::from_seconds(Self::value_to_f64(val)?))
+                        }
                         _ => {}
                     }
                 }
-                
+
                 Ok(LayerContent::Video {
                     asset_id,
                     trim_start,
@@ -797,16 +1106,20 @@ impl Compiler {
             LayerContentNode::Audio { path, args } => {
                 let path_val = if let ValueNode::Identifier(id) = path {
                     env.get(id).unwrap_or(path)
-                } else { path };
+                } else {
+                    path
+                };
                 let resolved_path = Self::value_to_string(path_val)?;
                 let asset_id = AssetId::new(resolved_path.clone());
-                
+
                 if project.assets.get(&asset_id).is_none() {
-                    project
-                        .assets
-                        .register(Asset::new(asset_id.clone(), AssetType::Audio, resolved_path));
+                    project.assets.register(Asset::new(
+                        asset_id.clone(),
+                        AssetType::Audio,
+                        resolved_path,
+                    ));
                 }
-                
+
                 let mut trim_start = vidra_core::Duration::zero();
                 let mut trim_end = None;
                 let mut volume = 1.0;
@@ -819,15 +1132,21 @@ impl Compiler {
                         _ => &arg.value,
                     };
                     match arg.name.as_str() {
-                        "trim_start" => trim_start = vidra_core::Duration::from_seconds(Self::value_to_f64(val)?),
-                        "trim_end" => trim_end = Some(vidra_core::Duration::from_seconds(Self::value_to_f64(val)?)),
+                        "trim_start" => {
+                            trim_start =
+                                vidra_core::Duration::from_seconds(Self::value_to_f64(val)?)
+                        }
+                        "trim_end" => {
+                            trim_end =
+                                Some(vidra_core::Duration::from_seconds(Self::value_to_f64(val)?))
+                        }
                         "volume" => volume = Self::value_to_f64(val)?,
                         "role" => role = Some(Self::value_to_string(val)?),
                         "duck" => duck = Some(Self::value_to_f64(val)?),
                         _ => {}
                     }
                 }
-                
+
                 Ok(LayerContent::Audio {
                     asset_id,
                     trim_start,
@@ -838,9 +1157,12 @@ impl Compiler {
                 })
             }
             LayerContentNode::Waveform { audio_source, args } => {
-                let path_str = Self::value_to_string(if let ValueNode::Identifier(id) = audio_source {
-                    env.get(id).unwrap_or(audio_source)
-                } else { audio_source })?;
+                let path_str =
+                    Self::value_to_string(if let ValueNode::Identifier(id) = audio_source {
+                        env.get(id).unwrap_or(audio_source)
+                    } else {
+                        audio_source
+                    })?;
                 let asset_id = AssetId::new(path_str.clone());
 
                 if project.assets.get(&asset_id).is_none() {
@@ -878,7 +1200,7 @@ impl Compiler {
                 let resolved_text = Self::value_to_string(text)?;
                 let resolved_voice = Self::value_to_string(voice)?;
                 let mut volume = 1.0;
-                
+
                 for arg in args {
                     let val = match &arg.value {
                         ValueNode::Identifier(id) => env.get(id).unwrap_or(&arg.value),
@@ -888,7 +1210,7 @@ impl Compiler {
                         volume = Self::value_to_f64(val)?;
                     }
                 }
-                
+
                 Ok(LayerContent::TTS {
                     text: resolved_text,
                     voice: resolved_voice,
@@ -897,9 +1219,12 @@ impl Compiler {
                 })
             }
             LayerContentNode::AutoCaption { audio_source, args } => {
-                let path_str = Self::value_to_string(if let ValueNode::Identifier(id) = audio_source {
-                    env.get(id).unwrap_or(audio_source)
-                } else { audio_source })?;
+                let path_str =
+                    Self::value_to_string(if let ValueNode::Identifier(id) = audio_source {
+                        env.get(id).unwrap_or(audio_source)
+                    } else {
+                        audio_source
+                    })?;
                 let asset_id = AssetId::new(path_str);
 
                 // Ensure audio source is registered as an Audio asset so downstream tooling
@@ -911,11 +1236,11 @@ impl Compiler {
                         asset_id.0.clone(),
                     ));
                 }
-                
+
                 let mut font_family = "Inter".to_string();
                 let mut font_size = 48.0;
                 let mut color = Color::WHITE;
-                
+
                 for arg in args {
                     let val = match &arg.value {
                         ValueNode::Identifier(id) => env.get(id).unwrap_or(&arg.value),
@@ -928,7 +1253,7 @@ impl Compiler {
                         _ => {}
                     }
                 }
-                
+
                 Ok(LayerContent::AutoCaption {
                     asset_id,
                     font_family,
@@ -939,7 +1264,9 @@ impl Compiler {
             LayerContentNode::Solid { color } => {
                 let color_val = if let ValueNode::Identifier(id) = color {
                     env.get(id).unwrap_or(color)
-                } else { color };
+                } else {
+                    color
+                };
                 let c = Self::value_to_color(color_val)?;
                 Ok(LayerContent::Solid { color: c })
             }
@@ -970,24 +1297,41 @@ impl Compiler {
 
                 let shape = match shape_type.as_str() {
                     "rect" | "rectangle" => {
-                        let width = get_val("width").map(|v| Self::value_to_f64(&v).unwrap_or(100.0)).unwrap_or(100.0);
-                        let height = get_val("height").map(|v| Self::value_to_f64(&v).unwrap_or(100.0)).unwrap_or(100.0);
-                        let corner_radius = get_val("cornerRadius").map(|v| Self::value_to_f64(&v).unwrap_or(0.0)).unwrap_or(0.0);
-                        vidra_core::types::ShapeType::Rect { width, height, corner_radius }
+                        let width = get_val("width")
+                            .map(|v| Self::value_to_f64(&v).unwrap_or(100.0))
+                            .unwrap_or(100.0);
+                        let height = get_val("height")
+                            .map(|v| Self::value_to_f64(&v).unwrap_or(100.0))
+                            .unwrap_or(100.0);
+                        let corner_radius = get_val("cornerRadius")
+                            .map(|v| Self::value_to_f64(&v).unwrap_or(0.0))
+                            .unwrap_or(0.0);
+                        vidra_core::types::ShapeType::Rect {
+                            width,
+                            height,
+                            corner_radius,
+                        }
                     }
                     "circle" => {
-                        let radius = get_val("radius").map(|v| Self::value_to_f64(&v).unwrap_or(50.0)).unwrap_or(50.0);
+                        let radius = get_val("radius")
+                            .map(|v| Self::value_to_f64(&v).unwrap_or(50.0))
+                            .unwrap_or(50.0);
                         vidra_core::types::ShapeType::Circle { radius }
                     }
                     "ellipse" => {
-                        let rx = get_val("rx").map(|v| Self::value_to_f64(&v).unwrap_or(50.0)).unwrap_or(50.0);
-                        let ry = get_val("ry").map(|v| Self::value_to_f64(&v).unwrap_or(50.0)).unwrap_or(50.0);
+                        let rx = get_val("rx")
+                            .map(|v| Self::value_to_f64(&v).unwrap_or(50.0))
+                            .unwrap_or(50.0);
+                        let ry = get_val("ry")
+                            .map(|v| Self::value_to_f64(&v).unwrap_or(50.0))
+                            .unwrap_or(50.0);
                         vidra_core::types::ShapeType::Ellipse { rx, ry }
                     }
                     _ => {
-                        return Err(VidraError::Compile(
-                            format!("unknown shape type: {}", shape_type),
-                        ));
+                        return Err(VidraError::Compile(format!(
+                            "unknown shape type: {}",
+                            shape_type
+                        )));
                     }
                 };
 
@@ -1001,23 +1345,83 @@ impl Compiler {
             LayerContentNode::Shader { path, args: _args } => {
                 let path_val = if let ValueNode::Identifier(id) = path {
                     env.get(id).unwrap_or(path)
-                } else { path };
+                } else {
+                    path
+                };
                 let resolved_path = Self::value_to_string(path_val)?;
                 let asset_id = AssetId::new(resolved_path.clone());
-                
+
                 if project.assets.get(&asset_id).is_none() {
-                    project
-                        .assets
-                        .register(Asset::new(asset_id.clone(), AssetType::Shader, resolved_path));
+                    project.assets.register(Asset::new(
+                        asset_id.clone(),
+                        AssetType::Shader,
+                        resolved_path,
+                    ));
                 }
-                
+
                 Ok(LayerContent::Shader { asset_id })
             }
-            LayerContentNode::Component { .. } | LayerContentNode::Slot | LayerContentNode::Empty => Ok(LayerContent::Empty),
+            LayerContentNode::Web { source, args } => {
+                let source_val = if let ValueNode::Identifier(id) = source {
+                    env.get(id).unwrap_or(source)
+                } else {
+                    source
+                };
+                let resolved_source = Self::value_to_string(source_val)?;
+
+                let mut viewport_width = 1920;
+                let mut viewport_height = 1080;
+                let mut mode = vidra_ir::layer::WebCaptureMode::FrameAccurate;
+                let mut wait_for = None;
+                let mut variables = std::collections::HashMap::new();
+
+                for arg in args {
+                    let val = match &arg.value {
+                        ValueNode::Identifier(id) => env.get(id).unwrap_or(&arg.value),
+                        _ => &arg.value,
+                    };
+                    match arg.name.as_str() {
+                        "viewport" => {
+                            if let Ok(vp_str) = Self::value_to_string(val) {
+                                let parts: Vec<&str> = vp_str.split('x').collect();
+                                if parts.len() == 2 {
+                                    viewport_width = parts[0].parse().unwrap_or(1920);
+                                    viewport_height = parts[1].parse().unwrap_or(1080);
+                                }
+                            }
+                        }
+                        "mode" => {
+                            if let Ok(m) = Self::value_to_string(val) {
+                                if m == "realtime" {
+                                    mode = vidra_ir::layer::WebCaptureMode::Realtime;
+                                }
+                            }
+                        }
+                        "wait_for" => wait_for = Some(Self::value_to_string(val)?),
+                        _ => {}
+                    }
+                }
+
+                Ok(LayerContent::Web {
+                    source: resolved_source,
+                    viewport_width,
+                    viewport_height,
+                    mode,
+                    wait_for,
+                    variables,
+                })
+            }
+            LayerContentNode::Component { .. }
+            | LayerContentNode::Slot
+            | LayerContentNode::Empty => Ok(LayerContent::Empty),
         }
     }
 
-    fn compile_animation(property: &str, args: &[NamedArg], env: &HashMap<String, ValueNode>) -> Result<Vec<Animation>, VidraError> {
+    fn compile_animation(
+        property: &str,
+        args: &[NamedArg],
+        env: &HashMap<String, ValueNode>,
+    ) -> Result<Vec<Animation>, VidraError> {
         let animatable = match property {
             "opacity" => Some(AnimatableProperty::Opacity),
             "position.x" | "positionX" | "x" => Some(AnimatableProperty::PositionX),
@@ -1030,7 +1434,7 @@ impl Compiler {
             "rotateX" | "rotate_x" => Some(AnimatableProperty::RotateX),
             "rotateY" | "rotate_y" => Some(AnimatableProperty::RotateY),
             "perspective" => Some(AnimatableProperty::Perspective),
-            "position" => None, // Special case for paths
+            "position" => None,                          // Special case for paths
             "color" => Some(AnimatableProperty::ColorR), // Pseudo-property, handled specially
             "fontSize" => Some(AnimatableProperty::FontSize),
             "cornerRadius" => Some(AnimatableProperty::CornerRadius),
@@ -1070,7 +1474,9 @@ impl Compiler {
             // Re-resolve if the value itself is an identifier (e.g. `duration: compDelay`)
             let resolved_val = if let ValueNode::Identifier(id) = val {
                 env.get(id).unwrap_or(val)
-            } else { val };
+            } else {
+                val
+            };
 
             match arg.name.as_str() {
                 "from" => {
@@ -1094,7 +1500,9 @@ impl Compiler {
                 }
                 "stiffness" => stiffness = Some(Self::value_to_f64(resolved_val)?),
                 "damping" => damping = Some(Self::value_to_f64(resolved_val)?),
-                "velocity" | "initialVelocity" => velocity = Some(Self::value_to_f64(resolved_val)?),
+                "velocity" | "initialVelocity" => {
+                    velocity = Some(Self::value_to_f64(resolved_val)?)
+                }
                 "expr" | "expression" => expr = Some(Self::value_to_string(resolved_val)?),
                 "audio" => audio_source = Some(Self::value_to_string(resolved_val)?),
                 "path" => path = Some(Self::value_to_string(resolved_val)?),
@@ -1110,11 +1518,35 @@ impl Compiler {
             let dur = vidra_core::Duration::from_seconds(duration);
             let del = vidra_core::Duration::from_seconds(delay);
 
-            let mut ar = Animation::from_to(AnimatableProperty::ColorR, fc.r as f64, tc.r as f64, dur, easing.clone());
-            let mut ag = Animation::from_to(AnimatableProperty::ColorG, fc.g as f64, tc.g as f64, dur, easing.clone());
-            let mut ab = Animation::from_to(AnimatableProperty::ColorB, fc.b as f64, tc.b as f64, dur, easing.clone());
-            let mut aa = Animation::from_to(AnimatableProperty::ColorA, fc.a as f64, tc.a as f64, dur, easing.clone());
-            
+            let mut ar = Animation::from_to(
+                AnimatableProperty::ColorR,
+                fc.r as f64,
+                tc.r as f64,
+                dur,
+                easing.clone(),
+            );
+            let mut ag = Animation::from_to(
+                AnimatableProperty::ColorG,
+                fc.g as f64,
+                tc.g as f64,
+                dur,
+                easing.clone(),
+            );
+            let mut ab = Animation::from_to(
+                AnimatableProperty::ColorB,
+                fc.b as f64,
+                tc.b as f64,
+                dur,
+                easing.clone(),
+            );
+            let mut aa = Animation::from_to(
+                AnimatableProperty::ColorA,
+                fc.a as f64,
+                tc.a as f64,
+                dur,
+                easing.clone(),
+            );
+
             if delay > 0.0 {
                 ar = ar.with_delay(del);
                 ag = ag.with_delay(del);
@@ -1138,7 +1570,8 @@ impl Compiler {
             if uses_mouse {
                 if rewritten_interactive.contains("audio.amplitude") {
                     return Err(VidraError::Compile(
-                        "interactive expressions with audio.amplitude are not supported yet".to_string(),
+                        "interactive expressions with audio.amplitude are not supported yet"
+                            .to_string(),
                     ));
                 }
 
@@ -1150,8 +1583,11 @@ impl Compiler {
                 }
                 anims.push(a);
             } else {
-                let (rewritten, amp_samples) =
-                    Self::prepare_audio_expression(&rewritten_interactive, audio_source.as_deref(), duration)?;
+                let (rewritten, amp_samples) = Self::prepare_audio_expression(
+                    &rewritten_interactive,
+                    audio_source.as_deref(),
+                    duration,
+                )?;
                 let mut a = crate::advanced_anim::compile_expression(
                     animatable.unwrap(),
                     &rewritten,
@@ -1166,7 +1602,14 @@ impl Compiler {
         } else if let Some(s) = stiffness {
             let d = damping.unwrap_or(10.0);
             let v = velocity.unwrap_or(0.0);
-            let mut a = crate::advanced_anim::compile_spring(animatable.unwrap(), from_val, to_val, s, d, v);
+            let mut a = crate::advanced_anim::compile_spring(
+                animatable.unwrap(),
+                from_val,
+                to_val,
+                s,
+                d,
+                v,
+            );
             if delay > 0.0 {
                 a = a.with_delay(vidra_core::Duration::from_seconds(delay));
             }
@@ -1215,8 +1658,9 @@ impl Compiler {
             return Ok((rewritten, None));
         }
 
-        let samples = compute_audio_rms_envelope(&audio_path, duration)
-            .map_err(|e| VidraError::Compile(format!("failed to compute audio amplitude: {}", e)))?;
+        let samples = compute_audio_rms_envelope(&audio_path, duration).map_err(|e| {
+            VidraError::Compile(format!("failed to compute audio amplitude: {}", e))
+        })?;
         Ok((rewritten, Some(samples)))
     }
 
@@ -1274,7 +1718,9 @@ impl Compiler {
                 } else {
                     "888888"
                 };
-                Color::from_hex(hex).map_err(|e| VidraError::Compile(format!("invalid brand color fallback: {}", e)))
+                Color::from_hex(hex).map_err(|e| {
+                    VidraError::Compile(format!("invalid brand color fallback: {}", e))
+                })
             }
             _ => Err(VidraError::Compile(format!(
                 "expected color, got {:?}",
@@ -1312,7 +1758,6 @@ impl Compiler {
             ))),
         }
     }
-
 }
 
 fn rewrite_interactive_state_expr(expr: &str) -> (String, bool) {
@@ -1391,7 +1836,10 @@ fn is_ffmpeg_available() -> bool {
         .unwrap_or(false)
 }
 
-fn compute_audio_rms_envelope(audio_path: &str, duration: f64) -> Result<Vec<f64>, Box<dyn std::error::Error>> {
+fn compute_audio_rms_envelope(
+    audio_path: &str,
+    duration: f64,
+) -> Result<Vec<f64>, Box<dyn std::error::Error>> {
     // Decode to mono s16le at low sample rate to keep memory reasonable.
     let sample_rate: f64 = 8000.0;
     let fps: f64 = 60.0;
@@ -1463,7 +1911,10 @@ mod audio_expr_tests {
     #[test]
     fn extract_path_from_audio_amplitude() {
         let src = "audio.amplitude(\"assets/a.mp3\")";
-        assert_eq!(extract_audio_amplitude_path(src).as_deref(), Some("assets/a.mp3"));
+        assert_eq!(
+            extract_audio_amplitude_path(src).as_deref(),
+            Some("assets/a.mp3")
+        );
     }
 }
 
@@ -1543,6 +1994,42 @@ mod tests {
     }
 
     #[test]
+    fn test_compile_web_layer() {
+        let project = compile(
+            r#"
+            project(1920, 1080, 30) {
+                scene("s", 3s) {
+                    layer("web_view") {
+                        web("http://localhost:3000", viewport: "1280x720", mode: "realtime", wait_for: ".loaded")
+                        position(100, 200)
+                    }
+                }
+            }
+        "#,
+        );
+        let layer = &project.scenes[0].layers[0];
+        match &layer.content {
+            LayerContent::Web {
+                source,
+                viewport_width,
+                viewport_height,
+                mode,
+                wait_for,
+                ..
+            } => {
+                assert_eq!(source, "http://localhost:3000");
+                assert_eq!(*viewport_width, 1280);
+                assert_eq!(*viewport_height, 720);
+                assert_eq!(*mode, vidra_ir::layer::WebCaptureMode::Realtime);
+                assert_eq!(wait_for.as_deref(), Some(".loaded"));
+            }
+            _ => panic!("expected web layer"),
+        }
+        assert!((layer.transform.position.x - 100.0).abs() < 0.001);
+        assert!((layer.transform.position.y - 200.0).abs() < 0.001);
+    }
+
+    #[test]
     fn test_compile_animation() {
         let project = compile(
             r#"
@@ -1615,18 +2102,22 @@ mod tests {
 
         let main_scene = &project.scenes[0];
         assert_eq!(main_scene.layers.len(), 1);
-        
+
         let btn1_wrapper = &main_scene.layers[0];
         assert!(matches!(btn1_wrapper.content, LayerContent::Empty));
         assert_eq!(btn1_wrapper.children.len(), 2);
         assert!((btn1_wrapper.transform.position.x - 500.0).abs() < 0.001);
 
         let btn_bg = &btn1_wrapper.children[0];
-        assert!(matches!(btn_bg.content, LayerContent::Solid { color: c } if c.to_rgba8() == [0, 0, 255, 255]));
+        assert!(
+            matches!(btn_bg.content, LayerContent::Solid { color: c } if c.to_rgba8() == [0, 0, 255, 255])
+        );
         assert_eq!(btn_bg.animations[0].duration().as_seconds(), 1.0); // Default t_duration
-        
+
         let btn_label = &btn1_wrapper.children[1];
-        assert!(matches!(&btn_label.content, LayerContent::Text { text, .. } if text == "Click Me"));
+        assert!(
+            matches!(&btn_label.content, LayerContent::Text { text, .. } if text == "Click Me")
+        );
         assert!((btn_label.transform.position.x - 100.0).abs() < 0.001); // Default posX
     }
 
@@ -1662,15 +2153,17 @@ mod tests {
         let box1 = &main_scene.layers[0];
         // box1 should have 'bg' and 'content' as children
         assert_eq!(box1.children.len(), 2);
-        
+
         let box_content = &box1.children[1];
         assert!(matches!(box_content.content, LayerContent::Empty));
         assert!((box_content.transform.position.x - 10.0).abs() < 0.001);
-        
+
         // box_content should contain the slotted child
         assert_eq!(box_content.children.len(), 1);
         let slotted = &box_content.children[0];
-        assert!(matches!(&slotted.content, LayerContent::Text { text, .. } if text == "Inside Slot"));
+        assert!(
+            matches!(&slotted.content, LayerContent::Text { text, .. } if text == "Inside Slot")
+        );
     }
 
     #[test]
@@ -1702,7 +2195,7 @@ mod tests {
         "#,
         );
         let main_scene = &project.scenes[0];
-        
+
         let btn_y = &main_scene.layers[0];
         assert_eq!(btn_y.children.len(), 1); // Should have "red_bg" derived from showRed: 1
         assert_eq!(btn_y.children[0].id.0.as_str(), "btn_y_red_bg");
@@ -1737,7 +2230,7 @@ mod tests {
 
         let main_scene = &project.scenes[0];
         assert_eq!(main_scene.layers.len(), 3);
-        
+
         let btn_default = &main_scene.layers[0];
         assert_eq!(btn_default.children.len(), 1);
         match &btn_default.children[0].content {
@@ -1783,10 +2276,10 @@ mod tests {
             }
             "#,
         );
-        
+
         let main_scene = &project.scenes[0];
         assert_eq!(main_scene.layers.len(), 1);
-        
+
         let box_layer = &main_scene.layers[0];
         // The project is 1920x1080 (16:9 aspect), so it should match the first rule
         // which sets the position to 100, 100
@@ -1816,7 +2309,7 @@ mod tests {
         assert_eq!(scene.duration.as_seconds(), 5.0);
         let box_layer = &scene.layers[0];
         assert_eq!(box_layer.animations.len(), 2);
-        
+
         match &box_layer.content {
             LayerContent::Solid { color } => assert_eq!(color.to_rgba8(), [255, 204, 0, 255]),
             _ => panic!("Expected solid content"),
@@ -1849,15 +2342,15 @@ mod tests {
         "#,
         );
         let scene = &project.scenes[0];
-        
+
         let item1 = &scene.layers[0];
         assert_eq!(item1.animations.len(), 1);
         assert_eq!(item1.animations[0].delay.as_seconds(), 0.0);
-        
+
         let item2 = &scene.layers[1];
         assert_eq!(item2.animations.len(), 1);
         assert_eq!(item2.animations[0].delay.as_seconds(), 0.5);
-        
+
         let seq_item = &scene.layers[2];
         assert_eq!(seq_item.animations.len(), 2);
         assert_eq!(seq_item.animations[0].delay.as_seconds(), 0.0);
@@ -1887,11 +2380,11 @@ mod tests {
         "#,
         );
         let s = &project.scenes[0];
-        
+
         let l1 = &s.layers[0];
         assert_eq!(l1.animations.len(), 1);
         assert!(l1.animations[0].keyframes.len() > 2);
-        
+
         let l2 = &s.layers[1];
         assert_eq!(l2.animations.len(), 1);
         assert!(l2.animations[0].keyframes.len() > 2);
@@ -1905,7 +2398,6 @@ mod tests {
         let l3 = &s.layers[3];
         assert_eq!(l3.animations.len(), 2);
     }
-
 
     #[test]
     fn test_compile_extended_properties() {
@@ -1930,12 +2422,18 @@ mod tests {
         let l1 = &s.layers[0];
         // text layer has fontSize animation (1) and color animations (4) = 5 total
         assert_eq!(l1.animations.len(), 5);
-        let is_color_anim = l1.animations.iter().any(|a| matches!(a.property, AnimatableProperty::ColorR));
+        let is_color_anim = l1
+            .animations
+            .iter()
+            .any(|a| matches!(a.property, AnimatableProperty::ColorR));
         assert!(is_color_anim);
-        
+
         let l2 = &s.layers[1];
         assert_eq!(l2.animations.len(), 1);
-        assert!(matches!(l2.animations[0].property, AnimatableProperty::CornerRadius));
+        assert!(matches!(
+            l2.animations[0].property,
+            AnimatableProperty::CornerRadius
+        ));
     }
 
     #[test]
@@ -1985,34 +2483,43 @@ mod tests {
         "#,
         );
         let s = &project.scenes[0];
-        
+
         // Title: center(horizontal) + pin(top, 100)
         let title = &s.layers[0];
         assert_eq!(title.constraints.len(), 2);
-        assert!(matches!(title.constraints[0], vidra_ir::layout::LayoutConstraint::Center(vidra_ir::layout::CenterAxis::Horizontal)));
-        assert!(matches!(title.constraints[1], vidra_ir::layout::LayoutConstraint::Pin { edge: vidra_ir::layout::Edge::Top, margin } if (margin - 100.0).abs() < 0.01));
-        
+        assert!(matches!(
+            title.constraints[0],
+            vidra_ir::layout::LayoutConstraint::Center(vidra_ir::layout::CenterAxis::Horizontal)
+        ));
+        assert!(
+            matches!(title.constraints[1], vidra_ir::layout::LayoutConstraint::Pin { edge: vidra_ir::layout::Edge::Top, margin } if (margin - 100.0).abs() < 0.01)
+        );
+
         // Subtitle: center(horizontal) + below("title", 20)
         let subtitle = &s.layers[1];
         assert_eq!(subtitle.constraints.len(), 2);
-        assert!(matches!(&subtitle.constraints[1], vidra_ir::layout::LayoutConstraint::Below { anchor_layer, spacing } if anchor_layer == "title" && (*spacing - 20.0).abs() < 0.01));
-        
+        assert!(
+            matches!(&subtitle.constraints[1], vidra_ir::layout::LayoutConstraint::Below { anchor_layer, spacing } if anchor_layer == "title" && (*spacing - 20.0).abs() < 0.01)
+        );
+
         // CTA: pin(bottom) + pin(right) + fill(horizontal)
         let cta = &s.layers[2];
         assert_eq!(cta.constraints.len(), 3);
-        
+
         // Run the solver against two viewports to verify responsiveness
-        let solver_input: Vec<_> = s.layers.iter().map(|l| {
-            (l.id.0.clone(), 200.0, 50.0, l.constraints.clone())
-        }).collect();
-        
+        let solver_input: Vec<_> = s
+            .layers
+            .iter()
+            .map(|l| (l.id.0.clone(), 200.0, 50.0, l.constraints.clone()))
+            .collect();
+
         let r_16_9 = vidra_ir::layout::LayoutSolver::solve(1920.0, 1080.0, &solver_input);
         let r_9_16 = vidra_ir::layout::LayoutSolver::solve(1080.0, 1920.0, &solver_input);
-        
+
         // Title should be centered horizontally in both
         assert!((r_16_9[0].1.x - (1920.0 - 200.0) / 2.0).abs() < 0.01);
         assert!((r_9_16[0].1.x - (1080.0 - 200.0) / 2.0).abs() < 0.01);
-        
+
         // Title pinned at top=100 in both
         assert!((r_16_9[0].1.y - 100.0).abs() < 0.01);
         assert!((r_9_16[0].1.y - 100.0).abs() < 0.01);
@@ -2039,7 +2546,10 @@ mod tests {
         let layer = &project.scenes[0].layers[0];
         assert_eq!(layer.id.0, "btn");
         assert_eq!(layer.events.len(), 1);
-        assert!(matches!(layer.events[0].event, vidra_ir::layer::LayerEventType::Click));
+        assert!(matches!(
+            layer.events[0].event,
+            vidra_ir::layer::LayerEventType::Click
+        ));
         assert_eq!(layer.events[0].actions.len(), 1);
         match &layer.events[0].actions[0] {
             vidra_ir::layer::LayerAction::SetVar { name, expr } => {

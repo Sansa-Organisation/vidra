@@ -56,6 +56,8 @@ export interface Duration {
     seconds: number;
 }
 
+export type WebCaptureMode = "FrameAccurate" | "Realtime";
+
 export type LayerContent =
     | { Text: { text: string; font_family: string; font_size: number; color: Color } }
     | { Image: { asset_id: AssetId } }
@@ -65,6 +67,7 @@ export type LayerContent =
     | { Solid: { color: Color } }
     | { TTS: { text: string; voice: string; volume: number } }
     | { AutoCaption: { asset_id: AssetId; font_family: string; font_size: number; color: Color } }
+    | { Web: { source: string; viewport_width: number; viewport_height: number; mode: WebCaptureMode; wait_for: string | null; variables: Record<string, number> } }
     | "Empty";
 
 export type AnimatableProperty =

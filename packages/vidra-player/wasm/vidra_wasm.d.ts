@@ -66,6 +66,12 @@ export function get_project_info(ir_json: string): string;
 export function get_state_var(name: string): any;
 
 /**
+ * Get the computed transforms and bounds of all web layers at the given frame.
+ * Returns a JSON string representing an array of { id, source, x, y, width, height, opacity, scaleX, scaleY }.
+ */
+export function get_web_layers_state(ir_json: string, frame_index: number): string;
+
+/**
  * Initialize the WASM module. Call this once before rendering.
  */
 export function init(): void;
@@ -140,6 +146,7 @@ export interface InitOutput {
     readonly get_mouse_position: () => [number, number];
     readonly get_project_info: (a: number, b: number) => [number, number, number, number];
     readonly get_state_var: (a: number, b: number) => any;
+    readonly get_web_layers_state: (a: number, b: number, c: number) => [number, number, number, number];
     readonly load_image_asset: (a: number, b: number, c: number, d: number) => void;
     readonly materialize_autocaption_layer: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
     readonly parse_and_compile: (a: number, b: number) => [number, number, number, number];

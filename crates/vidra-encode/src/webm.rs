@@ -65,11 +65,16 @@ impl WebmEncoder {
 
         // Input 0: raw video frames from stdin
         cmd.args([
-            "-f", "rawvideo",
-            "-pixel_format", "rgba",
-            "-video_size", &format!("{}x{}", width, height),
-            "-framerate", &fps_str,
-            "-i", "-",
+            "-f",
+            "rawvideo",
+            "-pixel_format",
+            "rgba",
+            "-video_size",
+            &format!("{}x{}", width, height),
+            "-framerate",
+            &fps_str,
+            "-i",
+            "-",
         ]);
 
         // Inputs 1..N: audio files
@@ -107,7 +112,8 @@ impl WebmEncoder {
                 }
             }
 
-            let should_duck = !music_inputs.is_empty() && !narr_inputs.is_empty() && music_duck < 1.0;
+            let should_duck =
+                !music_inputs.is_empty() && !narr_inputs.is_empty() && music_duck < 1.0;
             if should_duck {
                 filter_complex.push_str(&format!(
                     "{}amix=inputs={}:duration=first:dropout_transition=3[narr];",
@@ -122,11 +128,10 @@ impl WebmEncoder {
                 filter_complex.push_str(
                     "[music][narr]sidechaincompress=threshold=0.02:ratio=8:attack=20:release=250[ducked];",
                 );
-                filter_complex.push_str(&format!(
-                    "[ducked]volume={}[duckv];",
-                    music_duck
-                ));
-                filter_complex.push_str("[duckv][narr]amix=inputs=2:duration=first:dropout_transition=3[aout]");
+                filter_complex.push_str(&format!("[ducked]volume={}[duckv];", music_duck));
+                filter_complex.push_str(
+                    "[duckv][narr]amix=inputs=2:duration=first:dropout_transition=3[aout]",
+                );
             } else {
                 filter_complex.push_str(&format!(
                     "{}amix=inputs={}:duration=first:dropout_transition=3[aout]",
@@ -143,11 +148,16 @@ impl WebmEncoder {
 
         // VP9 video encoding settings
         cmd.args([
-            "-c:v", "libvpx-vp9",
-            "-pix_fmt", "yuva420p",      // Support alpha channel
-            "-crf", &crf_val.to_string(),
-            "-b:v", "0",                  // Constant quality mode
-            "-row-mt", "1",              // Row-based multithreading
+            "-c:v",
+            "libvpx-vp9",
+            "-pix_fmt",
+            "yuva420p", // Support alpha channel
+            "-crf",
+            &crf_val.to_string(),
+            "-b:v",
+            "0", // Constant quality mode
+            "-row-mt",
+            "1", // Row-based multithreading
         ]);
 
         cmd.arg(output_path);
@@ -176,7 +186,8 @@ impl WebmEncoder {
                 let output = child.wait_with_output().unwrap();
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 return Err(VidraError::Encode(format!(
-                    "failed to write frame {} to ffmpeg: {}. FFmpeg stderr: {}", i, e, stderr
+                    "failed to write frame {} to ffmpeg: {}. FFmpeg stderr: {}",
+                    i, e, stderr
                 )));
             }
         }
@@ -214,7 +225,8 @@ mod tests {
 
     #[test]
     fn test_webm_encode_empty_frames() {
-        let result = WebmEncoder::encode(&[], &[], 320, 240, 30.0, Path::new("/tmp/test.webm"), None);
+        let result =
+            WebmEncoder::encode(&[], &[], 320, 240, 30.0, Path::new("/tmp/test.webm"), None);
         assert!(result.is_err());
     }
 }

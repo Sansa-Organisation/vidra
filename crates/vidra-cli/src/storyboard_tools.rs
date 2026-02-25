@@ -49,8 +49,12 @@ pub fn generate_storyboard_png(prompt: &str, out_path: &Path) -> Result<()> {
     }
 
     if let Some(parent) = out_path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create storyboard output dir: {}", parent.display()))?;
+        std::fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "failed to create storyboard output dir: {}",
+                parent.display()
+            )
+        })?;
     }
 
     img.save(out_path)

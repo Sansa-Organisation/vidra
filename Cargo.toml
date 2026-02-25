@@ -9,7 +9,7 @@ members = [
     "crates/vidra-cli",
     "crates/vidra-lsp",
     "crates/vidra-wasm",
-    "crates/vidra-fx",
+    "crates/vidra-fx", "crates/vidra-web",
 ]
 
 [workspace.package]

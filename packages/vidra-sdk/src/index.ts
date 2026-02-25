@@ -180,6 +180,20 @@ export class Layer {
         return this;
     }
 
+    web(source: string, opts?: { viewport_width?: number; viewport_height?: number; mode?: "FrameAccurate" | "Realtime"; wait_for?: string; variables?: Record<string, number> }): this {
+        this._layer.content = {
+            Web: {
+                source,
+                viewport_width: opts?.viewport_width ?? 1920,
+                viewport_height: opts?.viewport_height ?? 1080,
+                mode: opts?.mode ?? "FrameAccurate",
+                wait_for: opts?.wait_for ?? null,
+                variables: opts?.variables ?? {},
+            }
+        };
+        return this;
+    }
+
     // ── Transform setters ─────────────────────────────────────────
 
     position(x: number, y: number): this {
@@ -376,6 +390,29 @@ export class Project {
             lines.push(`${pad}    audio("${content.Audio.asset_id}", volume: ${content.Audio.volume})`);
         } else if ("TTS" in content) {
             lines.push(`${pad}    tts("${content.TTS.text}", "${content.TTS.voice}")`);
+        } else if ("Web" in content) {
+            const w = content.Web;
+            const args = [];
+            if (w.viewport_width !== 1920 || w.viewport_height !== 1080) {
+                args.push(`viewport: "${w.viewport_width}x${w.viewport_height}"`);
+            }
+            if (w.mode !== "FrameAccurate") {
+                args.push(`mode: "${w.mode.toLowerCase()}"`);
+            }
+            if (w.wait_for) {
+                args.push(`wait_for: "${w.wait_for}"`);
+            }
+            // Variables map to a stringified map or just skip for now in toVidraScript if empty
+            if (Object.keys(w.variables).length > 0) {
+                // simple serialization of variables
+                // In actual vidrascript it might be variables: { "k": v } 
+            }
+
+            if (args.length > 0) {
+                lines.push(`${pad}    web("${w.source}", ${args.join(", ")})`);
+            } else {
+                lines.push(`${pad}    web("${w.source}")`);
+            }
         }
 
         // Position

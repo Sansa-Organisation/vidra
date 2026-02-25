@@ -82,57 +82,65 @@ struct EffectParams {
 
 impl GpuEffects {
     pub fn new(gpu: Arc<GpuContext>) -> Self {
-        let shader = gpu.device.create_shader_module(wgpu::include_wgsl!("effects.wgsl"));
+        let shader = gpu
+            .device
+            .create_shader_module(wgpu::include_wgsl!("effects.wgsl"));
 
-        let bind_group_layout = gpu.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("effects_bind_group_layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::StorageTexture {
-                        access: wgpu::StorageTextureAccess::WriteOnly,
-                        format: wgpu::TextureFormat::Rgba8Unorm,
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-            ],
-        });
+        let bind_group_layout =
+            gpu.device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("effects_bind_group_layout"),
+                    entries: &[
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 0,
+                            visibility: wgpu::ShaderStages::COMPUTE,
+                            ty: wgpu::BindingType::Texture {
+                                sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                                view_dimension: wgpu::TextureViewDimension::D2,
+                                multisampled: false,
+                            },
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 1,
+                            visibility: wgpu::ShaderStages::COMPUTE,
+                            ty: wgpu::BindingType::StorageTexture {
+                                access: wgpu::StorageTextureAccess::WriteOnly,
+                                format: wgpu::TextureFormat::Rgba8Unorm,
+                                view_dimension: wgpu::TextureViewDimension::D2,
+                            },
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 2,
+                            visibility: wgpu::ShaderStages::COMPUTE,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Uniform,
+                                has_dynamic_offset: false,
+                                min_binding_size: None,
+                            },
+                            count: None,
+                        },
+                    ],
+                });
 
-        let pipeline_layout = gpu.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("effects_pipeline_layout"),
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
-        });
+        let pipeline_layout = gpu
+            .device
+            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("effects_pipeline_layout"),
+                bind_group_layouts: &[&bind_group_layout],
+                push_constant_ranges: &[],
+            });
 
-        let pipeline = gpu.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("effects_compute_pipeline"),
-            layout: Some(&pipeline_layout),
-            module: &shader,
-            entry_point: "main",
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-        });
+        let pipeline = gpu
+            .device
+            .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("effects_compute_pipeline"),
+                layout: Some(&pipeline_layout),
+                module: &shader,
+                entry_point: "main",
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            });
 
         Self {
             gpu,
@@ -193,7 +201,10 @@ impl GpuEffects {
         let texture_in = self.gpu.texture_pool.acquire(
             &self.gpu.device,
             Some("effect_texture_in"),
-            width, height, format, usage_in
+            width,
+            height,
+            format,
+            usage_in,
         );
 
         self.gpu.queue.write_texture(
@@ -209,7 +220,11 @@ impl GpuEffects {
                 bytes_per_row: Some(width * 4),
                 rows_per_image: Some(height),
             },
-            wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
         );
 
         let texture_out_buf = self.gpu.device.create_buffer(&wgpu::BufferDescriptor {
@@ -223,7 +238,10 @@ impl GpuEffects {
         let texture_out = self.gpu.texture_pool.acquire(
             &self.gpu.device,
             Some("effect_texture_out"),
-            width, height, format, usage_out
+            width,
+            height,
+            format,
+            usage_out,
         );
 
         let view_in = texture_in.create_view(&wgpu::TextureViewDescriptor::default());
@@ -253,24 +271,32 @@ impl GpuEffects {
             }
             LayerEffect::CustomShader { wgsl_source } => {
                 params.effect_type = 4; // Or ignored because we use custom pipeline
-                let module = self.gpu.device.create_shader_module(wgpu::ShaderModuleDescriptor {
-                    label: Some("custom_effect_shader"),
-                    source: wgpu::ShaderSource::Wgsl(wgsl_source.as_str().into()),
-                });
-                
-                let pipeline_layout = self.gpu.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                    label: Some("custom_effects_pipeline_layout"),
-                    bind_group_layouts: &[&self.bind_group_layout],
-                    push_constant_ranges: &[],
-                });
-                
-                custom_pipeline = Some(self.gpu.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                    label: Some("custom_effect_compute_pipeline"),
-                    layout: Some(&pipeline_layout),
-                    module: &module,
-                    entry_point: "main",
-                    compilation_options: wgpu::PipelineCompilationOptions::default(),
-                }));
+                let module = self
+                    .gpu
+                    .device
+                    .create_shader_module(wgpu::ShaderModuleDescriptor {
+                        label: Some("custom_effect_shader"),
+                        source: wgpu::ShaderSource::Wgsl(wgsl_source.as_str().into()),
+                    });
+
+                let pipeline_layout =
+                    self.gpu
+                        .device
+                        .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                            label: Some("custom_effects_pipeline_layout"),
+                            bind_group_layouts: &[&self.bind_group_layout],
+                            push_constant_ranges: &[],
+                        });
+
+                custom_pipeline = Some(self.gpu.device.create_compute_pipeline(
+                    &wgpu::ComputePipelineDescriptor {
+                        label: Some("custom_effect_compute_pipeline"),
+                        layout: Some(&pipeline_layout),
+                        module: &module,
+                        entry_point: "main",
+                        compilation_options: wgpu::PipelineCompilationOptions::default(),
+                    },
+                ));
             }
             LayerEffect::Brightness(amount) => {
                 params.effect_type = 5;
@@ -303,32 +329,41 @@ impl GpuEffects {
             }
         }
 
-        let params_buffer = self.gpu.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("effect_params_buffer"),
-            contents: bytemuck::cast_slice(&[params]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
+        let params_buffer = self
+            .gpu
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("effect_params_buffer"),
+                contents: bytemuck::cast_slice(&[params]),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            });
 
-        let bind_group = self.gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("effect_bind_group"),
-            layout: &self.bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&view_in),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&view_out),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: params_buffer.as_entire_binding(),
-                },
-            ],
-        });
+        let bind_group = self
+            .gpu
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("effect_bind_group"),
+                layout: &self.bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&view_in),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(&view_out),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: params_buffer.as_entire_binding(),
+                    },
+                ],
+            });
 
-        let mut encoder = self.gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let mut encoder = self
+            .gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
         {
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
@@ -352,7 +387,11 @@ impl GpuEffects {
                     rows_per_image: Some(height),
                 },
             },
-            wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
         );
 
         self.gpu.queue.submit(Some(encoder.finish()));
@@ -377,8 +416,12 @@ impl GpuEffects {
         texture_out_buf.unmap();
 
         // Release textures back to pool!
-        self.gpu.texture_pool.release(texture_in, width, height, format, usage_in);
-        self.gpu.texture_pool.release(texture_out, width, height, format, usage_out);
+        self.gpu
+            .texture_pool
+            .release(texture_in, width, height, format, usage_in);
+        self.gpu
+            .texture_pool
+            .release(texture_out, width, height, format, usage_out);
 
         result
     }
@@ -409,21 +452,32 @@ fn parse_cube_lut(path: &str) -> Result<Lut3D, std::io::Error> {
         // Data row: 3 floats
         let parts: Vec<&str> = line.split_whitespace().collect();
         if parts.len() == 3 {
-            if let (Ok(r), Ok(g), Ok(b)) = (parts[0].parse::<f32>(), parts[1].parse::<f32>(), parts[2].parse::<f32>()) {
+            if let (Ok(r), Ok(g), Ok(b)) = (
+                parts[0].parse::<f32>(),
+                parts[1].parse::<f32>(),
+                parts[2].parse::<f32>(),
+            ) {
                 data.push([r, g, b]);
             }
         }
     }
 
     let Some(size) = size else {
-        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "missing LUT_3D_SIZE"));
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "missing LUT_3D_SIZE",
+        ));
     };
 
     let expected = size * size * size;
     if data.len() != expected {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
-            format!("invalid LUT length: got {}, expected {}", data.len(), expected),
+            format!(
+                "invalid LUT length: got {}, expected {}",
+                data.len(),
+                expected
+            ),
         ));
     }
 

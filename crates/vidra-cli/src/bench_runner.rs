@@ -1,7 +1,7 @@
+use super::parse_and_resolve_imports;
+use anyhow::{Context, Result};
 use std::path::PathBuf;
 use std::time::Instant;
-use anyhow::{Context, Result};
-use super::parse_and_resolve_imports;
 use vidra_ir::Project;
 
 pub fn run_benchmark(file: PathBuf, update_baseline: bool) -> Result<()> {
@@ -35,7 +35,10 @@ pub fn run_benchmark(file: PathBuf, update_baseline: bool) -> Result<()> {
         ("4K", 3840, 2160),
     ];
 
-    println!("\n▶ Running benchmark suite across {} profiles...\n", targets.len());
+    println!(
+        "\n▶ Running benchmark suite across {} profiles...\n",
+        targets.len()
+    );
 
     let mut results = Vec::new();
 
@@ -47,18 +50,22 @@ pub fn run_benchmark(file: PathBuf, update_baseline: bool) -> Result<()> {
         print!("   Measuring {} ({}x{}) ... ", name, w, h);
         use std::io::Write;
         std::io::stdout().flush().unwrap();
-        
+
         let _target_frames = proj.total_frames();
-        
-        // Render 
+
+        // Render
         let render_start = Instant::now();
         let render_result = vidra_render::RenderPipeline::render(&proj);
         let render_time = render_start.elapsed();
 
         if let Ok(res) = render_result {
             let fps = res.frame_count as f64 / render_time.as_secs_f64();
-            println!("{:.1}ms ({:.0} fps)", render_time.as_secs_f64() * 1000.0, fps);
-            
+            println!(
+                "{:.1}ms ({:.0} fps)",
+                render_time.as_secs_f64() * 1000.0,
+                fps
+            );
+
             results.push(BenchResult {
                 profile: name.to_string(),
                 width: w,
@@ -73,12 +80,19 @@ pub fn run_benchmark(file: PathBuf, update_baseline: bool) -> Result<()> {
     }
 
     println!("\n📊 Benchmark Report:");
-    println!("{:<10} | {:<10} | {:<10} | {:<10} | {}", "Profile", "Resolution", "Render (ms)", "FPS", "Regression");
-    println!("{:-<10}-+-{:-<10}-+-{:-<10}-+-{:-<10}-+-{:-<10}", "", "", "", "", "");
-    
+    println!(
+        "{:<10} | {:<10} | {:<10} | {:<10} | {}",
+        "Profile", "Resolution", "Render (ms)", "FPS", "Regression"
+    );
+    println!(
+        "{:-<10}-+-{:-<10}-+-{:-<10}-+-{:-<10}-+-{:-<10}",
+        "", "", "", "", ""
+    );
+
     let baseline_path = std::path::Path::new("tests/snapshots/benchmarks.json");
-    let mut baselines: std::collections::HashMap<String, BenchResult> = std::collections::HashMap::new();
-    
+    let mut baselines: std::collections::HashMap<String, BenchResult> =
+        std::collections::HashMap::new();
+
     if baseline_path.exists() {
         if let Ok(b) = std::fs::read_to_string(baseline_path) {
             if let Ok(parsed) = serde_json::from_str::<Vec<BenchResult>>(&b) {
@@ -94,11 +108,11 @@ pub fn run_benchmark(file: PathBuf, update_baseline: bool) -> Result<()> {
     for res in &results {
         let key = format!("{}@{}x{}", res.profile, res.width, res.height);
         let mut reg_str = String::from("-");
-        
+
         if let Some(baseline) = baselines.get(&key) {
             let diff = res.duration_ms - baseline.duration_ms;
             let percent = (diff / baseline.duration_ms) * 100.0;
-            
+
             if percent > 5.0 {
                 reg_str = format!("❌ +{:.1}%", percent);
                 failed = true;
@@ -109,12 +123,14 @@ pub fn run_benchmark(file: PathBuf, update_baseline: bool) -> Result<()> {
             }
         }
 
-        println!("{:<10} | {:>4}x{:<4}  | {:>10.1} | {:>10.0} | {}", 
-            res.profile, res.width, res.height, res.duration_ms, res.fps, reg_str);
+        println!(
+            "{:<10} | {:>4}x{:<4}  | {:>10.1} | {:>10.0} | {}",
+            res.profile, res.width, res.height, res.duration_ms, res.fps, reg_str
+        );
     }
-    
+
     println!();
-    
+
     if update_baseline {
         if let Some(parent) = baseline_path.parent() {
             if !parent.exists() {

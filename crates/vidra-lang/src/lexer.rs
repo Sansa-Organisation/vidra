@@ -39,6 +39,7 @@ pub enum TokenKind {
     Shape,
     Shader,
     Solid,
+    Web,
     Animation,
     Import,
     From,
@@ -103,6 +104,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Shape => write!(f, "shape"),
             TokenKind::Shader => write!(f, "shader"),
             TokenKind::Solid => write!(f, "solid"),
+            TokenKind::Web => write!(f, "web"),
             TokenKind::Animation => write!(f, "animation"),
             TokenKind::Import => write!(f, "import"),
             TokenKind::From => write!(f, "from"),
@@ -417,6 +419,7 @@ impl Lexer {
                     "shape" => TokenKind::Shape,
                     "shader" => TokenKind::Shader,
                     "solid" => TokenKind::Solid,
+                    "web" => TokenKind::Web,
                     "animation" => TokenKind::Animation,
                     "import" => TokenKind::Import,
                     "from" => TokenKind::From,
@@ -476,10 +479,11 @@ mod tests {
 
     #[test]
     fn test_keywords() {
-        let tokens = tokenize("project scene layer");
+        let tokens = tokenize("project scene layer web");
         assert_eq!(tokens[0], TokenKind::Project);
         assert_eq!(tokens[1], TokenKind::Scene);
         assert_eq!(tokens[2], TokenKind::Layer);
+        assert_eq!(tokens[3], TokenKind::Web);
     }
 
     #[test]

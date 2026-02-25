@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 
 use vidra_core::VidraConfig;
 use vidra_encode::FfmpegEncoder;
-use vidra_ir::asset::{Asset, AssetId, AssetType, AssetRegistry};
+use vidra_ir::asset::{Asset, AssetId, AssetRegistry, AssetType};
 use vidra_ir::layer::{Layer, LayerContent};
 use vidra_ir::Project;
 
@@ -14,7 +14,10 @@ pub struct MediaPrepareReport {
     pub waveforms_materialized: usize,
 }
 
-pub fn prepare_project_media(project: &mut Project, config: &VidraConfig) -> Result<MediaPrepareReport> {
+pub fn prepare_project_media(
+    project: &mut Project,
+    config: &VidraConfig,
+) -> Result<MediaPrepareReport> {
     let cache_root = resolve_cache_root(config)?;
 
     let mut report = MediaPrepareReport {
@@ -48,9 +51,14 @@ fn materialize_layer_media(
             // Keep placeholder rendering; don't fail the entire render.
             tracing::warn!("ffmpeg not available; skipping waveform materialization");
         } else {
-            let audio_path = resolve_asset_path(assets, asset_id)
-                .ok_or_else(|| anyhow!("waveform: failed to resolve audio path for asset_id '{}'", asset_id))?;
-            let image_asset_id = materialize_waveform_png(assets, cache_root, &audio_path, *width, *height, *color)?;
+            let audio_path = resolve_asset_path(assets, asset_id).ok_or_else(|| {
+                anyhow!(
+                    "waveform: failed to resolve audio path for asset_id '{}'",
+                    asset_id
+                )
+            })?;
+            let image_asset_id =
+                materialize_waveform_png(assets, cache_root, &audio_path, *width, *height, *color)?;
 
             layer.content = LayerContent::Image {
                 asset_id: image_asset_id,

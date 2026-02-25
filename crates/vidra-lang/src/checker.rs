@@ -25,7 +25,11 @@ impl std::fmt::Display for Diagnostic {
             DiagnosticSeverity::Warning => "warning",
             DiagnosticSeverity::Info => "info",
         };
-        write!(f, "{prefix}: {} at {}:{}:{}", self.message, self.file, self.span.line, self.span.column)
+        write!(
+            f,
+            "{prefix}: {} at {}:{}:{}",
+            self.message, self.file, self.span.line, self.span.column
+        )
     }
 }
 
@@ -53,8 +57,11 @@ impl TypeChecker {
     /// Run the type checker on the project AST. Returns diagnostics, Error if there are any hard errors.
     pub fn check(mut self, project: &ProjectNode) -> Result<Vec<Diagnostic>, Vec<Diagnostic>> {
         self.check_project(project);
-        
-        let has_errors = self.diagnostics.iter().any(|d| d.severity == DiagnosticSeverity::Error);
+
+        let has_errors = self
+            .diagnostics
+            .iter()
+            .any(|d| d.severity == DiagnosticSeverity::Error);
         if has_errors {
             Err(self.diagnostics)
         } else {
@@ -62,7 +69,12 @@ impl TypeChecker {
         }
     }
 
-    fn add_diagnostic(&mut self, severity: DiagnosticSeverity, message: impl Into<String>, span: &Span) {
+    fn add_diagnostic(
+        &mut self,
+        severity: DiagnosticSeverity,
+        message: impl Into<String>,
+        span: &Span,
+    ) {
         self.diagnostics.push(Diagnostic {
             severity,
             message: message.into(),
@@ -79,7 +91,10 @@ impl TypeChecker {
         // Collect components
         for comp in &proj.components {
             if self.components.contains_key(&comp.name) {
-                self.type_error(format!("duplicate component definition '{}'", comp.name), &comp.span);
+                self.type_error(
+                    format!("duplicate component definition '{}'", comp.name),
+                    &comp.span,
+                );
             }
             self.components.insert(comp.name.clone(), comp.clone());
         }
@@ -97,20 +112,29 @@ impl TypeChecker {
             self.check_scene(scene);
         }
 
-        let unused: Vec<_> = self.components.iter()
+        let unused: Vec<_> = self
+            .components
+            .iter()
             .filter(|(name, _)| !self.used_components.contains(*name))
             .map(|(name, comp)| (name.clone(), comp.span.clone()))
             .collect();
 
         for (name, span) in unused {
-            self.add_diagnostic(DiagnosticSeverity::Warning, format!("component '{}' is never used", name), &span);
+            self.add_diagnostic(
+                DiagnosticSeverity::Warning,
+                format!("component '{}' is never used", name),
+                &span,
+            );
         }
 
         // Check assets
         for asset in &proj.assets {
             match asset.asset_type.as_str() {
                 "font" | "image" | "video" | "audio" | "shader" => {}
-                _ => self.type_error(format!("unknown asset type '{}'", asset.asset_type), &asset.span),
+                _ => self.type_error(
+                    format!("unknown asset type '{}'", asset.asset_type),
+                    &asset.span,
+                ),
             }
         }
     }
@@ -125,7 +149,12 @@ impl TypeChecker {
     fn check_layer_block_item(&mut self, item: &crate::ast::LayerBlockItem) {
         match item {
             crate::ast::LayerBlockItem::Layer(layer) => self.check_layer(layer),
-            crate::ast::LayerBlockItem::If { condition: _, then_branch, else_branch, .. } => {
+            crate::ast::LayerBlockItem::If {
+                condition: _,
+                then_branch,
+                else_branch,
+                ..
+            } => {
                 // Technically condition can be a variable Identifier or literal (usually checked at runtime/compile-eval time)
                 // We just recursively check the branches
                 for child_item in then_branch {
@@ -137,7 +166,12 @@ impl TypeChecker {
                     }
                 }
             }
-            crate::ast::LayerBlockItem::Transition { duration: _, easing, span: _, transition_type: _ } => {
+            crate::ast::LayerBlockItem::Transition {
+                duration: _,
+                easing,
+                span: _,
+                transition_type: _,
+            } => {
                 if let Some(_ease) = easing {
                     // Could check easing string valid
                 }
@@ -155,15 +189,19 @@ impl TypeChecker {
 
     fn check_layer(&mut self, layer: &LayerNode) {
         if !self.current_scope_layers.insert(layer.name.clone()) {
-            self.add_diagnostic(DiagnosticSeverity::Warning, format!("duplicate layer name '{}' in current scope", layer.name), &layer.span);
+            self.add_diagnostic(
+                DiagnosticSeverity::Warning,
+                format!("duplicate layer name '{}' in current scope", layer.name),
+                &layer.span,
+            );
         }
 
         self.check_layer_content(&layer.content, &layer.span);
-        
+
         for prop in &layer.properties {
             self.check_property(prop);
         }
-        
+
         for child in &layer.children {
             self.check_layer_block_item(child);
         }
@@ -178,7 +216,10 @@ impl TypeChecker {
                         "font" => self.expect_string(&arg.value, &arg.span),
                         "size" => self.expect_number(&arg.value, &arg.span),
                         "color" => self.expect_color(&arg.value, &arg.span),
-                        _ => self.type_error(format!("unknown property '{}' for text layer", arg.name), &arg.span),
+                        _ => self.type_error(
+                            format!("unknown property '{}' for text layer", arg.name),
+                            &arg.span,
+                        ),
                     }
                 }
             }
@@ -192,7 +233,9 @@ impl TypeChecker {
                         "frameWidth" | "frame_width" => self.expect_number(&arg.value, &arg.span),
                         "frameHeight" | "frame_height" => self.expect_number(&arg.value, &arg.span),
                         "fps" => self.expect_number(&arg.value, &arg.span),
-                        "start" | "startFrame" | "start_frame" => self.expect_number(&arg.value, &arg.span),
+                        "start" | "startFrame" | "start_frame" => {
+                            self.expect_number(&arg.value, &arg.span)
+                        }
                         "frameCount" | "frame_count" => self.expect_number(&arg.value, &arg.span),
                         _ => self.type_error(
                             format!("unknown property '{}' for spritesheet layer", arg.name),
@@ -221,11 +264,18 @@ impl TypeChecker {
                     }
                 }
             }
-            LayerContentNode::TTS { text, voice, args: _ } => {
+            LayerContentNode::TTS {
+                text,
+                voice,
+                args: _,
+            } => {
                 self.expect_string(text, span);
                 self.expect_string(voice, span);
             }
-            LayerContentNode::AutoCaption { audio_source, args: _ } => {
+            LayerContentNode::AutoCaption {
+                audio_source,
+                args: _,
+            } => {
                 self.expect_string(audio_source, span);
             }
             LayerContentNode::Solid { color } => {
@@ -237,7 +287,10 @@ impl TypeChecker {
                         "fill" => self.expect_color(&arg.value, &arg.span),
                         "stroke" => self.expect_color(&arg.value, &arg.span),
                         "strokeWidth" => self.expect_number(&arg.value, &arg.span),
-                        _ => self.type_error(format!("unknown property '{}' for shape {}", arg.name, shape_type), &arg.span),
+                        _ => self.type_error(
+                            format!("unknown property '{}' for shape {}", arg.name, shape_type),
+                            &arg.span,
+                        ),
                     }
                 }
             }
@@ -254,17 +307,37 @@ impl TypeChecker {
                                 "Number" => self.expect_number(&arg.value, &arg.span),
                                 "Duration" => self.expect_duration_or_number(&arg.value, &arg.span),
                                 "Color" => self.expect_color(&arg.value, &arg.span),
-                                _ => self.type_error(format!("unknown type '{}' for property '{}'", prop_def.type_name, arg.name), &arg.span),
+                                _ => self.type_error(
+                                    format!(
+                                        "unknown type '{}' for property '{}'",
+                                        prop_def.type_name, arg.name
+                                    ),
+                                    &arg.span,
+                                ),
                             }
                         } else {
-                            self.type_error(format!("component '{}' has no property named '{}'", name, arg.name), &arg.span);
+                            self.type_error(
+                                format!(
+                                    "component '{}' has no property named '{}'",
+                                    name, arg.name
+                                ),
+                                &arg.span,
+                            );
                         }
                     }
-                    
+
                     // Check missing required props (props without defaults)
                     for prop_def in &comp_def.props {
-                        if prop_def.default_value.is_none() && !args.iter().any(|a| a.name == prop_def.name) {
-                            self.type_error(format!("missing required property '{}' on component '{}'", prop_def.name, name), span);
+                        if prop_def.default_value.is_none()
+                            && !args.iter().any(|a| a.name == prop_def.name)
+                        {
+                            self.type_error(
+                                format!(
+                                    "missing required property '{}' on component '{}'",
+                                    prop_def.name, name
+                                ),
+                                span,
+                            );
                         }
                     }
                 } else {
@@ -274,10 +347,27 @@ impl TypeChecker {
             LayerContentNode::Shader { path, args: _ } => {
                 self.expect_string(path, span);
             }
+            LayerContentNode::Web { source, args } => {
+                self.expect_string(source, span);
+                for arg in args {
+                    match arg.name.as_str() {
+                        "viewport" => {
+                            // Can be string "1920x1080" or array [1920, 1080] or identifiers in some cases
+                        }
+                        "mode" => self.expect_string(&arg.value, &arg.span),
+                        "wait_for" => self.expect_string(&arg.value, &arg.span),
+                        "variables" => {} // typically array or dict
+                        _ => self.type_error(
+                            format!("unknown property '{}' for web layer", arg.name),
+                            &arg.span,
+                        ),
+                    }
+                }
+            }
             LayerContentNode::Slot => {}
             LayerContentNode::Empty => {}
         }
-        
+
         // Suppress unused warning on span
         let _ = span;
     }
@@ -288,22 +378,55 @@ impl TypeChecker {
                 self.expect_number(x, span);
                 self.expect_number(y, span);
             }
-            PropertyNode::Animation { property: property_name, args, span } => {
+            PropertyNode::Animation {
+                property: property_name,
+                args,
+                span,
+            } => {
                 // Check valid properties
                 let valid_props = [
-                    "opacity", "position.x", "positionX", "x",
-                    "position.y", "positionY", "y",
+                    "opacity",
+                    "position.x",
+                    "positionX",
+                    "x",
+                    "position.y",
+                    "positionY",
+                    "y",
                     "position",
-                    "scale.x", "scaleX", "scale.y", "scaleY", "scale",
-                    "rotation", "color", "fontSize", "cornerRadius", "strokeWidth",
-                    "translateZ", "rotateX", "rotateY", "perspective",
-                    "crop.top", "cropTop", "crop.right", "cropRight",
-                    "crop.bottom", "cropBottom", "crop.left", "cropLeft",
-                    "volume", "blur", "blurRadius", "brightness", "brightnessLevel"
+                    "scale.x",
+                    "scaleX",
+                    "scale.y",
+                    "scaleY",
+                    "scale",
+                    "rotation",
+                    "color",
+                    "fontSize",
+                    "cornerRadius",
+                    "strokeWidth",
+                    "translateZ",
+                    "rotateX",
+                    "rotateY",
+                    "perspective",
+                    "crop.top",
+                    "cropTop",
+                    "crop.right",
+                    "cropRight",
+                    "crop.bottom",
+                    "cropBottom",
+                    "crop.left",
+                    "cropLeft",
+                    "volume",
+                    "blur",
+                    "blurRadius",
+                    "brightness",
+                    "brightnessLevel",
                 ];
-                
+
                 if !valid_props.contains(&property_name.as_str()) {
-                    self.type_error(format!("cannot animate unknown property '{}'", property_name), span);
+                    self.type_error(
+                        format!("cannot animate unknown property '{}'", property_name),
+                        span,
+                    );
                 }
 
                 for arg in args {
@@ -319,11 +442,16 @@ impl TypeChecker {
                         "expr" | "expression" => self.expect_string(&arg.value, &arg.span),
                         "audio" => self.expect_string(&arg.value, &arg.span),
                         "path" => self.expect_string(&arg.value, &arg.span),
-                        _ => self.type_error(format!("unknown animation parameter '{}'", arg.name), &arg.span),
+                        _ => self.type_error(
+                            format!("unknown animation parameter '{}'", arg.name),
+                            &arg.span,
+                        ),
                     }
                 }
             }
-            PropertyNode::FunctionCall { name, span, args, .. } => {
+            PropertyNode::FunctionCall {
+                name, span, args, ..
+            } => {
                 match name.as_str() {
                     // Core transform-ish properties
                     "scale" => {
@@ -333,10 +461,14 @@ impl TypeChecker {
                             self.expect_number(&args[0], span);
                             self.expect_number(&args[1], span);
                         } else {
-                            self.type_error("scale(s) or scale(sx, sy) expects 1-2 numeric arguments", span);
+                            self.type_error(
+                                "scale(s) or scale(sx, sy) expects 1-2 numeric arguments",
+                                span,
+                            );
                         }
                     }
-                    "rotation" | "opacity" | "translateZ" | "rotateX" | "rotateY" | "perspective" => {
+                    "rotation" | "opacity" | "translateZ" | "rotateX" | "rotateY"
+                    | "perspective" => {
                         if let Some(v) = args.get(0) {
                             self.expect_number(v, span);
                         } else {
@@ -354,7 +486,10 @@ impl TypeChecker {
                     // Effects / masks / presets
                     "effect" | "mask" | "preset" => {
                         if args.is_empty() {
-                            self.type_error(format!("'{}' expects at least 1 argument", name), span);
+                            self.type_error(
+                                format!("'{}' expects at least 1 argument", name),
+                                span,
+                            );
                         }
                     }
                     // Layout constraints
@@ -379,10 +514,17 @@ impl TypeChecker {
             PropertyNode::Wait { duration, span } => {
                 self.expect_duration_or_number(duration, span);
             }
-            PropertyNode::OnEvent { event, actions, span } => {
+            PropertyNode::OnEvent {
+                event,
+                actions,
+                span,
+            } => {
                 if event != "click" {
                     self.type_error(
-                        format!("unsupported @on event '{}' (only 'click' is supported)", event),
+                        format!(
+                            "unsupported @on event '{}' (only 'click' is supported)",
+                            event
+                        ),
                         span,
                     );
                 }
@@ -414,36 +556,60 @@ impl TypeChecker {
 
     fn expect_number(&mut self, value: &ValueNode, span: &Span) {
         match value {
-            ValueNode::Number(_) | ValueNode::Duration(_) | ValueNode::Identifier(_) | ValueNode::BrandReference(_) => {}, // Duration can cast to number implicitly in some cases, but restrict if strict
-            _ => self.type_error(format!("expected Number, got {}", self.get_type_name(value)), span),
+            ValueNode::Number(_)
+            | ValueNode::Duration(_)
+            | ValueNode::Identifier(_)
+            | ValueNode::BrandReference(_) => {} // Duration can cast to number implicitly in some cases, but restrict if strict
+            _ => self.type_error(
+                format!("expected Number, got {}", self.get_type_name(value)),
+                span,
+            ),
         }
     }
 
     fn expect_string(&mut self, value: &ValueNode, span: &Span) {
         match value {
-            ValueNode::String(_) | ValueNode::Identifier(_) | ValueNode::BrandReference(_) => {},
-            _ => self.type_error(format!("expected String, got {}", self.get_type_name(value)), span),
+            ValueNode::String(_) | ValueNode::Identifier(_) | ValueNode::BrandReference(_) => {}
+            _ => self.type_error(
+                format!("expected String, got {}", self.get_type_name(value)),
+                span,
+            ),
         }
     }
 
     fn expect_color(&mut self, value: &ValueNode, span: &Span) {
         match value {
-            ValueNode::Color(_) | ValueNode::Identifier(_) | ValueNode::BrandReference(_) => {},
-            _ => self.type_error(format!("expected Color, got {}", self.get_type_name(value)), span),
+            ValueNode::Color(_) | ValueNode::Identifier(_) | ValueNode::BrandReference(_) => {}
+            _ => self.type_error(
+                format!("expected Color, got {}", self.get_type_name(value)),
+                span,
+            ),
         }
     }
 
     fn expect_duration_or_number(&mut self, value: &ValueNode, span: &Span) {
         match value {
-            ValueNode::Duration(_) | ValueNode::Number(_) | ValueNode::Identifier(_) | ValueNode::BrandReference(_) => {},
-            _ => self.type_error(format!("expected Duration or Number, got {}", self.get_type_name(value)), span),
+            ValueNode::Duration(_)
+            | ValueNode::Number(_)
+            | ValueNode::Identifier(_)
+            | ValueNode::BrandReference(_) => {}
+            _ => self.type_error(
+                format!(
+                    "expected Duration or Number, got {}",
+                    self.get_type_name(value)
+                ),
+                span,
+            ),
         }
     }
 
     fn expect_identifier(&mut self, value: &ValueNode, span: &Span) {
         match value {
-            ValueNode::Identifier(_) | ValueNode::BrandReference(_) => {},
-            _ => self.type_error(format!("expected Identifier, got {}", self.get_type_name(value)), span),
+            ValueNode::Identifier(_) | ValueNode::BrandReference(_) => {}
+            _ => self.type_error(
+                format!("expected Identifier, got {}", self.get_type_name(value)),
+                span,
+            ),
         }
     }
 }

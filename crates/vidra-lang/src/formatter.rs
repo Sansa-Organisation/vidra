@@ -31,11 +31,16 @@ impl Formatter {
 
     fn format_project(&mut self, proj: &ProjectNode) {
         self.indent();
-        self.push(&format!("project({}, {}, {}) {{\n", proj.width, proj.height, proj.fps.trunc()));
+        self.push(&format!(
+            "project({}, {}, {}) {{\n",
+            proj.width,
+            proj.height,
+            proj.fps.trunc()
+        ));
         self.indent_level += 1;
 
         let mut first = true;
-        
+
         for comp in &proj.components {
             if !first {
                 self.output.push('\n');
@@ -57,11 +62,21 @@ impl Formatter {
     }
 
     fn format_component(&mut self, comp: &ComponentNode) {
-        let params_str = comp.props.iter()
+        let params_str = comp
+            .props
+            .iter()
             .map(|p| format!("{}: {}", p.name, p.type_name))
             .collect::<Vec<_>>()
             .join(", ");
-        self.push_line(&format!("component({}{}) {{", comp.name, if params_str.is_empty() { String::new() } else { format!(", {}", params_str) }));
+        self.push_line(&format!(
+            "component({}{}) {{",
+            comp.name,
+            if params_str.is_empty() {
+                String::new()
+            } else {
+                format!(", {}", params_str)
+            }
+        ));
         self.indent_level += 1;
         for item in &comp.items {
             self.format_layer_block_item(item);
@@ -84,7 +99,12 @@ impl Formatter {
     fn format_layer_block_item(&mut self, item: &LayerBlockItem) {
         match item {
             LayerBlockItem::Layer(layer) => self.format_layer(layer),
-            LayerBlockItem::If { condition, then_branch, else_branch, .. } => {
+            LayerBlockItem::If {
+                condition,
+                then_branch,
+                else_branch,
+                ..
+            } => {
                 let cond_str = self.format_value(condition);
                 self.indent();
                 self.push(&format!("if ({}) {{\n", cond_str));
@@ -93,7 +113,7 @@ impl Formatter {
                     self.format_layer_block_item(b);
                 }
                 self.indent_level -= 1;
-                
+
                 if let Some(eb) = else_branch {
                     self.indent();
                     self.push("} else {\n");
@@ -105,18 +125,34 @@ impl Formatter {
                 }
                 self.push_line("}");
             }
-            LayerBlockItem::Transition { transition_type, duration, easing, span: _ } => {
+            LayerBlockItem::Transition {
+                transition_type,
+                duration,
+                easing,
+                span: _,
+            } => {
                 let mut ease_str = "".to_string();
                 if let Some(e) = easing {
                     ease_str = format!(", ease: \"{}\"", e);
                 }
                 self.indent();
-                self.push_line(&format!("transition(\"{}\", {}{})", transition_type, self.format_value(duration), ease_str));
+                self.push_line(&format!(
+                    "transition(\"{}\", {}{})",
+                    transition_type,
+                    self.format_value(duration),
+                    ease_str
+                ));
             }
-            LayerBlockItem::AnimationStagger { args, animations, span: _ } => {
-                let args_str = args.iter().map(|arg| {
-                    format!("{}: {}", arg.name, self.format_value(&arg.value))
-                }).collect::<Vec<_>>().join(", ");
+            LayerBlockItem::AnimationStagger {
+                args,
+                animations,
+                span: _,
+            } => {
+                let args_str = args
+                    .iter()
+                    .map(|arg| format!("{}: {}", arg.name, self.format_value(&arg.value)))
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 self.indent();
                 self.push(&format!("animate.stagger({}) {{\n", args_str));
                 self.indent_level += 1;
@@ -126,10 +162,16 @@ impl Formatter {
                 self.indent_level -= 1;
                 self.push_line("}");
             }
-            LayerBlockItem::ComponentUse { name, args, span: _ } => {
-                let args_str = args.iter().map(|arg| {
-                    format!("{}: {}", arg.name, self.format_value(&arg.value))
-                }).collect::<Vec<_>>().join(", ");
+            LayerBlockItem::ComponentUse {
+                name,
+                args,
+                span: _,
+            } => {
+                let args_str = args
+                    .iter()
+                    .map(|arg| format!("{}: {}", arg.name, self.format_value(&arg.value)))
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 self.indent();
                 self.push_line(&format!("component(\"{}\", {})", name, args_str));
             }
@@ -140,9 +182,9 @@ impl Formatter {
         self.indent();
         self.push(&format!("layer(\"{}\") {{\n", layer.name));
         self.indent_level += 1;
-        
+
         self.format_layer_content(&layer.content);
-        
+
         for prop in &layer.properties {
             self.format_property(prop);
         }
@@ -157,7 +199,11 @@ impl Formatter {
 
     fn format_layer_content(&mut self, content: &LayerContentNode) {
         match content {
-            LayerContentNode::Text { text: text_content, args, .. } => {
+            LayerContentNode::Text {
+                text: text_content,
+                args,
+                ..
+            } => {
                 self.format_content_func("text", text_content, args);
             }
             LayerContentNode::Image { path, args, .. } => {
@@ -175,7 +221,9 @@ impl Formatter {
             LayerContentNode::Waveform { audio_source, args } => {
                 self.format_content_func("waveform", audio_source, args);
             }
-            LayerContentNode::Shape { shape_type, args, .. } => {
+            LayerContentNode::Shape {
+                shape_type, args, ..
+            } => {
                 let type_ident = ValueNode::Identifier(shape_type.clone());
                 self.format_content_func("shape", &type_ident, args);
             }
@@ -184,11 +232,20 @@ impl Formatter {
                 self.push_line(&format!("solid({})", col_str));
             }
             LayerContentNode::Component { name, args, .. } => {
-                let args_str = args.iter()
+                let args_str = args
+                    .iter()
                     .map(|a| format!("{}: {}", a.name, self.format_value(&a.value)))
                     .collect::<Vec<_>>()
                     .join(", ");
-                self.push_line(&format!("use(\"{}\"{})", name, if args.is_empty() { String::new() } else { format!(", {}", args_str) }));
+                self.push_line(&format!(
+                    "use(\"{}\"{})",
+                    name,
+                    if args.is_empty() {
+                        String::new()
+                    } else {
+                        format!(", {}", args_str)
+                    }
+                ));
             }
             LayerContentNode::Slot => {
                 self.push_line("slot()");
@@ -196,7 +253,8 @@ impl Formatter {
             LayerContentNode::TTS { text, voice, args } => {
                 let text_str = self.format_value(text);
                 let voice_str = self.format_value(voice);
-                let args_str = args.iter()
+                let args_str = args
+                    .iter()
                     .map(|a| format!("{}: {}", a.name, self.format_value(&a.value)))
                     .collect::<Vec<_>>()
                     .join(", ");
@@ -212,6 +270,9 @@ impl Formatter {
             LayerContentNode::Shader { path, args } => {
                 self.format_content_func("shader", path, args);
             }
+            LayerContentNode::Web { source, args } => {
+                self.format_content_func("web", source, args);
+            }
             LayerContentNode::Empty => {}
         }
     }
@@ -221,7 +282,8 @@ impl Formatter {
         if args.is_empty() {
             self.push_line(&format!("{}({})", name, primary));
         } else {
-            let args_str = args.iter()
+            let args_str = args
+                .iter()
                 .map(|a| format!("{}: {}", a.name, self.format_value(&a.value)))
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -237,23 +299,31 @@ impl Formatter {
                 self.push_line(&format!("position({}, {})", x_str, y_str));
             }
             PropertyNode::Animation { property, args, .. } => {
-                let args_str = args.iter()
+                let args_str = args
+                    .iter()
                     .map(|a| format!("{}: {}", a.name, self.format_value(&a.value)))
                     .collect::<Vec<_>>()
                     .join(", ");
                 self.push_line(&format!("animation({}, {})", property, args_str));
             }
-            PropertyNode::FunctionCall { name, args, named_args, .. } => {
-                let args_str = args.iter()
+            PropertyNode::FunctionCall {
+                name,
+                args,
+                named_args,
+                ..
+            } => {
+                let args_str = args
+                    .iter()
                     .map(|a| self.format_value(a))
                     .collect::<Vec<_>>()
                     .join(", ");
-                
-                let kwargs_str = named_args.iter()
+
+                let kwargs_str = named_args
+                    .iter()
                     .map(|a| format!("{}: {}", a.name, self.format_value(&a.value)))
                     .collect::<Vec<_>>()
                     .join(", ");
-                    
+
                 if named_args.is_empty() {
                     self.push_line(&format!("{}({})", name, args_str));
                 } else if args.is_empty() {
@@ -307,7 +377,8 @@ impl Formatter {
             ValueNode::Identifier(name) => name.clone(),
             ValueNode::BrandReference(key) => format!("@brand.{}", key),
             ValueNode::Array(items) => {
-                let items_str = items.iter()
+                let items_str = items
+                    .iter()
                     .map(|item| self.format_value(item))
                     .collect::<Vec<_>>()
                     .join(", ");

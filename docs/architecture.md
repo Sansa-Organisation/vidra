@@ -39,3 +39,80 @@ When running `vidra dev`, the CLI spins up an HTTP server. It dynamically recomp
 
 The wgpu `vidra-render` pipeline is specifically configured to target WebGL2 / WebGPU. The engine compiles into WASM (Phase 3). 
 When passing `--cloud`, the `vidra-cli` zips the IR + `.vidra` file and queues a job in Vidra Cloud, which provisions an ephemeral worker (running a containerized headless `vidra-render` instance on NVIDIA T4s), renders it, provisions the shareable URL, and returns the result to the user.
+
+## Web Scenes Architecture
+
+Web Scenes extend Vidra's rendering pipeline to support HTML/CSS/JS content as composited layers. The architecture adds a parallel rendering path:
+
+```
+                        ┌─── Native Layers ──→ GPU Compositor ──┐
+ Vidra IR (JSON) ──────┤                                        ├──→ Frame Buffer
+                        └─── Web Layers ───→ Capture Engine ────┘
+```
+
+**Key components:**
+
+- **`LayerContent::Web`** (vidra-ir): Extends the IR with `source`, `viewport`, `mode`, `wait_for`, and `variables` fields.
+- **Capture Engine** (vidra-render): Uses Chrome DevTools Protocol (CDP) to load web pages, advance frames via `__vidra_advance_frame`, and rasterize content.
+- **Browser Player** (vidra-player): Renders web layers as sandboxed `<iframe>` overlays positioned via CSS transforms from WASM-computed bounding boxes.
+- **`@sansavision/vidra-web-capture`** (npm): Framework-agnostic SDK for web content to communicate with the capture harness. Provides `VidraCapture` (vanilla) and `useVidraScene` (React) APIs.
+
+**Rendering modes:**
+
+| Mode | Context | Mechanism | Deterministic? |
+|---|---|---|---|
+| Capture | `vidra render` | Headless browser frame-by-frame | ✓ |
+| Realtime | `vidra dev` / `vidra editor` | iframe overlay | ✗ |
+
+See [docs/web-scenes.md](web-scenes.md) for full integration details and examples.
+
+## Visual Editor Architecture
+
+The `vidra editor` command launches a local server + web-based editing environment:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                   vidra editor CLI                       │
+│                                                         │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
+│  │  File Watcher │  │  Compiler    │  │  GPU Renderer│  │
+│  │  (notify)     │→│  (vidra-lang) │→│  (vidra-render)│  │
+│  └──────────────┘  └──────────────┘  └──────────────┘  │
+│         │                                      │        │
+│         ▼                                      ▼        │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │                   HTTP + WS Server               │  │
+│  │  GET  /              → Embedded frontend         │  │
+│  │  GET  /api/project   → IR JSON                   │  │
+│  │  PUT  /api/project/source → Write + recompile    │  │
+│  │  POST /api/project/patch  → Edit layer props     │  │
+│  │  POST /api/render/frame   → Single frame JPEG    │  │
+│  │  POST /api/mcp/invoke     → MCP tool relay       │  │
+│  │  POST /api/ai/chat        → LLM proxy            │  │
+│  │  WS   /ws                 → Real-time updates    │  │
+│  └──────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────┐
+│               Editor Frontend (React + Vite)            │
+│                                                         │
+│  ┌─────────┐ ┌──────────┐ ┌────────┐ ┌──────────────┐ │
+│  │ Scene   │ │ Canvas   │ │Timeline│ │  Property    │ │
+│  │ Graph   │ │ Preview  │ │        │ │  Inspector   │ │
+│  └─────────┘ └──────────┘ └────────┘ └──────────────┘ │
+│                           │                             │
+│  ┌─────────┐ ┌──────────┐                              │
+│  │ Code    │ │ Toolbar  │                              │
+│  │ Editor  │ │ Undo/Redo│                              │
+│  └─────────┘ └──────────┘                              │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Key design decisions:**
+
+1. **Server-side rendering**: The GPU pipeline runs in the Rust backend, not in the browser. The frontend only receives JPEG frames over WebSocket.
+2. **Source-of-truth on disk**: `PUT /api/project/source` writes directly to the `.vidra` file. The file watcher triggers recompilation automatically.
+3. **MCP relay**: The editor can invoke any MCP tool (`vidra-add_scene`, `vidra-add_web_scene`, etc.) through `POST /api/mcp/invoke`, enabling AI-assisted editing.
+4. **No Node.js runtime**: The editor frontend is embedded in the Rust binary — users need only `vidra editor` to start editing.
+

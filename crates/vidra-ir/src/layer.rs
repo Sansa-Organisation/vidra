@@ -5,6 +5,14 @@ use crate::asset::AssetId;
 use vidra_core::types::ShapeType;
 use vidra_core::{BlendMode, Color, Transform2D};
 
+/// Mode for capturing a web scene.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum WebCaptureMode {
+    FrameAccurate,
+    Realtime,
+}
+
 /// An interactive event handler attached to a layer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LayerEventHandler {
@@ -125,8 +133,17 @@ pub enum LayerContent {
     /// A solid color fill.
     Solid { color: Color },
     /// A custom WGSL shader execution.
-    Shader {
-        asset_id: AssetId,
+    Shader { asset_id: AssetId },
+    /// A web scene captured via a headless browser.
+    Web {
+        source: String,
+        viewport_width: u32,
+        viewport_height: u32,
+        mode: WebCaptureMode,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        wait_for: Option<String>,
+        #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+        variables: std::collections::HashMap<String, f64>,
     },
     /// An empty content block (useful for grouping layers into components).
     Empty,
@@ -221,6 +238,7 @@ impl Layer {
             LayerContent::TTS { .. } => vidra_core::LayerType::TTS,
             LayerContent::AutoCaption { .. } => vidra_core::LayerType::AutoCaption,
             LayerContent::Shader { .. } => vidra_core::LayerType::Shader,
+            LayerContent::Web { .. } => vidra_core::LayerType::Web,
             LayerContent::Empty => vidra_core::LayerType::Component,
         }
     }
@@ -280,5 +298,45 @@ mod tests {
         );
         parent.add_child(child);
         assert_eq!(parent.children.len(), 1);
+    }
+
+    #[test]
+    fn test_layer_content_web_serde() {
+        let mut vars = std::collections::HashMap::new();
+        vars.insert("progress".to_string(), 0.5);
+
+        let web_content = LayerContent::Web {
+            source: "./dist".to_string(),
+            viewport_width: 1920,
+            viewport_height: 1080,
+            mode: WebCaptureMode::FrameAccurate,
+            wait_for: Some(".loaded".to_string()),
+            variables: vars,
+        };
+
+        // Serialize to JSON
+        let json = serde_json::to_string(&web_content).unwrap();
+
+        // Deserialize back
+        let deserialized: LayerContent = serde_json::from_str(&json).unwrap();
+
+        match deserialized {
+            LayerContent::Web {
+                source,
+                viewport_width,
+                viewport_height,
+                mode,
+                wait_for,
+                variables,
+            } => {
+                assert_eq!(source, "./dist");
+                assert_eq!(viewport_width, 1920);
+                assert_eq!(viewport_height, 1080);
+                assert_eq!(mode, WebCaptureMode::FrameAccurate);
+                assert_eq!(wait_for, Some(".loaded".to_string()));
+                assert_eq!(variables.get("progress"), Some(&0.5));
+            }
+            _ => panic!("Expected LayerContent::Web"),
+        }
     }
 }

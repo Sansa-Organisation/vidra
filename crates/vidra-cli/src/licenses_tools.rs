@@ -19,8 +19,14 @@ pub struct LicensedAsset {
 
 fn candidate_license_sidecars(asset_path: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    let file_name = asset_path.file_name().and_then(|s| s.to_str()).unwrap_or("asset");
-    let stem = asset_path.file_stem().and_then(|s| s.to_str()).unwrap_or(file_name);
+    let file_name = asset_path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("asset");
+    let stem = asset_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(file_name);
 
     let parent = asset_path.parent().unwrap_or(Path::new("."));
 

@@ -34,9 +34,9 @@ impl<'a> Parser<'a> {
     }
 
     fn expect(&mut self, kind: TokenKind) -> Result<Token, VidraError> {
-        let token = self.advance().ok_or_else(|| {
-            VidraError::parse("Unexpected end of input", self.source, 0, 0)
-        })?;
+        let token = self
+            .advance()
+            .ok_or_else(|| VidraError::parse("Unexpected end of input", self.source, 0, 0))?;
         if token.kind == kind {
             Ok(token)
         } else {
@@ -51,11 +51,16 @@ impl<'a> Parser<'a> {
 
     fn parse_effect_def(&mut self) -> Result<EffectDef, VidraError> {
         let start_span = self.expect(TokenKind::Effect)?.span;
-        
+
         let name_token = self.advance().ok_or_else(|| {
-            VidraError::parse("Expected effect name", self.source, start_span.line, start_span.column)
+            VidraError::parse(
+                "Expected effect name",
+                self.source,
+                start_span.line,
+                start_span.column,
+            )
         })?;
-        
+
         let name = if let TokenKind::Identifier(ref name) = name_token.kind {
             name.clone()
         } else {
@@ -102,7 +107,12 @@ impl<'a> Parser<'a> {
             name,
             params,
             body,
-            span: Span::new(start_span.start, end_span.end, start_span.line, start_span.column),
+            span: Span::new(
+                start_span.start,
+                end_span.end,
+                start_span.line,
+                start_span.column,
+            ),
         })
     }
 
@@ -111,7 +121,12 @@ impl<'a> Parser<'a> {
         let name = if let TokenKind::Identifier(ref name) = start_tok.kind {
             name.clone()
         } else {
-            return Err(VidraError::parse("Expected parameter name", self.source, start_tok.span.line, start_tok.span.column));
+            return Err(VidraError::parse(
+                "Expected parameter name",
+                self.source,
+                start_tok.span.line,
+                start_tok.span.column,
+            ));
         };
 
         let mut default_value = None;
@@ -122,7 +137,12 @@ impl<'a> Parser<'a> {
                 if let TokenKind::NumberLiteral(val) = val_tok.kind {
                     default_value = Some(val);
                 } else {
-                    return Err(VidraError::parse("Expected number literal for default param", self.source, val_tok.span.line, val_tok.span.column));
+                    return Err(VidraError::parse(
+                        "Expected number literal for default param",
+                        self.source,
+                        val_tok.span.line,
+                        val_tok.span.column,
+                    ));
                 }
             }
         }
@@ -142,11 +162,21 @@ impl<'a> Parser<'a> {
             let name = if let TokenKind::Identifier(ref name) = name_tok.kind {
                 name.clone()
             } else {
-                return Err(VidraError::parse("Expected identifier after let", self.source, name_tok.span.line, name_tok.span.column));
+                return Err(VidraError::parse(
+                    "Expected identifier after let",
+                    self.source,
+                    name_tok.span.line,
+                    name_tok.span.column,
+                ));
             };
             self.expect(TokenKind::Equals)?;
             let value = self.parse_expr()?;
-            let span = Span::new(start_span.start, value.span().end, start_span.line, start_span.column);
+            let span = Span::new(
+                start_span.start,
+                value.span().end,
+                start_span.line,
+                start_span.column,
+            );
             Ok(Statement::Let { name, value, span })
         } else {
             let expr = self.parse_expr()?;
@@ -160,12 +190,17 @@ impl<'a> Parser<'a> {
 
     fn parse_pipe(&mut self) -> Result<Expr, VidraError> {
         let mut left = self.parse_additive()?;
-        
+
         while let Some(tok) = self.peek() {
             if tok.kind == TokenKind::Pipe {
                 self.advance();
                 let right = self.parse_additive()?;
-                let span = Span::new(left.span().start, right.span().end, left.span().line, left.span().column);
+                let span = Span::new(
+                    left.span().start,
+                    right.span().end,
+                    left.span().line,
+                    left.span().column,
+                );
                 left = Expr::Pipe {
                     left: Box::new(left),
                     right: Box::new(right),
@@ -175,13 +210,13 @@ impl<'a> Parser<'a> {
                 break;
             }
         }
-        
+
         Ok(left)
     }
 
     fn parse_additive(&mut self) -> Result<Expr, VidraError> {
         let mut left = self.parse_multiplicative()?;
-        
+
         while let Some(tok) = self.peek() {
             let op = match tok.kind {
                 TokenKind::Plus => Op::Add,
@@ -190,16 +225,26 @@ impl<'a> Parser<'a> {
             };
             self.advance();
             let right = self.parse_multiplicative()?;
-            let span = Span::new(left.span().start, right.span().end, left.span().line, left.span().column);
-            left = Expr::BinOp { op, left: Box::new(left), right: Box::new(right), span };
+            let span = Span::new(
+                left.span().start,
+                right.span().end,
+                left.span().line,
+                left.span().column,
+            );
+            left = Expr::BinOp {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+                span,
+            };
         }
-        
+
         Ok(left)
     }
 
     fn parse_multiplicative(&mut self) -> Result<Expr, VidraError> {
         let mut left = self.parse_atom()?;
-        
+
         while let Some(tok) = self.peek() {
             let op = match tok.kind {
                 TokenKind::Star => Op::Mul,
@@ -208,16 +253,28 @@ impl<'a> Parser<'a> {
             };
             self.advance();
             let right = self.parse_atom()?;
-            let span = Span::new(left.span().start, right.span().end, left.span().line, left.span().column);
-            left = Expr::BinOp { op, left: Box::new(left), right: Box::new(right), span };
+            let span = Span::new(
+                left.span().start,
+                right.span().end,
+                left.span().line,
+                left.span().column,
+            );
+            left = Expr::BinOp {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+                span,
+            };
         }
-        
+
         Ok(left)
     }
 
     fn parse_atom(&mut self) -> Result<Expr, VidraError> {
-        let tok = self.advance().ok_or_else(|| VidraError::parse("Unexpected EOF", self.source, 0, 0))?;
-        
+        let tok = self
+            .advance()
+            .ok_or_else(|| VidraError::parse("Unexpected EOF", self.source, 0, 0))?;
+
         match &tok.kind {
             TokenKind::Identifier(name) => {
                 let mut span = tok.span;
@@ -240,10 +297,14 @@ impl<'a> Parser<'a> {
                         }
                         let end_span = self.expect(TokenKind::RightParen)?.span;
                         span = Span::new(span.start, end_span.end, span.line, span.column);
-                        return Ok(Expr::Call { name: name.clone(), args, span });
+                        return Ok(Expr::Call {
+                            name: name.clone(),
+                            args,
+                            span,
+                        });
                     }
                 }
-                
+
                 Ok(Expr::Ident(name.clone(), span))
             }
             TokenKind::NumberLiteral(val) => Ok(Expr::Number(*val, tok.span)),
@@ -254,25 +315,43 @@ impl<'a> Parser<'a> {
                 self.expect(TokenKind::RightParen)?;
                 Ok(expr)
             }
-            _ => Err(VidraError::parse(format!("Unexpected token: {:?}", tok.kind), self.source, tok.span.line, tok.span.column)),
+            _ => Err(VidraError::parse(
+                format!("Unexpected token: {:?}", tok.kind),
+                self.source,
+                tok.span.line,
+                tok.span.column,
+            )),
         }
     }
 
     fn parse_arg(&mut self) -> Result<Arg, VidraError> {
         let _start_pos = self.pos;
-        
+
         let mut name = None;
-        if let Some(Token { kind: TokenKind::Identifier(n), .. }) = self.peek() {
-            if let Some(Token { kind: TokenKind::Colon, .. }) = self.tokens.get(self.pos + 1) {
+        if let Some(Token {
+            kind: TokenKind::Identifier(n),
+            ..
+        }) = self.peek()
+        {
+            if let Some(Token {
+                kind: TokenKind::Colon,
+                ..
+            }) = self.tokens.get(self.pos + 1)
+            {
                 name = Some(n.clone());
                 self.advance();
                 self.advance();
             }
         }
-        
+
         let value = self.parse_expr()?;
-        let span = Span::new(value.span().start, value.span().end, value.span().line, value.span().column);
-        
+        let span = Span::new(
+            value.span().start,
+            value.span().end,
+            value.span().line,
+            value.span().column,
+        );
+
         Ok(Arg { name, value, span })
     }
 }

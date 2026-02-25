@@ -76,8 +76,8 @@ pub enum FxToken {
     EqEq,
     NotEq,
     Bang,
-    And,  // &&
-    Or,   // ||
+    And, // &&
+    Or,  // ||
 
     Eof,
 }
@@ -121,17 +121,50 @@ impl FxLexer {
 
             let ch = self.chars[self.pos];
             let token = match ch {
-                '{' => { self.pos += 1; FxToken::LeftBrace }
-                '}' => { self.pos += 1; FxToken::RightBrace }
-                '(' => { self.pos += 1; FxToken::LeftParen }
-                ')' => { self.pos += 1; FxToken::RightParen }
-                ';' => { self.pos += 1; FxToken::Semicolon }
-                ':' => { self.pos += 1; FxToken::Colon }
-                ',' => { self.pos += 1; FxToken::Comma }
-                '.' => { self.pos += 1; FxToken::Dot }
-                '+' => { self.pos += 1; FxToken::Plus }
-                '*' => { self.pos += 1; FxToken::Star }
-                '/' => { self.pos += 1; FxToken::Slash }
+                '{' => {
+                    self.pos += 1;
+                    FxToken::LeftBrace
+                }
+                '}' => {
+                    self.pos += 1;
+                    FxToken::RightBrace
+                }
+                '(' => {
+                    self.pos += 1;
+                    FxToken::LeftParen
+                }
+                ')' => {
+                    self.pos += 1;
+                    FxToken::RightParen
+                }
+                ';' => {
+                    self.pos += 1;
+                    FxToken::Semicolon
+                }
+                ':' => {
+                    self.pos += 1;
+                    FxToken::Colon
+                }
+                ',' => {
+                    self.pos += 1;
+                    FxToken::Comma
+                }
+                '.' => {
+                    self.pos += 1;
+                    FxToken::Dot
+                }
+                '+' => {
+                    self.pos += 1;
+                    FxToken::Plus
+                }
+                '*' => {
+                    self.pos += 1;
+                    FxToken::Star
+                }
+                '/' => {
+                    self.pos += 1;
+                    FxToken::Slash
+                }
                 '-' => {
                     self.pos += 1;
                     if self.peek() == Some('>') {
@@ -179,12 +212,16 @@ impl FxLexer {
                 }
                 '&' => {
                     self.pos += 1;
-                    if self.peek() == Some('&') { self.pos += 1; }
+                    if self.peek() == Some('&') {
+                        self.pos += 1;
+                    }
                     FxToken::And
                 }
                 '|' => {
                     self.pos += 1;
-                    if self.peek() == Some('|') { self.pos += 1; }
+                    if self.peek() == Some('|') {
+                        self.pos += 1;
+                    }
                     FxToken::Or
                 }
                 c if c.is_ascii_digit() => self.read_number()?,
@@ -212,7 +249,10 @@ impl FxLexer {
             let ch = self.chars[self.pos];
             if ch.is_whitespace() {
                 self.pos += 1;
-            } else if ch == '/' && self.pos + 1 < self.chars.len() && self.chars[self.pos + 1] == '/' {
+            } else if ch == '/'
+                && self.pos + 1 < self.chars.len()
+                && self.chars[self.pos + 1] == '/'
+            {
                 // Line comment
                 while self.pos < self.chars.len() && self.chars[self.pos] != '\n' {
                     self.pos += 1;
@@ -225,19 +265,23 @@ impl FxLexer {
 
     fn read_number(&mut self) -> Result<FxToken, VidraError> {
         let start = self.pos;
-        while self.pos < self.chars.len() && (self.chars[self.pos].is_ascii_digit() || self.chars[self.pos] == '.') {
+        while self.pos < self.chars.len()
+            && (self.chars[self.pos].is_ascii_digit() || self.chars[self.pos] == '.')
+        {
             self.pos += 1;
         }
         let s: String = self.chars[start..self.pos].iter().collect();
-        let n: f64 = s.parse().map_err(|_| VidraError::parse(
-            format!("invalid number: {}", s), "<vfx>", 0, start,
-        ))?;
+        let n: f64 = s
+            .parse()
+            .map_err(|_| VidraError::parse(format!("invalid number: {}", s), "<vfx>", 0, start))?;
         Ok(FxToken::NumberLit(n))
     }
 
     fn read_ident(&mut self) -> FxToken {
         let start = self.pos;
-        while self.pos < self.chars.len() && (self.chars[self.pos].is_ascii_alphanumeric() || self.chars[self.pos] == '_') {
+        while self.pos < self.chars.len()
+            && (self.chars[self.pos].is_ascii_alphanumeric() || self.chars[self.pos] == '_')
+        {
             self.pos += 1;
         }
         let s: String = self.chars[start..self.pos].iter().collect();
@@ -318,10 +362,17 @@ pub struct FxFunction {
 /// A statement.
 #[derive(Debug, Clone)]
 pub enum FxStmt {
-    Let { name: String, value: FxExpr },
+    Let {
+        name: String,
+        value: FxExpr,
+    },
     Return(FxExpr),
     Expr(FxExpr),
-    If { condition: FxExpr, then_body: Vec<FxStmt>, else_body: Vec<FxStmt> },
+    If {
+        condition: FxExpr,
+        then_body: Vec<FxStmt>,
+        else_body: Vec<FxStmt>,
+    },
 }
 
 /// An expression.
@@ -330,19 +381,43 @@ pub enum FxExpr {
     Number(f64),
     Bool(bool),
     Ident(String),
-    BinOp { left: Box<FxExpr>, op: FxBinOp, right: Box<FxExpr> },
-    UnaryOp { op: FxUnaryOp, expr: Box<FxExpr> },
-    Call { func: String, args: Vec<FxExpr> },
-    FieldAccess { object: Box<FxExpr>, field: String },
-    Constructor { ty: FxType, args: Vec<FxExpr> },
+    BinOp {
+        left: Box<FxExpr>,
+        op: FxBinOp,
+        right: Box<FxExpr>,
+    },
+    UnaryOp {
+        op: FxUnaryOp,
+        expr: Box<FxExpr>,
+    },
+    Call {
+        func: String,
+        args: Vec<FxExpr>,
+    },
+    FieldAccess {
+        object: Box<FxExpr>,
+        field: String,
+    },
+    Constructor {
+        ty: FxType,
+        args: Vec<FxExpr>,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum FxBinOp {
-    Add, Sub, Mul, Div,
-    Greater, Less, GreaterEq, LessEq,
-    Equal, NotEqual,
-    And, Or,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Greater,
+    Less,
+    GreaterEq,
+    LessEq,
+    Equal,
+    NotEqual,
+    And,
+    Or,
 }
 
 impl fmt::Display for FxBinOp {
@@ -401,7 +476,9 @@ impl FxParser {
         } else {
             Err(VidraError::parse(
                 format!("expected {:?}, got {:?}", expected, t),
-                "<vfx>", 0, self.pos,
+                "<vfx>",
+                0,
+                self.pos,
             ))
         }
     }
@@ -411,7 +488,14 @@ impl FxParser {
         self.expect(&FxToken::Effect)?;
         let name = match self.advance() {
             FxToken::Ident(s) => s,
-            t => return Err(VidraError::parse(format!("expected effect name, got {:?}", t), "<vfx>", 0, 0)),
+            t => {
+                return Err(VidraError::parse(
+                    format!("expected effect name, got {:?}", t),
+                    "<vfx>",
+                    0,
+                    0,
+                ))
+            }
         };
         self.expect(&FxToken::LeftBrace)?;
 
@@ -429,7 +513,9 @@ impl FxParser {
                 _ => {
                     return Err(VidraError::parse(
                         format!("unexpected token in effect body: {:?}", self.peek()),
-                        "<vfx>", 0, self.pos,
+                        "<vfx>",
+                        0,
+                        self.pos,
                     ));
                 }
             }
@@ -437,14 +523,25 @@ impl FxParser {
 
         self.expect(&FxToken::RightBrace)?;
 
-        Ok(FxEffect { name, params, functions })
+        Ok(FxEffect {
+            name,
+            params,
+            functions,
+        })
     }
 
     fn parse_param(&mut self) -> Result<FxParam, VidraError> {
         self.expect(&FxToken::Param)?;
         let name = match self.advance() {
             FxToken::Ident(s) => s,
-            t => return Err(VidraError::parse(format!("expected param name, got {:?}", t), "<vfx>", 0, 0)),
+            t => {
+                return Err(VidraError::parse(
+                    format!("expected param name, got {:?}", t),
+                    "<vfx>",
+                    0,
+                    0,
+                ))
+            }
         };
         self.expect(&FxToken::Colon)?;
         let ty = self.parse_type()?;
@@ -466,7 +563,12 @@ impl FxParser {
             FxToken::Vec4 => Ok(FxType::Vec4),
             FxToken::Int => Ok(FxType::Int),
             FxToken::Bool => Ok(FxType::Bool),
-            t => Err(VidraError::parse(format!("expected type, got {:?}", t), "<vfx>", 0, 0)),
+            t => Err(VidraError::parse(
+                format!("expected type, got {:?}", t),
+                "<vfx>",
+                0,
+                0,
+            )),
         }
     }
 
@@ -474,7 +576,14 @@ impl FxParser {
         self.expect(&FxToken::Fn)?;
         let name = match self.advance() {
             FxToken::Ident(s) => s,
-            t => return Err(VidraError::parse(format!("expected function name, got {:?}", t), "<vfx>", 0, 0)),
+            t => {
+                return Err(VidraError::parse(
+                    format!("expected function name, got {:?}", t),
+                    "<vfx>",
+                    0,
+                    0,
+                ))
+            }
         };
         self.expect(&FxToken::LeftParen)?;
 
@@ -482,7 +591,14 @@ impl FxParser {
         while self.peek() != &FxToken::RightParen && self.peek() != &FxToken::Eof {
             let pname = match self.advance() {
                 FxToken::Ident(s) => s,
-                t => return Err(VidraError::parse(format!("expected param name, got {:?}", t), "<vfx>", 0, 0)),
+                t => {
+                    return Err(VidraError::parse(
+                        format!("expected param name, got {:?}", t),
+                        "<vfx>",
+                        0,
+                        0,
+                    ))
+                }
             };
             self.expect(&FxToken::Colon)?;
             let ty = self.parse_type()?;
@@ -502,7 +618,12 @@ impl FxParser {
 
         let body = self.parse_block()?;
 
-        Ok(FxFunction { name, params, return_type, body })
+        Ok(FxFunction {
+            name,
+            params,
+            return_type,
+            body,
+        })
     }
 
     fn parse_block(&mut self) -> Result<Vec<FxStmt>, VidraError> {
@@ -521,7 +642,14 @@ impl FxParser {
                 self.advance();
                 let name = match self.advance() {
                     FxToken::Ident(s) => s,
-                    t => return Err(VidraError::parse(format!("expected variable name, got {:?}", t), "<vfx>", 0, 0)),
+                    t => {
+                        return Err(VidraError::parse(
+                            format!("expected variable name, got {:?}", t),
+                            "<vfx>",
+                            0,
+                            0,
+                        ))
+                    }
                 };
                 self.expect(&FxToken::Equals)?;
                 let value = self.parse_expr()?;
@@ -546,7 +674,11 @@ impl FxParser {
                 } else {
                     Vec::new()
                 };
-                Ok(FxStmt::If { condition, then_body, else_body })
+                Ok(FxStmt::If {
+                    condition,
+                    then_body,
+                    else_body,
+                })
             }
             _ => {
                 let expr = self.parse_expr()?;
@@ -565,7 +697,11 @@ impl FxParser {
         while self.peek() == &FxToken::Or {
             self.advance();
             let right = self.parse_and()?;
-            left = FxExpr::BinOp { left: Box::new(left), op: FxBinOp::Or, right: Box::new(right) };
+            left = FxExpr::BinOp {
+                left: Box::new(left),
+                op: FxBinOp::Or,
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -575,7 +711,11 @@ impl FxParser {
         while self.peek() == &FxToken::And {
             self.advance();
             let right = self.parse_comparison()?;
-            left = FxExpr::BinOp { left: Box::new(left), op: FxBinOp::And, right: Box::new(right) };
+            left = FxExpr::BinOp {
+                left: Box::new(left),
+                op: FxBinOp::And,
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -594,7 +734,11 @@ impl FxParser {
             };
             self.advance();
             let right = self.parse_additive()?;
-            left = FxExpr::BinOp { left: Box::new(left), op, right: Box::new(right) };
+            left = FxExpr::BinOp {
+                left: Box::new(left),
+                op,
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -609,7 +753,11 @@ impl FxParser {
             };
             self.advance();
             let right = self.parse_multiplicative()?;
-            left = FxExpr::BinOp { left: Box::new(left), op, right: Box::new(right) };
+            left = FxExpr::BinOp {
+                left: Box::new(left),
+                op,
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -624,7 +772,11 @@ impl FxParser {
             };
             self.advance();
             let right = self.parse_unary()?;
-            left = FxExpr::BinOp { left: Box::new(left), op, right: Box::new(right) };
+            left = FxExpr::BinOp {
+                left: Box::new(left),
+                op,
+                right: Box::new(right),
+            };
         }
         Ok(left)
     }
@@ -634,12 +786,18 @@ impl FxParser {
             FxToken::Minus => {
                 self.advance();
                 let expr = self.parse_primary()?;
-                Ok(FxExpr::UnaryOp { op: FxUnaryOp::Neg, expr: Box::new(expr) })
+                Ok(FxExpr::UnaryOp {
+                    op: FxUnaryOp::Neg,
+                    expr: Box::new(expr),
+                })
             }
             FxToken::Bang => {
                 self.advance();
                 let expr = self.parse_primary()?;
-                Ok(FxExpr::UnaryOp { op: FxUnaryOp::Not, expr: Box::new(expr) })
+                Ok(FxExpr::UnaryOp {
+                    op: FxUnaryOp::Not,
+                    expr: Box::new(expr),
+                })
             }
             _ => self.parse_postfix(),
         }
@@ -653,9 +811,19 @@ impl FxParser {
                     self.advance();
                     let field = match self.advance() {
                         FxToken::Ident(s) => s,
-                        t => return Err(VidraError::parse(format!("expected field name, got {:?}", t), "<vfx>", 0, 0)),
+                        t => {
+                            return Err(VidraError::parse(
+                                format!("expected field name, got {:?}", t),
+                                "<vfx>",
+                                0,
+                                0,
+                            ))
+                        }
                     };
-                    expr = FxExpr::FieldAccess { object: Box::new(expr), field };
+                    expr = FxExpr::FieldAccess {
+                        object: Box::new(expr),
+                        field,
+                    };
                 }
                 _ => break,
             }
@@ -684,7 +852,9 @@ impl FxParser {
                 let mut args = Vec::new();
                 while self.peek() != &FxToken::RightParen {
                     args.push(self.parse_expr()?);
-                    if self.peek() == &FxToken::Comma { self.advance(); }
+                    if self.peek() == &FxToken::Comma {
+                        self.advance();
+                    }
                 }
                 self.expect(&FxToken::RightParen)?;
                 Ok(FxExpr::Constructor { ty, args })
@@ -697,7 +867,9 @@ impl FxParser {
                     let mut args = Vec::new();
                     while self.peek() != &FxToken::RightParen && self.peek() != &FxToken::Eof {
                         args.push(self.parse_expr()?);
-                        if self.peek() == &FxToken::Comma { self.advance(); }
+                        if self.peek() == &FxToken::Comma {
+                            self.advance();
+                        }
                     }
                     self.expect(&FxToken::RightParen)?;
                     Ok(FxExpr::Call { func: name, args })
@@ -711,7 +883,12 @@ impl FxParser {
                 self.expect(&FxToken::RightParen)?;
                 Ok(expr)
             }
-            t => Err(VidraError::parse(format!("unexpected token in expression: {:?}", t), "<vfx>", 0, 0)),
+            t => Err(VidraError::parse(
+                format!("unexpected token in expression: {:?}", t),
+                "<vfx>",
+                0,
+                0,
+            )),
         }
     }
 }
@@ -756,7 +933,9 @@ pub fn compile_to_wgsl(effect: &FxEffect) -> String {
     for func in &effect.functions {
         out.push_str(&format!("fn {}(", func.name));
         for (i, (pname, pty)) in func.params.iter().enumerate() {
-            if i > 0 { out.push_str(", "); }
+            if i > 0 {
+                out.push_str(", ");
+            }
             out.push_str(&format!("{}: {}", pname, pty));
         }
         out.push(')');
@@ -792,12 +971,20 @@ fn emit_stmt(out: &mut String, stmt: &FxStmt, indent: usize) {
         FxStmt::Expr(expr) => {
             out.push_str(&format!("{}{};\n", pad, emit_expr(expr)));
         }
-        FxStmt::If { condition, then_body, else_body } => {
+        FxStmt::If {
+            condition,
+            then_body,
+            else_body,
+        } => {
             out.push_str(&format!("{}if ({}) {{\n", pad, emit_expr(condition)));
-            for s in then_body { emit_stmt(out, s, indent + 1); }
+            for s in then_body {
+                emit_stmt(out, s, indent + 1);
+            }
             if !else_body.is_empty() {
                 out.push_str(&format!("{}}} else {{\n", pad));
-                for s in else_body { emit_stmt(out, s, indent + 1); }
+                for s in else_body {
+                    emit_stmt(out, s, indent + 1);
+                }
             }
             out.push_str(&format!("{}}}\n", pad));
         }

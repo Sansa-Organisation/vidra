@@ -1,7 +1,7 @@
-pub mod lexer;
 pub mod ast;
-pub mod parser;
 pub mod codegen;
+pub mod lexer;
+pub mod parser;
 
 use vidra_core::VidraError;
 
@@ -11,10 +11,10 @@ pub fn compile(src: &str) -> Result<String, VidraError> {
     let tokens = lexer.tokenize()?;
     let mut parser = parser::Parser::new(tokens, src);
     let ast = parser.parse()?;
-    
+
     let mut codegen = codegen::Codegen::new();
     let wgsl = codegen.generate(&ast)?;
-    
+
     Ok(wgsl)
 }
 
@@ -39,7 +39,7 @@ mod tests {
         assert!(wgsl.contains("smoothstep")); // mask
         assert!(wgsl.contains("textureLoad")); // source
         assert!(wgsl.contains("mix")); // blend
-        
+
         println!("Generated WGSL:\n{}", wgsl);
     }
 

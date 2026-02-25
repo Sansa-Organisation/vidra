@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use vidra_core::Duration;
 use vidra_core::types::Easing;
+use vidra_core::Duration;
 
 /// Defines the visual effect used to transition into this scene from the previous one.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

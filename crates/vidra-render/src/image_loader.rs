@@ -14,11 +14,16 @@ pub fn load_image(path: &Path) -> Result<FrameBuffer, VidraError> {
             path,
         )
     })?;
-    
+
     let cursor = std::io::Cursor::new(img_bytes);
     let img = image::ImageReader::new(cursor)
         .with_guessed_format()
-        .map_err(|e| VidraError::asset(format!("failed to guess format for '{}': {}", path.display(), e), path))?
+        .map_err(|e| {
+            VidraError::asset(
+                format!("failed to guess format for '{}': {}", path.display(), e),
+                path,
+            )
+        })?
         .decode()
         .map_err(|e| {
             VidraError::asset(

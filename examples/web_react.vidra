@@ -1,0 +1,48 @@
+// Web React Example — React component rendered as a video layer
+//
+// This example shows how to embed a React-powered ticker/overlay
+// using the @sansavision/vidra-web-capture SDK.
+//
+// Prerequisites:
+//   1. Build a React app at web/ticker.html
+//   2. Install @sansavision/vidra-web-capture in the React project
+//   3. Use the useVidraScene() hook for frame-synced rendering
+
+project(1920, 1080, 30) {
+    scene("product_launch", 8s) {
+        // Background video of the product
+        layer("bg") {
+            solid(#0a0a0a)
+        }
+
+        // Product name
+        layer("product_name") {
+            text("Vidra Pro", font: "Inter", size: 96, color: #ffffff)
+            position(960, 400)
+            animation(opacity, from: 0, to: 1, duration: 1s, easing: ease-out)
+            animation(scale, from: 0.8, to: 1.0, duration: 1.2s, easing: ease-out)
+        }
+
+        // Tagline
+        layer("tagline") {
+            text("Video as Code. Ship Faster.", font: "Inter", size: 32, color: #8b949e)
+            position(960, 480)
+            animation(opacity, from: 0, to: 1, duration: 1s, easing: ease-out)
+        }
+
+        // React-powered live pricing ticker
+        layer("ticker") {
+            web("web/ticker.html", viewport: 400x80, mode: capture, wait_for: ".loaded")
+            position(960, 900)
+            animation(opacity, from: 0, to: 1, duration: 0.5s, easing: ease-out)
+            animation(position_y, from: 920, to: 900, duration: 0.6s, easing: ease-out)
+        }
+
+        // React feature comparison table
+        layer("features") {
+            web("web/features.html", viewport: 800x300, variables: { plan: "pro", highlight: true })
+            position(960, 680)
+            animation(opacity, from: 0, to: 1, duration: 0.8s, easing: ease-out)
+        }
+    }
+}

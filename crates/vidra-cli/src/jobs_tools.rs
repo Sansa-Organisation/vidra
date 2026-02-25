@@ -59,7 +59,8 @@ pub fn jobs_failed_dir(jobs_root: &Path) -> PathBuf {
 
 pub fn ensure_jobs_dirs(jobs_root: &Path) -> Result<()> {
     std::fs::create_dir_all(jobs_queued_dir(jobs_root)).context("failed to create jobs/queued")?;
-    std::fs::create_dir_all(jobs_running_dir(jobs_root)).context("failed to create jobs/running")?;
+    std::fs::create_dir_all(jobs_running_dir(jobs_root))
+        .context("failed to create jobs/running")?;
     std::fs::create_dir_all(jobs_sent_dir(jobs_root)).context("failed to create jobs/sent")?;
     std::fs::create_dir_all(jobs_failed_dir(jobs_root)).context("failed to create jobs/failed")?;
     Ok(())
@@ -70,7 +71,8 @@ pub fn write_job_to_dir(dir: &Path, spec: &JobSpec) -> Result<PathBuf> {
     let filename = format!("job_{}.json", spec.job_id);
     let path = dir.join(filename);
     let content = serde_json::to_string_pretty(spec).context("failed to serialize job spec")?;
-    std::fs::write(&path, content).with_context(|| format!("failed to write job file: {}", path.display()))?;
+    std::fs::write(&path, content)
+        .with_context(|| format!("failed to write job file: {}", path.display()))?;
     Ok(path)
 }
 
@@ -80,7 +82,9 @@ pub fn list_jobs_in_dir(dir: &Path, state: JobState) -> Result<Vec<ClaimedJob>> 
         return Ok(out);
     }
 
-    for entry in std::fs::read_dir(dir).with_context(|| format!("failed to read jobs dir: {}", dir.display()))? {
+    for entry in std::fs::read_dir(dir)
+        .with_context(|| format!("failed to read jobs dir: {}", dir.display()))?
+    {
         let entry = entry?;
         let path = entry.path();
         if !path.is_file() {
@@ -127,7 +131,9 @@ pub fn claim_next_job(jobs_root: &Path) -> Result<Option<ClaimedJob>> {
     std::fs::rename(&next.job_file, &dest).or_else(|_| {
         std::fs::copy(&next.job_file, &dest)
             .context("failed to copy claimed job")
-            .and_then(|_| std::fs::remove_file(&next.job_file).context("failed to remove original job"))
+            .and_then(|_| {
+                std::fs::remove_file(&next.job_file).context("failed to remove original job")
+            })
     })?;
 
     Ok(Some(ClaimedJob {
@@ -148,12 +154,18 @@ pub fn mark_job_sent(jobs_root: &Path, claimed: &ClaimedJob) -> Result<PathBuf> 
     std::fs::rename(&claimed.job_file, &dest).or_else(|_| {
         std::fs::copy(&claimed.job_file, &dest)
             .context("failed to copy sent job")
-            .and_then(|_| std::fs::remove_file(&claimed.job_file).context("failed to remove running job"))
+            .and_then(|_| {
+                std::fs::remove_file(&claimed.job_file).context("failed to remove running job")
+            })
     })?;
     Ok(dest)
 }
 
-pub fn mark_job_failed(jobs_root: &Path, claimed: &ClaimedJob, error_message: &str) -> Result<PathBuf> {
+pub fn mark_job_failed(
+    jobs_root: &Path,
+    claimed: &ClaimedJob,
+    error_message: &str,
+) -> Result<PathBuf> {
     ensure_jobs_dirs(jobs_root)?;
     let file_name = claimed
         .job_file
@@ -165,7 +177,9 @@ pub fn mark_job_failed(jobs_root: &Path, claimed: &ClaimedJob, error_message: &s
     std::fs::rename(&claimed.job_file, &dest).or_else(|_| {
         std::fs::copy(&claimed.job_file, &dest)
             .context("failed to copy failed job")
-            .and_then(|_| std::fs::remove_file(&claimed.job_file).context("failed to remove running job"))
+            .and_then(|_| {
+                std::fs::remove_file(&claimed.job_file).context("failed to remove running job")
+            })
     })?;
 
     // Best-effort sidecar error message

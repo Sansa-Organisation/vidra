@@ -324,7 +324,7 @@ fn test_conformance_10_animation_position() {
 #[test]
 fn test_conformance_11_transitions() {
     let mut proj = create_base_project();
-    
+
     let mut scene1 = Scene::new(SceneId::new("s1"), Duration::from_seconds(0.5));
     scene1.add_layer(Layer::new(
         LayerId::new("bg1"),
@@ -338,7 +338,9 @@ fn test_conformance_11_transitions() {
         LayerContent::Solid { color: Color::BLUE },
     ));
     scene2.transition = Some(vidra_ir::transition::Transition {
-        effect: vidra_ir::transition::TransitionType::Wipe { direction: "right".to_string() },
+        effect: vidra_ir::transition::TransitionType::Wipe {
+            direction: "right".to_string(),
+        },
         duration: Duration::from_seconds(0.5),
         easing: vidra_core::types::Easing::Linear,
     });

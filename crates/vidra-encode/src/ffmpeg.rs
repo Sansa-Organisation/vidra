@@ -75,32 +75,49 @@ impl FfmpegEncoder {
         match encoder {
             HwEncoder::VideoToolbox => {
                 cmd.args([
-                    "-c:v", "h264_videotoolbox",
-                    "-pix_fmt", "yuv420p",
+                    "-c:v",
+                    "h264_videotoolbox",
+                    "-pix_fmt",
+                    "yuv420p",
                     // quality: 1-100, lower = better. 55 ≈ CRF 23 quality.
-                    "-q:v", "55",
-                    "-profile:v", "high",
-                    "-allow_sw", "1",      // fallback to software if HW session limit hit
-                    "-movflags", "+faststart",
+                    "-q:v",
+                    "55",
+                    "-profile:v",
+                    "high",
+                    "-allow_sw",
+                    "1", // fallback to software if HW session limit hit
+                    "-movflags",
+                    "+faststart",
                 ]);
             }
             HwEncoder::Nvenc => {
                 cmd.args([
-                    "-c:v", "h264_nvenc",
-                    "-pix_fmt", "yuv420p",
-                    "-cq", "23",
-                    "-preset", "p4",       // balanced speed/quality
-                    "-movflags", "+faststart",
+                    "-c:v",
+                    "h264_nvenc",
+                    "-pix_fmt",
+                    "yuv420p",
+                    "-cq",
+                    "23",
+                    "-preset",
+                    "p4", // balanced speed/quality
+                    "-movflags",
+                    "+faststart",
                 ]);
             }
             HwEncoder::Libx264 => {
                 cmd.args([
-                    "-c:v", "libx264",
-                    "-pix_fmt", "yuv420p",
-                    "-preset", "fast",     // was "medium"; fast is ~2x quicker, minimal quality loss
-                    "-crf", "23",
-                    "-threads", "0",       // use all available CPU threads
-                    "-movflags", "+faststart",
+                    "-c:v",
+                    "libx264",
+                    "-pix_fmt",
+                    "yuv420p",
+                    "-preset",
+                    "fast", // was "medium"; fast is ~2x quicker, minimal quality loss
+                    "-crf",
+                    "23",
+                    "-threads",
+                    "0", // use all available CPU threads
+                    "-movflags",
+                    "+faststart",
                 ]);
             }
         }
@@ -144,11 +161,16 @@ impl FfmpegEncoder {
 
         // Input 0: raw video frames from stdin
         cmd.args([
-            "-f", "rawvideo",
-            "-pixel_format", "rgba",
-            "-video_size", &format!("{}x{}", width, height),
-            "-framerate", &fps_str,
-            "-i", "-",
+            "-f",
+            "rawvideo",
+            "-pixel_format",
+            "rgba",
+            "-video_size",
+            &format!("{}x{}", width, height),
+            "-framerate",
+            &fps_str,
+            "-i",
+            "-",
         ]);
 
         // Inputs 1..N: audio files
@@ -186,7 +208,8 @@ impl FfmpegEncoder {
                 }
             }
 
-            let should_duck = !music_inputs.is_empty() && !narr_inputs.is_empty() && music_duck < 1.0;
+            let should_duck =
+                !music_inputs.is_empty() && !narr_inputs.is_empty() && music_duck < 1.0;
             if should_duck {
                 filter_complex.push_str(&format!(
                     "{}amix=inputs={}:duration=first:dropout_transition=3:normalize=0[narr];",
@@ -201,17 +224,11 @@ impl FfmpegEncoder {
                 filter_complex.push_str(
                     "[music][narr]sidechaincompress=threshold=0.02:ratio=8:attack=20:release=250[ducked];",
                 );
-                filter_complex.push_str(&format!(
-                    "[ducked]volume={}[duckv];",
-                    music_duck
-                ));
+                filter_complex.push_str(&format!("[ducked]volume={}[duckv];", music_duck));
                 filter_complex.push_str("[duckv][narr]amix=inputs=2:duration=first:dropout_transition=3:normalize=0[aout]");
             } else if audio_tracks.len() == 1 {
                 // Single track: skip amix entirely to avoid any normalization artefacts
-                filter_complex.push_str(&format!(
-                    "{}anull[aout]",
-                    mix_inputs,
-                ));
+                filter_complex.push_str(&format!("{}anull[aout]", mix_inputs,));
             } else {
                 filter_complex.push_str(&format!(
                     "{}amix=inputs={}:duration=first:dropout_transition=3:normalize=0[aout]",
@@ -257,7 +274,8 @@ impl FfmpegEncoder {
                 let output = child.wait_with_output().unwrap();
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 return Err(VidraError::Encode(format!(
-                    "failed to write frame {} to ffmpeg: {}. FFmpeg stderr: {}", i, e, stderr
+                    "failed to write frame {} to ffmpeg: {}. FFmpeg stderr: {}",
+                    i, e, stderr
                 )));
             }
         }
@@ -336,7 +354,11 @@ mod tests {
         );
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
-        assert!(err.contains("dimensions"), "Error should mention dimensions: {}", err);
+        assert!(
+            err.contains("dimensions"),
+            "Error should mention dimensions: {}",
+            err
+        );
     }
 
     #[test]
@@ -350,8 +372,8 @@ mod tests {
                 let mut fb = FrameBuffer::new(64, 64, PixelFormat::Rgba8);
                 for pixel in fb.data.chunks_mut(4) {
                     pixel[0] = 255; // R
-                    pixel[1] = 0;   // G
-                    pixel[2] = 0;   // B
+                    pixel[1] = 0; // G
+                    pixel[2] = 0; // B
                     pixel[3] = 255; // A
                 }
                 fb
@@ -379,7 +401,10 @@ mod tests {
 
         let result = FfmpegEncoder::encode(&frames, &[], 64, 64, 30.0, output_path);
         assert!(result.is_ok(), "Encoding failed: {:?}", result.err());
-        assert!(output_path.exists(), "Output file should exist in nested dir");
+        assert!(
+            output_path.exists(),
+            "Output file should exist in nested dir"
+        );
         // Cleanup
         let _ = std::fs::remove_dir_all("/tmp/vidra_test_subdir");
     }

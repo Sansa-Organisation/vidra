@@ -14,7 +14,9 @@ fn resolve_home_dir() -> Result<PathBuf> {
         if p.is_absolute() {
             return Ok(p);
         }
-        return Ok(std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join(p));
+        return Ok(std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(p));
     }
     dirs::home_dir().context("failed to resolve home dir")
 }
@@ -33,7 +35,8 @@ pub fn plugin_manifest_path(name: &str) -> Result<PathBuf> {
 
 pub fn install_plugin(name: &str, version: Option<&str>) -> Result<PathBuf> {
     let dir = plugin_dir(name)?;
-    std::fs::create_dir_all(&dir).with_context(|| format!("failed to create plugin dir: {}", dir.display()))?;
+    std::fs::create_dir_all(&dir)
+        .with_context(|| format!("failed to create plugin dir: {}", dir.display()))?;
 
     let manifest = PluginManifest {
         name: name.to_string(),
@@ -41,7 +44,8 @@ pub fn install_plugin(name: &str, version: Option<&str>) -> Result<PathBuf> {
         installed_at: chrono::Utc::now(),
     };
     let path = plugin_manifest_path(name)?;
-    let json = serde_json::to_string_pretty(&manifest).context("failed to serialize plugin manifest")?;
+    let json =
+        serde_json::to_string_pretty(&manifest).context("failed to serialize plugin manifest")?;
     std::fs::write(&path, json)
         .with_context(|| format!("failed to write plugin manifest: {}", path.display()))?;
     Ok(path)
@@ -73,12 +77,18 @@ pub fn list_plugins() -> Result<Vec<PluginManifest>> {
     }
 
     let mut out = Vec::new();
-    for entry in std::fs::read_dir(&root).with_context(|| format!("failed to read plugins dir: {}", root.display()))? {
+    for entry in std::fs::read_dir(&root)
+        .with_context(|| format!("failed to read plugins dir: {}", root.display()))?
+    {
         let p = entry?.path();
         if !p.is_dir() {
             continue;
         }
-        let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string();
+        let name = p
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
         if name.is_empty() {
             continue;
         }
@@ -86,8 +96,12 @@ pub fn list_plugins() -> Result<Vec<PluginManifest>> {
         if !manifest_path.exists() {
             continue;
         }
-        let raw = std::fs::read_to_string(&manifest_path)
-            .with_context(|| format!("failed to read plugin manifest: {}", manifest_path.display()))?;
+        let raw = std::fs::read_to_string(&manifest_path).with_context(|| {
+            format!(
+                "failed to read plugin manifest: {}",
+                manifest_path.display()
+            )
+        })?;
         if let Ok(m) = serde_json::from_str::<PluginManifest>(&raw) {
             out.push(m);
         }

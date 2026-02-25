@@ -1,7 +1,7 @@
-use std::sync::Arc;
-use wgpu::util::DeviceExt;
-use vidra_core::frame::FrameBuffer;
 use crate::gpu::GpuContext;
+use std::sync::Arc;
+use vidra_core::frame::FrameBuffer;
+use wgpu::util::DeviceExt;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -46,55 +46,71 @@ struct Uniforms {{
             shader_source
         );
 
-        let module = self.gpu.device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("custom_shader_injected"),
-            source: wgpu::ShaderSource::Wgsl(injected_source.into()),
-        });
+        let module = self
+            .gpu
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("custom_shader_injected"),
+                source: wgpu::ShaderSource::Wgsl(injected_source.into()),
+            });
 
-        let bind_group_layout = self.gpu.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("custom_shader_bind_group_layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::StorageTexture {
-                        access: wgpu::StorageTextureAccess::WriteOnly,
-                        format: wgpu::TextureFormat::Rgba8Unorm,
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-            ],
-        });
+        let bind_group_layout =
+            self.gpu
+                .device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("custom_shader_bind_group_layout"),
+                    entries: &[
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 0,
+                            visibility: wgpu::ShaderStages::COMPUTE,
+                            ty: wgpu::BindingType::StorageTexture {
+                                access: wgpu::StorageTextureAccess::WriteOnly,
+                                format: wgpu::TextureFormat::Rgba8Unorm,
+                                view_dimension: wgpu::TextureViewDimension::D2,
+                            },
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 1,
+                            visibility: wgpu::ShaderStages::COMPUTE,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Uniform,
+                                has_dynamic_offset: false,
+                                min_binding_size: None,
+                            },
+                            count: None,
+                        },
+                    ],
+                });
 
-        let pipeline_layout = self.gpu.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("custom_shader_pipeline_layout"),
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
-        });
+        let pipeline_layout =
+            self.gpu
+                .device
+                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("custom_shader_pipeline_layout"),
+                    bind_group_layouts: &[&bind_group_layout],
+                    push_constant_ranges: &[],
+                });
 
-        let pipeline = self.gpu.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("custom_shader_pipeline"),
-            layout: Some(&pipeline_layout),
-            module: &module,
-            entry_point: "main",
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-        });
+        let pipeline = self
+            .gpu
+            .device
+            .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("custom_shader_pipeline"),
+                layout: Some(&pipeline_layout),
+                module: &module,
+                entry_point: "main",
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            });
 
         // 2) Allocate output texture
         let texture_desc = wgpu::TextureDescriptor {
             label: Some("custom_shader_out"),
-            size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -112,29 +128,38 @@ struct Uniforms {{
             _pad: 0.0,
         };
 
-        let params_buffer = self.gpu.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("custom_shader_params_buffer"),
-            contents: bytemuck::cast_slice(&[uniforms]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
+        let params_buffer = self
+            .gpu
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("custom_shader_params_buffer"),
+                contents: bytemuck::cast_slice(&[uniforms]),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            });
 
-        let bind_group = self.gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("custom_shader_bind_group"),
-            layout: &bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&view_out),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: params_buffer.as_entire_binding(),
-                },
-            ],
-        });
+        let bind_group = self
+            .gpu
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("custom_shader_bind_group"),
+                layout: &bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&view_out),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: params_buffer.as_entire_binding(),
+                    },
+                ],
+            });
 
         // 4) Execute Compute Pass
-        let mut encoder = self.gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let mut encoder = self
+            .gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         {
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
             cpass.set_pipeline(&pipeline);
@@ -166,11 +191,15 @@ struct Uniforms {{
                     rows_per_image: Some(height),
                 },
             },
-            wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
         );
 
         let _submission_idx = self.gpu.queue.submit(Some(encoder.finish()));
-        
+
         // Wait and map
         let slice = texture_out_buf.slice(..);
         let (tx, rx) = std::sync::mpsc::channel();
@@ -181,7 +210,7 @@ struct Uniforms {{
         if rx.recv().unwrap().is_ok() {
             let data = slice.get_mapped_range();
             let mut result_fb = FrameBuffer::new(width, height, vidra_core::PixelFormat::Rgba8);
-            
+
             for y in 0..height {
                 let row_start = (y * padded_bytes_per_row) as usize;
                 let src_row = &data[row_start..row_start + (width * 4) as usize];
@@ -197,10 +226,12 @@ struct Uniforms {{
             drop(data);
             let _ = slice;
             texture_out_buf.unmap();
-            
+
             Ok(result_fb)
         } else {
-            Err(vidra_core::VidraError::Render("Failed to map shader output buffer".into()))
+            Err(vidra_core::VidraError::Render(
+                "Failed to map shader output buffer".into(),
+            ))
         }
     }
 }

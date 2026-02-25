@@ -6,6 +6,7 @@ export const dispatch_click: (a: number, b: number, c: number, d: number, e: num
 export const get_mouse_position: () => [number, number];
 export const get_project_info: (a: number, b: number) => [number, number, number, number];
 export const get_state_var: (a: number, b: number) => any;
+export const get_web_layers_state: (a: number, b: number, c: number) => [number, number, number, number];
 export const load_image_asset: (a: number, b: number, c: number, d: number) => void;
 export const materialize_autocaption_layer: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
 export const parse_and_compile: (a: number, b: number) => [number, number, number, number];

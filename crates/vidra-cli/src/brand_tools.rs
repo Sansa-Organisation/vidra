@@ -13,7 +13,9 @@ fn resolve_home_dir() -> Result<PathBuf> {
         if p.is_absolute() {
             return Ok(p);
         }
-        return Ok(std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join(p));
+        return Ok(std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(p));
     }
     dirs::home_dir().context("failed to resolve home dir")
 }
@@ -48,7 +50,9 @@ pub fn list_brand_kits() -> Result<Vec<BrandKit>> {
     }
 
     let mut kits = Vec::new();
-    for entry in std::fs::read_dir(&root).with_context(|| format!("failed to read brands dir: {}", root.display()))? {
+    for entry in std::fs::read_dir(&root)
+        .with_context(|| format!("failed to read brands dir: {}", root.display()))?
+    {
         let path = entry?.path();
         if !path.is_file() {
             continue;

@@ -13,7 +13,8 @@ impl Codegen {
     }
 
     pub fn generate(&mut self, ast: &EffectDef) -> Result<String, VidraError> {
-        self.wgsl.push_str("
+        self.wgsl.push_str(
+            "
 // VidraFX Generated Shader
 @group(0) @binding(0) var t_in: texture_2d<f32>;
 @group(0) @binding(1) var t_out: texture_storage_2d<rgba8unorm, write>;
@@ -21,7 +22,8 @@ impl Codegen {
 struct Params {
     effect_type: u32,
     time: f32,
-");
+",
+        );
         for (_i, param) in ast.params.iter().enumerate() {
             self.wgsl.push_str(&format!("    p_{}: f32,\n", param.name));
         }
@@ -84,16 +86,19 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
             match stmt {
                 Statement::Let { name, value, .. } => {
                     let val_str = self.gen_expr(value)?;
-                    self.wgsl.push_str(&format!("    let {} = {};\n", name, val_str));
+                    self.wgsl
+                        .push_str(&format!("    let {} = {};\n", name, val_str));
                 }
                 Statement::Expr(expr) => {
                     last_expr = self.gen_expr(expr)?;
                 }
             }
         }
-        
-        self.wgsl.push_str(&format!("    let final_color = {};\n", last_expr));
-        self.wgsl.push_str("    textureStore(t_out, coords, final_color);\n");
+
+        self.wgsl
+            .push_str(&format!("    let final_color = {};\n", last_expr));
+        self.wgsl
+            .push_str("    textureStore(t_out, coords, final_color);\n");
         self.wgsl.push_str("}\n");
 
         Ok(self.wgsl.clone())
@@ -106,23 +111,44 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 let left_str = self.gen_expr(left)?;
                 match &**right {
                     Expr::Call { name, args, .. } => self.gen_call(name, args, Some(left_str)),
-                    _ => Err(VidraError::parse("Right side of pipe must be a function call", "", 0, 0)),
+                    _ => Err(VidraError::parse(
+                        "Right side of pipe must be a function call",
+                        "",
+                        0,
+                        0,
+                    )),
                 }
             }
             Expr::Ident(name, _) => Ok(name.clone()),
             Expr::Number(val, _) => {
                 let s = format!("{}", val);
-                if s.contains('.') { Ok(s) } else { Ok(format!("{}.0", s)) }
-            },
+                if s.contains('.') {
+                    Ok(s)
+                } else {
+                    Ok(format!("{}.0", s))
+                }
+            }
             Expr::ColorHex(hex, _) => {
                 let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0);
                 let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0);
                 let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0);
-                let a = if hex.len() == 8 { u8::from_str_radix(&hex[6..8], 16).unwrap_or(255) } else { 255 };
-                Ok(format!("vec4<f32>({}, {}, {}, {})", r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, a as f32 / 255.0))
+                let a = if hex.len() == 8 {
+                    u8::from_str_radix(&hex[6..8], 16).unwrap_or(255)
+                } else {
+                    255
+                };
+                Ok(format!(
+                    "vec4<f32>({}, {}, {}, {})",
+                    r as f32 / 255.0,
+                    g as f32 / 255.0,
+                    b as f32 / 255.0,
+                    a as f32 / 255.0
+                ))
             }
             Expr::StringLit(s, _) => Ok(s.clone()), // Usually for enum-like params, not well-supported in WGSL without mapping to numbers
-            Expr::BinOp { op, left, right, .. } => {
+            Expr::BinOp {
+                op, left, right, ..
+            } => {
                 let left_str = self.gen_expr(left)?;
                 let right_str = self.gen_expr(right)?;
                 let op_str = match op {
@@ -136,7 +162,12 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         }
     }
 
-    fn gen_call(&mut self, name: &str, args: &[Arg], piped_arg: Option<String>) -> Result<String, VidraError> {
+    fn gen_call(
+        &mut self,
+        name: &str,
+        args: &[Arg],
+        piped_arg: Option<String>,
+    ) -> Result<String, VidraError> {
         let mut arg_strs = Vec::new();
         if let Some(pipe_val) = piped_arg {
             arg_strs.push(pipe_val);
@@ -150,18 +181,33 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
             "noise" => {
                 let scale = arg_strs.get(0).unwrap_or(&"1.0".to_string()).clone();
                 let speed = arg_strs.get(1).unwrap_or(&"1.0".to_string()).clone();
-                Ok(format!("vec4<f32>(vec3<f32>(fbm(uv * {} + vec2<f32>(0.0, params.time * {}))), 1.0)", scale, speed))
+                Ok(format!(
+                    "vec4<f32>(vec3<f32>(fbm(uv * {} + vec2<f32>(0.0, params.time * {}))), 1.0)",
+                    scale, speed
+                ))
             }
             "mask" => {
-                let input = arg_strs.get(0).unwrap_or(&"vec4<f32>(0.0)".to_string()).clone();
+                let input = arg_strs
+                    .get(0)
+                    .unwrap_or(&"vec4<f32>(0.0)".to_string())
+                    .clone();
                 let min = arg_strs.get(1).unwrap_or(&"0.0".to_string()).clone();
                 let max = arg_strs.get(2).unwrap_or(&"1.0".to_string()).clone();
-                Ok(format!("smoothstep(vec4<f32>({}), vec4<f32>({}), {})", min, max, input))
+                Ok(format!(
+                    "smoothstep(vec4<f32>({}), vec4<f32>({}), {})",
+                    min, max, input
+                ))
             }
             "brightness" => {
-                let input = arg_strs.get(0).unwrap_or(&"vec4<f32>(0.0)".to_string()).clone();
+                let input = arg_strs
+                    .get(0)
+                    .unwrap_or(&"vec4<f32>(0.0)".to_string())
+                    .clone();
                 let factor = arg_strs.get(1).unwrap_or(&"1.0".to_string()).clone();
-                Ok(format!("({} * vec4<f32>({}, {}, {}, 1.0))", input, factor, factor, factor))
+                Ok(format!(
+                    "({} * vec4<f32>({}, {}, {}, 1.0))",
+                    input, factor, factor, factor
+                ))
             }
             "grayscale" => {
                 let input = arg_strs
@@ -186,24 +232,40 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 ))
             }
             "tint" => {
-                let input = arg_strs.get(0).unwrap_or(&"vec4<f32>(0.0)".to_string()).clone();
-                let color = arg_strs.get(1).unwrap_or(&"vec4<f32>(1.0)".to_string()).clone();
+                let input = arg_strs
+                    .get(0)
+                    .unwrap_or(&"vec4<f32>(0.0)".to_string())
+                    .clone();
+                let color = arg_strs
+                    .get(1)
+                    .unwrap_or(&"vec4<f32>(1.0)".to_string())
+                    .clone();
                 Ok(format!("({} * {})", input, color))
             }
             "blend" => {
-                let a = arg_strs.get(0).unwrap_or(&"vec4<f32>(0.0)".to_string()).clone();
-                let b = arg_strs.get(1).unwrap_or(&"vec4<f32>(0.0)".to_string()).clone();
+                let a = arg_strs
+                    .get(0)
+                    .unwrap_or(&"vec4<f32>(0.0)".to_string())
+                    .clone();
+                let b = arg_strs
+                    .get(1)
+                    .unwrap_or(&"vec4<f32>(0.0)".to_string())
+                    .clone();
                 let factor = arg_strs.get(2).unwrap_or(&"0.5".to_string()).clone();
                 Ok(format!("mix({}, {}, {})", a, b, factor))
             }
             "blur" => {
-                let input = arg_strs.get(0).unwrap_or(&"vec4<f32>(0.0)".to_string()).clone();
+                let input = arg_strs
+                    .get(0)
+                    .unwrap_or(&"vec4<f32>(0.0)".to_string())
+                    .clone();
                 // Pass-through operation for WGSL compute shader chaining
                 Ok(input)
             }
-            "color" => {
-                Ok(arg_strs.get(0).unwrap_or(&"vec4<f32>(0.0, 0.0, 0.0, 1.0)".to_string()).clone())
-            }
+            "color" => Ok(arg_strs
+                .get(0)
+                .unwrap_or(&"vec4<f32>(0.0, 0.0, 0.0, 1.0)".to_string())
+                .clone()),
             _ => {
                 // Return generic call if not built-in
                 Ok(format!("{}({})", name, arg_strs.join(", ")))

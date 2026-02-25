@@ -49,7 +49,9 @@ fn resolve_home_dir() -> Result<PathBuf> {
         if p.is_absolute() {
             return Ok(p);
         }
-        return Ok(std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join(p));
+        return Ok(std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(p));
     }
     dirs::home_dir().context("failed to resolve home dir")
 }
@@ -98,7 +100,8 @@ pub fn save_telemetry_config(tier: TelemetryTier) -> Result<TelemetryConfig> {
         updated_at: chrono::Utc::now(),
     };
     let path = telemetry_config_path()?;
-    let json = serde_json::to_string_pretty(&cfg).context("failed to serialize telemetry config")?;
+    let json =
+        serde_json::to_string_pretty(&cfg).context("failed to serialize telemetry config")?;
     std::fs::write(&path, json)
         .with_context(|| format!("failed to write telemetry config: {}", path.display()))?;
     Ok(cfg)
@@ -153,10 +156,12 @@ pub fn export_telemetry_zip(project_root: &Path, out_path: &Path) -> Result<()> 
         .with_context(|| format!("failed to create export zip: {}", out_path.display()))?;
     let mut zip = zip::ZipWriter::new(&mut file);
 
-    let cfg_json = serde_json::to_vec_pretty(&cfg).context("failed to serialize telemetry config")?;
+    let cfg_json =
+        serde_json::to_vec_pretty(&cfg).context("failed to serialize telemetry config")?;
     add_file_to_zip(&mut zip, "telemetry/config.json", &cfg_json)?;
 
-    let snap_json = serde_json::to_vec_pretty(&snapshot).context("failed to serialize telemetry snapshot")?;
+    let snap_json =
+        serde_json::to_vec_pretty(&snapshot).context("failed to serialize telemetry snapshot")?;
     add_file_to_zip(&mut zip, "telemetry/snapshot.json", &snap_json)?;
 
     // Export current project asset manifest if present.
@@ -169,7 +174,10 @@ pub fn export_telemetry_zip(project_root: &Path, out_path: &Path) -> Result<()> 
 
     // Export receipts (queued and sent) as raw JSON for transparency.
     let receipts_root = receipts_root_dir()?;
-    for (subdir, label) in [(receipts_root.clone(), "queued"), (receipts_root.join("sent"), "sent")] {
+    for (subdir, label) in [
+        (receipts_root.clone(), "queued"),
+        (receipts_root.join("sent"), "sent"),
+    ] {
         if !subdir.exists() {
             continue;
         }
@@ -195,7 +203,10 @@ pub fn export_telemetry_zip(project_root: &Path, out_path: &Path) -> Result<()> 
 
     // Export upload queue metadata (not blobs).
     let uploads_root = project_root.join(".vidra").join("uploads");
-    for (sub, label) in [(uploads_root.join("queued"), "queued"), (uploads_root.join("sent"), "sent")] {
+    for (sub, label) in [
+        (uploads_root.join("queued"), "queued"),
+        (uploads_root.join("sent"), "sent"),
+    ] {
         if !sub.exists() {
             continue;
         }
@@ -248,7 +259,9 @@ pub fn parse_tier(tier: &str) -> Result<TelemetryTier> {
         "identified" => Ok(TelemetryTier::Identified),
         "diagnostics" => Ok(TelemetryTier::Diagnostics),
         "off" => Ok(TelemetryTier::Off),
-        _ => anyhow::bail!("Invalid telemetry tier. Choose: anonymous, identified, diagnostics, off."),
+        _ => anyhow::bail!(
+            "Invalid telemetry tier. Choose: anonymous, identified, diagnostics, off."
+        ),
     }
 }
 
@@ -276,14 +289,16 @@ mod tests {
     #[test]
     fn telemetry_export_zip_creates_entries() {
         let _lock = crate::test_support::ENV_LOCK.lock().unwrap();
-        let tmp = std::env::temp_dir().join(format!("vidra_telemetry_export_{}", std::process::id()));
+        let tmp =
+            std::env::temp_dir().join(format!("vidra_telemetry_export_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         std::env::set_var("VIDRA_HOME_DIR", &tmp);
 
         // Create a fake project root with a .vidra/uploads queue
         let project_root = tmp.join("proj");
-        std::fs::create_dir_all(project_root.join(".vidra").join("uploads").join("queued")).unwrap();
+        std::fs::create_dir_all(project_root.join(".vidra").join("uploads").join("queued"))
+            .unwrap();
         std::fs::write(
             project_root
                 .join(".vidra")
@@ -297,7 +312,7 @@ mod tests {
         // Create one queued receipt
         let receipts = receipts_root_dir().unwrap();
         std::fs::create_dir_all(&receipts).unwrap();
-        std::fs::write(receipts.join("rr_test.json"), "{}" ).unwrap();
+        std::fs::write(receipts.join("rr_test.json"), "{}").unwrap();
 
         let out = tmp.join("export.zip");
         export_telemetry_zip(&project_root, &out).unwrap();

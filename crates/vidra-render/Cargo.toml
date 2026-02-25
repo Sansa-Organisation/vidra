@@ -22,4 +22,5 @@ pollster = "0.3"
 bytemuck = { version = "1.16", features = ["derive"] }
 serde = { workspace = true, features = ["derive"] }
 evalexpr = "13.1.0"
-
+vidra-web = { path = "../vidra-web" }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

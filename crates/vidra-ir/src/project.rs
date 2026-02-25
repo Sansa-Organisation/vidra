@@ -36,7 +36,10 @@ impl Project {
             if i > 0 {
                 if let Some(trans) = &scene.transition {
                     // Subtract transition duration (capped at scene and prev scene duration)
-                    let max_overlap = scene.duration.as_seconds().min(self.scenes[i - 1].duration.as_seconds());
+                    let max_overlap = scene
+                        .duration
+                        .as_seconds()
+                        .min(self.scenes[i - 1].duration.as_seconds());
                     let overlap = trans.duration.as_seconds().min(max_overlap);
                     total = total - vidra_core::Duration::from_seconds(overlap);
                 }

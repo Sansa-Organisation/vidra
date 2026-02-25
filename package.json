@@ -5,5 +5,8 @@
     "scripts": {
         "local:ci": "./scripts/local_ci.sh",
         "local:ci:strict-fmt": "VIDRA_STRICT_FMT=1 ./scripts/local_ci.sh"
+    },
+    "dependencies": {
+        "playwright": "^1.58.2"
     }
 }

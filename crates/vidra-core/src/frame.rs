@@ -118,21 +118,24 @@ impl FrameBuffer {
 
     /// Apply an alpha mask to this layer. Pixels outside the mask become transparent.
     pub fn apply_mask(&mut self, mask: &FrameBuffer, ox: i32, oy: i32) {
-        if self.format != PixelFormat::Rgba8 || mask.format != PixelFormat::Rgba8 { return; }
-        
+        if self.format != PixelFormat::Rgba8 || mask.format != PixelFormat::Rgba8 {
+            return;
+        }
+
         let start_y = std::cmp::max(0, oy);
         let end_y = std::cmp::min(self.height as i32, oy + mask.height as i32);
         let start_x = std::cmp::max(0, ox);
         let end_x = std::cmp::min(self.width as i32, ox + mask.width as i32);
-        
+
         for y in 0..(self.height as i32) {
             for x in 0..(self.width as i32) {
                 let dst_idx = ((y as usize) * (self.width as usize) + (x as usize)) * 4;
-                
+
                 if x >= start_x && x < end_x && y >= start_y && y < end_y {
                     let mask_x = (x - ox) as u32;
                     let mask_y = (y - oy) as u32;
-                    let mask_idx = ((mask_y as usize) * (mask.width as usize) + (mask_x as usize)) * 4;
+                    let mask_idx =
+                        ((mask_y as usize) * (mask.width as usize) + (mask_x as usize)) * 4;
                     // Multiply existing alpha by mask alpha or luminance. Here we use the mask alpha.
                     let mask_a = mask.data[mask_idx + 3] as f32 / 255.0;
                     let current_a = self.data[dst_idx + 3] as f32;
@@ -154,16 +157,24 @@ impl FrameBuffer {
 
         let dst_width = self.width as i32;
         let dst_height = self.height as i32;
-        
+
         let mut start_y = 0;
         let mut end_y = src.height as i32;
         let mut start_x = 0;
         let mut end_x = src.width as i32;
 
-        if dy < 0 { start_y = -dy; }
-        if dy + end_y > dst_height { end_y = dst_height - dy; }
-        if dx < 0 { start_x = -dx; }
-        if dx + end_x > dst_width { end_x = dst_width - dx; }
+        if dy < 0 {
+            start_y = -dy;
+        }
+        if dy + end_y > dst_height {
+            end_y = dst_height - dy;
+        }
+        if dx < 0 {
+            start_x = -dx;
+        }
+        if dx + end_x > dst_width {
+            end_x = dst_width - dx;
+        }
 
         if start_x >= end_x || start_y >= end_y {
             return;
@@ -195,8 +206,10 @@ impl FrameBuffer {
                 let da = d[3] as u32;
                 let inv_sa = 255 - sa;
                 let out_a = sa + ((da * inv_sa) / 255);
-                
-                if out_a == 0 { continue; }
+
+                if out_a == 0 {
+                    continue;
+                }
 
                 let s_r = s[0] as u32;
                 let s_g = s[1] as u32;

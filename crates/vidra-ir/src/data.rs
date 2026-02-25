@@ -41,14 +41,12 @@ impl DataSet {
         let content = std::fs::read_to_string(path)?;
         let mut lines = content.lines();
 
-        let header = lines
-            .next()
-            .ok_or_else(|| VidraError::Parse {
-                message: "CSV file is empty".into(),
-                file: path.display().to_string(),
-                line: 0,
-                column: 0,
-            })?;
+        let header = lines.next().ok_or_else(|| VidraError::Parse {
+            message: "CSV file is empty".into(),
+            file: path.display().to_string(),
+            line: 0,
+            column: 0,
+        })?;
 
         let columns: Vec<String> = header
             .split(',')
@@ -96,8 +94,8 @@ impl DataSet {
     /// Load from a JSON file. Expects an array of objects.
     fn load_json(path: &Path) -> Result<Self, VidraError> {
         let content = std::fs::read_to_string(path)?;
-        let parsed: serde_json::Value = serde_json::from_str(&content)
-            .map_err(|e| VidraError::Parse {
+        let parsed: serde_json::Value =
+            serde_json::from_str(&content).map_err(|e| VidraError::Parse {
                 message: format!("invalid JSON: {}", e),
                 file: path.display().to_string(),
                 line: 0,
@@ -178,7 +176,10 @@ mod tests {
     #[test]
     fn test_interpolate_no_placeholders() {
         let row = DataRow::new();
-        assert_eq!(interpolate("No placeholders here", &row), "No placeholders here");
+        assert_eq!(
+            interpolate("No placeholders here", &row),
+            "No placeholders here"
+        );
     }
 
     #[test]

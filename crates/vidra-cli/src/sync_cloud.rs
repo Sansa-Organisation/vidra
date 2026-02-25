@@ -6,7 +6,9 @@ use std::time::Duration;
 use crate::sync_tools;
 
 pub fn cloud_base_url_from_env() -> Option<String> {
-    std::env::var("VIDRA_CLOUD_URL").ok().map(|s| s.trim().trim_end_matches('/').to_string())
+    std::env::var("VIDRA_CLOUD_URL")
+        .ok()
+        .map(|s| s.trim().trim_end_matches('/').to_string())
 }
 
 pub struct CloudPushReport {
@@ -114,7 +116,10 @@ pub struct CloudPullReport {
     pub upload_failures: Vec<String>,
 }
 
-pub fn pull_receipts_from_cloud(receipts_root: &Path, base_url: &str) -> Result<CloudItemPushResult> {
+pub fn pull_receipts_from_cloud(
+    receipts_root: &Path,
+    base_url: &str,
+) -> Result<CloudItemPushResult> {
     std::fs::create_dir_all(receipts_root).context("failed to create receipts root")?;
     let sent_dir = sync_tools::receipts_sent_dir(receipts_root);
     std::fs::create_dir_all(&sent_dir).context("failed to create sent receipts dir")?;
@@ -177,10 +182,17 @@ pub fn pull_uploads_from_cloud(project_root: &Path, base_url: &str) -> Result<Cl
         .with_context(|| format!("invalid uploads JSON from {}", list_url))?;
 
     for entry in entries {
-        let hex = entry.blob_sha256.strip_prefix("sha256:").unwrap_or(&entry.blob_sha256);
+        let hex = entry
+            .blob_sha256
+            .strip_prefix("sha256:")
+            .unwrap_or(&entry.blob_sha256);
         let blob_path = blobs_dir.join(format!("{}.bin", hex));
         if !blob_path.exists() {
-            let blob_url = format!("{}/api/v1/uploads/blob/{}", base_url.trim_end_matches('/'), hex);
+            let blob_url = format!(
+                "{}/api/v1/uploads/blob/{}",
+                base_url.trim_end_matches('/'),
+                hex
+            );
             match get_bytes_with_retries(&client, &blob_url) {
                 Ok(bytes) => {
                     if let Err(e) = std::fs::write(&blob_path, bytes) {
@@ -301,12 +313,17 @@ pub fn push_receipts_to_cloud(receipts_root: &Path, base_url: &str) -> Result<Cl
         }
 
         // Mark as sent.
-        let file_name = path.file_name().and_then(|s| s.to_str()).unwrap_or("receipt.json");
+        let file_name = path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("receipt.json");
         let dest = sent_dir.join(file_name);
         std::fs::rename(&path, &dest).or_else(|_| {
             std::fs::copy(&path, &dest)
                 .context("failed to copy receipt")
-                .and_then(|_| std::fs::remove_file(&path).context("failed to delete original receipt"))
+                .and_then(|_| {
+                    std::fs::remove_file(&path).context("failed to delete original receipt")
+                })
         })?;
         uploaded += 1;
     }
@@ -340,8 +357,13 @@ pub fn push_uploads_to_cloud(project_root: &Path, base_url: &str) -> Result<Clou
 
         let raw = std::fs::read_to_string(&meta_path)
             .with_context(|| format!("failed to read upload metadata: {}", meta_path.display()))?;
-        let parsed: sync_tools::UploadQueueEntry = serde_json::from_str(&raw)
-            .with_context(|| format!("failed to parse upload metadata JSON: {}", meta_path.display()))?;
+        let parsed: sync_tools::UploadQueueEntry =
+            serde_json::from_str(&raw).with_context(|| {
+                format!(
+                    "failed to parse upload metadata JSON: {}",
+                    meta_path.display()
+                )
+            })?;
 
         let blob_hex = parsed
             .blob_sha256
@@ -368,7 +390,9 @@ pub fn push_uploads_to_cloud(project_root: &Path, base_url: &str) -> Result<Clou
                 .file_name(file_name_clone.clone())
                 .mime_str("application/octet-stream")
                 .context("failed to create blob part")?;
-            Ok(multipart::Form::new().part("metadata", meta_part).part("blob", blob_part))
+            Ok(multipart::Form::new()
+                .part("metadata", meta_part)
+                .part("blob", blob_part))
         };
 
         if let Err(e) = post_multipart_with_retries(&client, &url, build_form) {
@@ -377,12 +401,18 @@ pub fn push_uploads_to_cloud(project_root: &Path, base_url: &str) -> Result<Clou
         }
 
         // Mark metadata as sent.
-        let file_name = meta_path.file_name().and_then(|s| s.to_str()).unwrap_or("upload.json");
+        let file_name = meta_path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("upload.json");
         let dest = sent_dir.join(file_name);
         std::fs::rename(&meta_path, &dest).or_else(|_| {
             std::fs::copy(&meta_path, &dest)
                 .context("failed to copy upload metadata")
-                .and_then(|_| std::fs::remove_file(&meta_path).context("failed to delete original upload metadata"))
+                .and_then(|_| {
+                    std::fs::remove_file(&meta_path)
+                        .context("failed to delete original upload metadata")
+                })
         })?;
         uploaded += 1;
     }
@@ -442,7 +472,13 @@ mod tests {
         format!("http://{}", addr)
     }
 
-    fn start_pull_server(receipts_json: String, uploads_json: String, blob_hex: String, blob_bytes: Vec<u8>, expected_requests: usize) -> String {
+    fn start_pull_server(
+        receipts_json: String,
+        uploads_json: String,
+        blob_hex: String,
+        blob_bytes: Vec<u8>,
+        expected_requests: usize,
+    ) -> String {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
 
@@ -489,7 +525,8 @@ mod tests {
     #[test]
     fn cloud_push_receipts_moves_to_sent_on_200() {
         let base = start_ok_server(1);
-        let root = std::env::temp_dir().join(format!("vidra_cloud_receipts_{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("vidra_cloud_receipts_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
 
@@ -506,7 +543,8 @@ mod tests {
     fn cloud_push_uploads_moves_metadata_to_sent_on_200() {
         let base = start_ok_server(1);
 
-        let project_root = std::env::temp_dir().join(format!("vidra_cloud_uploads_{}", std::process::id()));
+        let project_root =
+            std::env::temp_dir().join(format!("vidra_cloud_uploads_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&project_root);
         std::fs::create_dir_all(&project_root).unwrap();
 
@@ -567,10 +605,17 @@ mod tests {
         }])
         .unwrap();
 
-        let base = start_pull_server(receipts_json, uploads_json, blob_hex.clone(), blob_bytes.clone(), 3);
+        let base = start_pull_server(
+            receipts_json,
+            uploads_json,
+            blob_hex.clone(),
+            blob_bytes.clone(),
+            3,
+        );
 
         // Pull receipts into a temp receipts root
-        let receipts_root = std::env::temp_dir().join(format!("vidra_pull_receipts_{}", std::process::id()));
+        let receipts_root =
+            std::env::temp_dir().join(format!("vidra_pull_receipts_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&receipts_root);
         std::fs::create_dir_all(&receipts_root).unwrap();
         let r = pull_receipts_from_cloud(&receipts_root, &base).unwrap();
@@ -578,14 +623,19 @@ mod tests {
         assert!(receipts_root.join("sent").join("rr_test.json").exists());
 
         // Pull uploads into a temp project
-        let project_root = std::env::temp_dir().join(format!("vidra_pull_uploads_{}", std::process::id()));
+        let project_root =
+            std::env::temp_dir().join(format!("vidra_pull_uploads_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&project_root);
         std::fs::create_dir_all(&project_root).unwrap();
         let u = pull_uploads_from_cloud(&project_root, &base).unwrap();
         assert_eq!(u.uploaded, 1);
         let uploads_root = sync_tools::uploads_root_dir(&project_root);
-        assert!(sync_tools::uploads_blobs_dir(&uploads_root).join(format!("{}.bin", blob_hex)).exists());
-        assert!(sync_tools::uploads_sent_dir(&uploads_root).join(format!("upload_{}.json", blob_hex)).exists());
+        assert!(sync_tools::uploads_blobs_dir(&uploads_root)
+            .join(format!("{}.bin", blob_hex))
+            .exists());
+        assert!(sync_tools::uploads_sent_dir(&uploads_root)
+            .join(format!("upload_{}.json", blob_hex))
+            .exists());
 
         let _ = std::fs::remove_dir_all(&receipts_root);
         let _ = std::fs::remove_dir_all(&project_root);

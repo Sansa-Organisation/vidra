@@ -44,13 +44,14 @@ impl GifEncoder {
         let delay_cs = ((100.0 / fps).round() as u16).max(2); // GIF minimum is ~2cs
 
         let mut encoder = image::codecs::gif::GifEncoder::new_with_speed(writer, 10);
-        
+
         // Set repeat mode
         let repeat = match loop_count {
             None | Some(0) => image::codecs::gif::Repeat::Infinite,
             Some(n) => image::codecs::gif::Repeat::Finite(n),
         };
-        encoder.set_repeat(repeat)
+        encoder
+            .set_repeat(repeat)
             .map_err(|e| VidraError::Encode(format!("failed to set GIF repeat: {}", e)))?;
 
         for (i, frame) in frames.iter().enumerate() {
@@ -62,15 +63,17 @@ impl GifEncoder {
             }
 
             let gif_frame = image::Frame::from_parts(
-                image::RgbaImage::from_raw(width, height, frame.data.clone())
-                    .ok_or_else(|| VidraError::Encode(format!("invalid frame data at frame {}", i)))?,
+                image::RgbaImage::from_raw(width, height, frame.data.clone()).ok_or_else(|| {
+                    VidraError::Encode(format!("invalid frame data at frame {}", i))
+                })?,
                 0,
                 0,
                 image::Delay::from_numer_denom_ms(delay_cs as u32 * 10, 1),
             );
 
-            encoder.encode_frame(gif_frame)
-                .map_err(|e| VidraError::Encode(format!("failed to encode GIF frame {}: {}", i, e)))?;
+            encoder.encode_frame(gif_frame).map_err(|e| {
+                VidraError::Encode(format!("failed to encode GIF frame {}: {}", i, e))
+            })?;
         }
 
         tracing::info!(
@@ -113,11 +116,11 @@ mod tests {
         let out = std::env::temp_dir().join("vidra_test_gif.gif");
         let result = GifEncoder::encode(&frames, 4, 4, 10.0, &out, None);
         assert!(result.is_ok(), "GIF encode failed: {:?}", result.err());
-        
+
         // Verify a file was created and has content
         let meta = std::fs::metadata(&out).unwrap();
         assert!(meta.len() > 0);
-        
+
         // Cleanup
         let _ = std::fs::remove_file(&out);
     }

@@ -1,0 +1,50 @@
+{
+    "name": "@sansavision/vidra-web-capture",
+    "version": "0.1.5",
+    "description": "Client-side SDK for making React/JS apps Vidra-capturable as web() layers",
+    "type": "module",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+        ".": {
+            "import": "./dist/index.js",
+            "types": "./dist/index.d.ts"
+        },
+        "./react": {
+            "import": "./dist/react.js",
+            "types": "./dist/react.d.ts"
+        }
+    },
+    "files": [
+        "dist",
+        "README.md"
+    ],
+    "scripts": {
+        "build": "tsc",
+        "test": "node --experimental-vm-modules dist/test.js"
+    },
+    "keywords": [
+        "vidra",
+        "video",
+        "web-capture",
+        "react",
+        "scene"
+    ],
+    "author": "Sansa Vision",
+    "license": "MIT",
+    "peerDependencies": {
+        "react": ">=17.0.0"
+    },
+    "peerDependenciesMeta": {
+        "react": {
+            "optional": true
+        }
+    },
+    "devDependencies": {
+        "typescript": "^5.0.0",
+        "@types/react": "^18.0.0"
+    },
+    "publishConfig": {
+        "access": "restricted"
+    }
+}

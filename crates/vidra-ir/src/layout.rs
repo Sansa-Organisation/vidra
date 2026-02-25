@@ -11,52 +11,31 @@ pub enum LayoutConstraint {
 
     /// Pin a layer edge to the viewport edge with an optional margin.
     /// `pin(top, 20)`, `pin(left)`, `pin(bottom, 40)`
-    Pin {
-        edge: Edge,
-        margin: f64,
-    },
+    Pin { edge: Edge, margin: f64 },
 
     /// Position this layer below another layer with optional spacing.
     /// `below("title", 10)`
-    Below {
-        anchor_layer: String,
-        spacing: f64,
-    },
+    Below { anchor_layer: String, spacing: f64 },
 
     /// Position this layer above another layer with optional spacing.
     /// `above("subtitle", 10)`
-    Above {
-        anchor_layer: String,
-        spacing: f64,
-    },
+    Above { anchor_layer: String, spacing: f64 },
 
     /// Position this layer to the right of another layer with optional spacing.
     /// `rightOf("logo", 20)`
-    RightOf {
-        anchor_layer: String,
-        spacing: f64,
-    },
+    RightOf { anchor_layer: String, spacing: f64 },
 
     /// Position this layer to the left of another layer with optional spacing.
     /// `leftOf("logo", 20)`
-    LeftOf {
-        anchor_layer: String,
-        spacing: f64,
-    },
+    LeftOf { anchor_layer: String, spacing: f64 },
 
     /// Fill the available width/height of the viewport, with optional padding.
     /// `fill(horizontal, 40)` — stretch to viewport width minus 40px on each side.
-    Fill {
-        axis: FillAxis,
-        padding: f64,
-    },
+    Fill { axis: FillAxis, padding: f64 },
 
     /// Set an explicit size (width, height). Overrides content-intrinsic sizing.
     /// `size(400, 300)`
-    Size {
-        width: f64,
-        height: f64,
-    },
+    Size { width: f64, height: f64 },
 }
 
 /// Axis for centering.
@@ -198,26 +177,42 @@ impl LayoutSolver {
 
                 for c in &constraints {
                     match c {
-                        LayoutConstraint::Below { anchor_layer, spacing } => {
-                            if let Some(anchor) = results.iter().find(|(id, _)| id == anchor_layer) {
+                        LayoutConstraint::Below {
+                            anchor_layer,
+                            spacing,
+                        } => {
+                            if let Some(anchor) = results.iter().find(|(id, _)| id == anchor_layer)
+                            {
                                 let anchor_layout = anchor.1;
                                 results[i].1.y = anchor_layout.y + anchor_layout.height + spacing;
                             }
                         }
-                        LayoutConstraint::Above { anchor_layer, spacing } => {
-                            if let Some(anchor) = results.iter().find(|(id, _)| id == anchor_layer) {
+                        LayoutConstraint::Above {
+                            anchor_layer,
+                            spacing,
+                        } => {
+                            if let Some(anchor) = results.iter().find(|(id, _)| id == anchor_layer)
+                            {
                                 let anchor_layout = anchor.1;
                                 results[i].1.y = anchor_layout.y - results[i].1.height - spacing;
                             }
                         }
-                        LayoutConstraint::RightOf { anchor_layer, spacing } => {
-                            if let Some(anchor) = results.iter().find(|(id, _)| id == anchor_layer) {
+                        LayoutConstraint::RightOf {
+                            anchor_layer,
+                            spacing,
+                        } => {
+                            if let Some(anchor) = results.iter().find(|(id, _)| id == anchor_layer)
+                            {
                                 let anchor_layout = anchor.1;
                                 results[i].1.x = anchor_layout.x + anchor_layout.width + spacing;
                             }
                         }
-                        LayoutConstraint::LeftOf { anchor_layer, spacing } => {
-                            if let Some(anchor) = results.iter().find(|(id, _)| id == anchor_layer) {
+                        LayoutConstraint::LeftOf {
+                            anchor_layer,
+                            spacing,
+                        } => {
+                            if let Some(anchor) = results.iter().find(|(id, _)| id == anchor_layer)
+                            {
                                 let anchor_layout = anchor.1;
                                 results[i].1.x = anchor_layout.x - results[i].1.width - spacing;
                             }
@@ -238,9 +233,12 @@ mod tests {
 
     #[test]
     fn test_center_both() {
-        let layers = vec![
-            ("title".to_string(), 200.0, 50.0, vec![LayoutConstraint::Center(CenterAxis::Both)]),
-        ];
+        let layers = vec![(
+            "title".to_string(),
+            200.0,
+            50.0,
+            vec![LayoutConstraint::Center(CenterAxis::Both)],
+        )];
         let results = LayoutSolver::solve(1920.0, 1080.0, &layers);
         assert_eq!(results.len(), 1);
         assert!((results[0].1.x - 860.0).abs() < 0.01); // (1920-200)/2
@@ -249,12 +247,21 @@ mod tests {
 
     #[test]
     fn test_pin_top_left() {
-        let layers = vec![
-            ("logo".to_string(), 100.0, 100.0, vec![
-                LayoutConstraint::Pin { edge: Edge::Top, margin: 20.0 },
-                LayoutConstraint::Pin { edge: Edge::Left, margin: 30.0 },
-            ]),
-        ];
+        let layers = vec![(
+            "logo".to_string(),
+            100.0,
+            100.0,
+            vec![
+                LayoutConstraint::Pin {
+                    edge: Edge::Top,
+                    margin: 20.0,
+                },
+                LayoutConstraint::Pin {
+                    edge: Edge::Left,
+                    margin: 30.0,
+                },
+            ],
+        )];
         let results = LayoutSolver::solve(1920.0, 1080.0, &layers);
         assert!((results[0].1.x - 30.0).abs() < 0.01);
         assert!((results[0].1.y - 20.0).abs() < 0.01);
@@ -262,12 +269,21 @@ mod tests {
 
     #[test]
     fn test_pin_bottom_right() {
-        let layers = vec![
-            ("cta".to_string(), 200.0, 60.0, vec![
-                LayoutConstraint::Pin { edge: Edge::Bottom, margin: 40.0 },
-                LayoutConstraint::Pin { edge: Edge::Right, margin: 50.0 },
-            ]),
-        ];
+        let layers = vec![(
+            "cta".to_string(),
+            200.0,
+            60.0,
+            vec![
+                LayoutConstraint::Pin {
+                    edge: Edge::Bottom,
+                    margin: 40.0,
+                },
+                LayoutConstraint::Pin {
+                    edge: Edge::Right,
+                    margin: 50.0,
+                },
+            ],
+        )];
         let results = LayoutSolver::solve(1920.0, 1080.0, &layers);
         assert!((results[0].1.x - (1920.0 - 200.0 - 50.0)).abs() < 0.01);
         assert!((results[0].1.y - (1080.0 - 60.0 - 40.0)).abs() < 0.01);
@@ -276,14 +292,30 @@ mod tests {
     #[test]
     fn test_below_constraint() {
         let layers = vec![
-            ("title".to_string(), 400.0, 50.0, vec![
-                LayoutConstraint::Center(CenterAxis::Horizontal),
-                LayoutConstraint::Pin { edge: Edge::Top, margin: 100.0 },
-            ]),
-            ("subtitle".to_string(), 300.0, 30.0, vec![
-                LayoutConstraint::Center(CenterAxis::Horizontal),
-                LayoutConstraint::Below { anchor_layer: "title".to_string(), spacing: 20.0 },
-            ]),
+            (
+                "title".to_string(),
+                400.0,
+                50.0,
+                vec![
+                    LayoutConstraint::Center(CenterAxis::Horizontal),
+                    LayoutConstraint::Pin {
+                        edge: Edge::Top,
+                        margin: 100.0,
+                    },
+                ],
+            ),
+            (
+                "subtitle".to_string(),
+                300.0,
+                30.0,
+                vec![
+                    LayoutConstraint::Center(CenterAxis::Horizontal),
+                    LayoutConstraint::Below {
+                        anchor_layer: "title".to_string(),
+                        spacing: 20.0,
+                    },
+                ],
+            ),
         ];
         let results = LayoutSolver::solve(1920.0, 1080.0, &layers);
         // title: y=100, height=50, so subtitle should be at y = 100 + 50 + 20 = 170
@@ -292,11 +324,15 @@ mod tests {
 
     #[test]
     fn test_fill_horizontal() {
-        let layers = vec![
-            ("bg".to_string(), 100.0, 100.0, vec![
-                LayoutConstraint::Fill { axis: FillAxis::Horizontal, padding: 40.0 },
-            ]),
-        ];
+        let layers = vec![(
+            "bg".to_string(),
+            100.0,
+            100.0,
+            vec![LayoutConstraint::Fill {
+                axis: FillAxis::Horizontal,
+                padding: 40.0,
+            }],
+        )];
         let results = LayoutSolver::solve(1920.0, 1080.0, &layers);
         assert!((results[0].1.width - (1920.0 - 80.0)).abs() < 0.01); // 1840
         assert!((results[0].1.x - 40.0).abs() < 0.01);
@@ -307,19 +343,26 @@ mod tests {
         // Same constraints, different viewports — demonstrate responsive behavior
         let constraints = vec![
             LayoutConstraint::Center(CenterAxis::Horizontal),
-            LayoutConstraint::Pin { edge: Edge::Top, margin: 50.0 },
+            LayoutConstraint::Pin {
+                edge: Edge::Top,
+                margin: 50.0,
+            },
         ];
 
         // 16:9
-        let r1 = LayoutSolver::solve(1920.0, 1080.0, &[
-            ("title".to_string(), 400.0, 60.0, constraints.clone()),
-        ]);
+        let r1 = LayoutSolver::solve(
+            1920.0,
+            1080.0,
+            &[("title".to_string(), 400.0, 60.0, constraints.clone())],
+        );
         assert!((r1[0].1.x - 760.0).abs() < 0.01); // (1920-400)/2
 
         // 9:16
-        let r2 = LayoutSolver::solve(1080.0, 1920.0, &[
-            ("title".to_string(), 400.0, 60.0, constraints.clone()),
-        ]);
+        let r2 = LayoutSolver::solve(
+            1080.0,
+            1920.0,
+            &[("title".to_string(), 400.0, 60.0, constraints.clone())],
+        );
         assert!((r2[0].1.x - 340.0).abs() < 0.01); // (1080-400)/2
 
         // Both pinned at top with margin 50
@@ -329,12 +372,18 @@ mod tests {
 
     #[test]
     fn test_size_override() {
-        let layers = vec![
-            ("box".to_string(), 100.0, 100.0, vec![
-                LayoutConstraint::Size { width: 500.0, height: 300.0 },
+        let layers = vec![(
+            "box".to_string(),
+            100.0,
+            100.0,
+            vec![
+                LayoutConstraint::Size {
+                    width: 500.0,
+                    height: 300.0,
+                },
                 LayoutConstraint::Center(CenterAxis::Both),
-            ]),
-        ];
+            ],
+        )];
         let results = LayoutSolver::solve(1920.0, 1080.0, &layers);
         assert!((results[0].1.width - 500.0).abs() < 0.01);
         assert!((results[0].1.height - 300.0).abs() < 0.01);

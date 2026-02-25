@@ -1,0 +1,55 @@
+// Web Interactive Example — Three.js 3D scene as a video layer
+//
+// This example demonstrates embedding an interactive Three.js
+// globe scene that rotates in sync with the video timeline.
+//
+// In capture mode: frame-accurate rotation
+// In realtime mode: interactive mouse-draggable globe
+//
+// Prerequisites:
+//   1. Build a Three.js scene at web/globe.html
+//   2. The scene listens for vidra_frame messages for frame sync
+//   3. Optionally use @sansavision/vidra-web-capture for cleaner API
+
+project(1920, 1080, 30) {
+    scene("globe_intro", 10s) {
+        // Space background
+        layer("bg") {
+            solid(#000011)
+        }
+
+        // Star field (native layer)
+        layer("stars") {
+            image("assets/starfield.png")
+            position(960, 540)
+            animation(position_x, from: 960, to: 980, duration: 10s, easing: linear)
+        }
+
+        // Three.js interactive globe (realtime for preview, capture for render)
+        layer("globe") {
+            web("web/globe.html", viewport: 1920x1080, mode: realtime)
+            animation(opacity, from: 0, to: 1, duration: 2s, easing: ease-out)
+        }
+
+        // Title overlay
+        layer("title") {
+            text("Global Operations", font: "Inter", size: 72, color: #ffffff)
+            position(960, 200)
+            animation(opacity, from: 0, to: 1, duration: 1.5s, easing: ease-out)
+            animation(position_y, from: 220, to: 200, duration: 1.5s, easing: ease-out)
+        }
+
+        // Live stats panel (React component)
+        layer("stats") {
+            web("web/stats.html", viewport: 400x200, variables: { regions: 42, uptime: 99.9 })
+            position(300, 800)
+            animation(opacity, from: 0, to: 1, duration: 1s, easing: ease-out)
+        }
+
+        // Animated connection lines (web layer with canvas)
+        layer("connections") {
+            web("web/connections.html", viewport: 1920x1080)
+            animation(opacity, from: 0, to: 0.6, duration: 3s, easing: ease-in)
+        }
+    }
+}

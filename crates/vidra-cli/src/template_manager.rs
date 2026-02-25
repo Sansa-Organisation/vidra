@@ -162,7 +162,7 @@ pub fn execute_add(template_name: &str) -> Result<()> {
 
     let cwd = std::env::current_dir()?;
     let out_path = cwd.join(default_name);
-    
+
     // Check if it already exists to avoid silently overwriting
     if out_path.exists() {
         // Find variant name like lower_third_1.vidra
@@ -173,11 +173,17 @@ pub fn execute_add(template_name: &str) -> Result<()> {
             alt_path = cwd.join(format!("{}_{}.vidra", template_name.replace("-", "_"), idx));
             idx += 1;
         }
-        println!("Writing instead to: {}", alt_path.file_name().unwrap_or_default().to_string_lossy());
+        println!(
+            "Writing instead to: {}",
+            alt_path.file_name().unwrap_or_default().to_string_lossy()
+        );
         fs::write(&alt_path, content.trim_start())?;
     } else {
         fs::write(&out_path, content.trim_start())?;
-        println!("✅ Added template '{}' into {}", template_name, default_name);
+        println!(
+            "✅ Added template '{}' into {}",
+            template_name, default_name
+        );
     }
 
     Ok(())

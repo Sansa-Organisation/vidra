@@ -5,7 +5,7 @@ use reqwest::blocking::Client;
 use sha2::{Digest, Sha256};
 
 use vidra_core::VidraConfig;
-use vidra_ir::asset::{AssetType, AssetRegistry};
+use vidra_ir::asset::{AssetRegistry, AssetType};
 use vidra_ir::Project;
 
 pub struct RemoteAssetsReport {
@@ -13,7 +13,10 @@ pub struct RemoteAssetsReport {
     pub reused_from_cache: usize,
 }
 
-pub fn prepare_project_remote_assets(project: &mut Project, config: &VidraConfig) -> Result<RemoteAssetsReport> {
+pub fn prepare_project_remote_assets(
+    project: &mut Project,
+    config: &VidraConfig,
+) -> Result<RemoteAssetsReport> {
     let cache_root = resolve_cache_root(config)?;
 
     let mut report = RemoteAssetsReport {
@@ -43,9 +46,14 @@ fn prepare_registry_remote_assets(
         let ext = infer_extension_from_url(&url)
             .or_else(|| default_extension_for_type(&asset.asset_type).map(|s| s.to_string()));
 
-        let cache_key = sha256_hex(&format!("asset_fetch|type={}|url={}", asset.asset_type, url));
+        let cache_key = sha256_hex(&format!(
+            "asset_fetch|type={}|url={}",
+            asset.asset_type, url
+        ));
 
-        let out_dir = cache_root.join("assets").join(asset_type_dir(&asset.asset_type));
+        let out_dir = cache_root
+            .join("assets")
+            .join(asset_type_dir(&asset.asset_type));
         std::fs::create_dir_all(&out_dir)
             .with_context(|| format!("failed to create asset cache dir: {}", out_dir.display()))?;
 
@@ -166,8 +174,14 @@ mod tests {
 
     #[test]
     fn infer_extension_from_url_works() {
-        assert_eq!(infer_extension_from_url("https://x/y.png").as_deref(), Some("png"));
-        assert_eq!(infer_extension_from_url("https://x/y.JPG?cache=1").as_deref(), Some("jpg"));
+        assert_eq!(
+            infer_extension_from_url("https://x/y.png").as_deref(),
+            Some("png")
+        );
+        assert_eq!(
+            infer_extension_from_url("https://x/y.JPG?cache=1").as_deref(),
+            Some("jpg")
+        );
         assert_eq!(infer_extension_from_url("https://x/y").as_deref(), None);
     }
 

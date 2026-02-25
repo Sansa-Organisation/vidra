@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vidra Web Capture — React Example</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', system-ui, sans-serif; background: #0d1117; color: #e6edf3; }
+        .app { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+        h1 { font-size: 24px; margin-bottom: 8px; background: linear-gradient(135deg, #58a6ff, #bc8cff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .subtitle { font-size: 14px; color: #8b949e; margin-bottom: 32px; }
+        .card { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 24px; width: 100%; max-width: 500px; }
+        .row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #21262d; }
+        .row:last-child { border-bottom: none; }
+        .label { color: #8b949e; font-size: 13px; }
+        .value { font-family: 'JetBrains Mono', monospace; font-size: 14px; color: #58a6ff; }
+        .status { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+        .status.capturing { background: rgba(63,185,80,0.15); color: #3fb950; }
+        .status.standalone { background: rgba(210,153,34,0.15); color: #d29922; }
+        .progress-bar { width: 100%; height: 6px; background: #21262d; border-radius: 3px; margin-top: 16px; overflow: hidden; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #58a6ff, #bc8cff); border-radius: 3px; transition: width 0.1s; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <!-- Load React from CDN for this standalone example -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+    <script>
+    // Inline VidraCapture (simplified version for this example)
+    class VidraCapture {
+        constructor() {
+            const bridge = typeof window !== 'undefined' ? window.__vidra : undefined;
+            this.capturing = bridge?.capturing ?? false;
+            this._bridge = bridge;
+            this._startTime = Date.now();
+        }
+        get frame() { return this._bridge?.frame ?? 0; }
+        get time() { return this._bridge?.time ?? (Date.now() - this._startTime) / 1000; }
+        get fps() { return this._bridge?.fps ?? 60; }
+        get vars() { return this._bridge?.vars ?? {}; }
+        emit(key, value) { this._bridge?.emit?.(key, value); }
+    }
+
+    const { createElement: h, useState, useEffect, useRef, useCallback } = React;
+
+    // useVidraScene hook (simplified inline version)
+    function useVidraScene() {
+        const captureRef = useRef(new VidraCapture());
+        const [state, setState] = useState({
+            capturing: captureRef.current.capturing,
+            frame: captureRef.current.frame,
+            time: captureRef.current.time,
+            fps: captureRef.current.fps,
+            vars: captureRef.current.vars,
+        });
+
+        useEffect(() => {
+            if (captureRef.current.capturing) {
+                const handler = (e) => {
+                    if (e.data?.type === 'vidra_frame') {
+                        setState({
+                            capturing: true,
+                            frame: e.data.frame,
+                            time: e.data.time,
+                            fps: e.data.fps,
+                            vars: captureRef.current.vars,
+                        });
+                    }
+                };
+                window.addEventListener('message', handler);
+                return () => window.removeEventListener('message', handler);
+            } else {
+                const interval = setInterval(() => {
+                    setState(prev => ({
+                        ...prev,
+                        time: captureRef.current.time,
+                    }));
+                }, 50);
+                return () => clearInterval(interval);
+            }
+        }, []);
+
+        const emit = useCallback((key, value) => {
+            captureRef.current.emit(key, value);
+        }, []);
+
+        return { ...state, emit };
+    }
+
+    // Demo component
+    function VidraDemo() {
+        const { capturing, frame, time, fps, vars, emit } = useVidraScene();
+        const progress = Math.min((time % 10) / 10 * 100, 100);
+
+        return h('div', { className: 'app' },
+            h('h1', null, '▸ Vidra Web Capture'),
+            h('p', { className: 'subtitle' }, 'React hook for frame-synced web scenes'),
+            h('div', { className: 'card' },
+                h('div', { className: 'row' },
+                    h('span', { className: 'label' }, 'Mode'),
+                    h('span', { className: `status ${capturing ? 'capturing' : 'standalone'}` },
+                        capturing ? '● Capturing' : '○ Standalone')
+                ),
+                h('div', { className: 'row' },
+                    h('span', { className: 'label' }, 'Frame'),
+                    h('span', { className: 'value' }, frame)
+                ),
+                h('div', { className: 'row' },
+                    h('span', { className: 'label' }, 'Time'),
+                    h('span', { className: 'value' }, time.toFixed(2) + 's')
+                ),
+                h('div', { className: 'row' },
+                    h('span', { className: 'label' }, 'FPS'),
+                    h('span', { className: 'value' }, fps)
+                ),
+                h('div', { className: 'row' },
+                    h('span', { className: 'label' }, 'Variables'),
+                    h('span', { className: 'value' }, JSON.stringify(vars) || '{}')
+                ),
+                h('div', { className: 'progress-bar' },
+                    h('div', { className: 'progress-fill', style: { width: progress + '%' } })
+                )
+            )
+        );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(h(VidraDemo));
+    </script>
+</body>
+</html>

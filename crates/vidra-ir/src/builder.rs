@@ -1,12 +1,11 @@
+use crate::animation::{AnimatableProperty, Animation, Keyframe};
+use crate::asset::{Asset, AssetId, AssetRegistry, AssetType};
+use crate::layer::{Layer, LayerContent, LayerId};
 use crate::project::{Project, ProjectSettings};
 use crate::scene::{Scene, SceneId};
-use crate::layer::{Layer, LayerId, LayerContent};
-use crate::asset::{AssetRegistry, Asset, AssetId, AssetType};
-use crate::animation::{Animation, Keyframe, AnimatableProperty};
 
 use vidra_core::types::Easing;
-use vidra_core::{Color, Duration, BlendMode, Transform2D, Point2D};
-
+use vidra_core::{BlendMode, Color, Duration, Point2D, Transform2D};
 
 /// A builder for constructing a Vidra IR Project programmatically.
 /// Useful for SDKs, programmatic generation, and unit testing.
@@ -19,7 +18,12 @@ impl ProjectBuilder {
         Self {
             project: Project {
                 id: "generated_id".to_string(),
-                settings: ProjectSettings { width, height, fps, background: Color::BLACK },
+                settings: ProjectSettings {
+                    width,
+                    height,
+                    fps,
+                    background: Color::BLACK,
+                },
                 scenes: Vec::new(),
                 assets: AssetRegistry::new(),
             },
@@ -27,7 +31,12 @@ impl ProjectBuilder {
     }
 
     /// Add an asset to the global project registry.
-    pub fn add_asset(&mut self, asset_type: AssetType, id: impl Into<String>, path: std::path::PathBuf) -> &mut Self {
+    pub fn add_asset(
+        &mut self,
+        asset_type: AssetType,
+        id: impl Into<String>,
+        path: std::path::PathBuf,
+    ) -> &mut Self {
         let id_str = id.into();
         self.project.assets.register(Asset {
             name: Some(id_str.clone()),
@@ -154,7 +163,7 @@ pub struct AnimationBuilder {
 impl AnimationBuilder {
     pub fn new(property: AnimatableProperty) -> Self {
         Self {
-            animation: Animation { 
+            animation: Animation {
                 property,
                 keyframes: Vec::new(),
                 expr: None,
@@ -165,7 +174,11 @@ impl AnimationBuilder {
     }
 
     pub fn add_keyframe(&mut self, time: f64, value: f64, easing: Easing) -> &mut Self {
-        self.animation.keyframes.push(Keyframe { time: Duration::from_seconds(time), value, easing });
+        self.animation.keyframes.push(Keyframe {
+            time: Duration::from_seconds(time),
+            value,
+            easing,
+        });
         self
     }
 

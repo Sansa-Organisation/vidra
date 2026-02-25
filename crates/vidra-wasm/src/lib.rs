@@ -67,11 +67,7 @@ pub fn get_project_info(ir_json: &str) -> Result<String, JsValue> {
     let project: vidra_ir::project::Project = serde_json::from_str(ir_json)
         .map_err(|e| JsValue::from_str(&format!("JSON parse error: {}", e)))?;
 
-    let total_duration: f64 = project
-        .scenes
-        .iter()
-        .map(|s| s.duration.as_seconds())
-        .sum();
+    let total_duration: f64 = project.scenes.iter().map(|s| s.duration.as_seconds()).sum();
     let total_frames = (total_duration * project.settings.fps).ceil() as u64;
 
     let info = serde_json::json!({
@@ -163,6 +159,18 @@ pub fn render_frame(ir_json: &str, frame_index: u32) -> Result<Vec<u8>, JsValue>
     let fb = with_renderer(|r| r.render_frame(&project, frame_index as u64));
 
     Ok(fb.data)
+}
+
+/// Get the computed transforms and bounds of all web layers at the given frame.
+/// Returns a JSON string representing an array of { id, source, x, y, width, height, opacity, scaleX, scaleY }.
+#[wasm_bindgen]
+pub fn get_web_layers_state(ir_json: &str, frame_index: u32) -> Result<String, JsValue> {
+    let project: vidra_ir::project::Project = serde_json::from_str(ir_json)
+        .map_err(|e| JsValue::from_str(&format!("JSON parse error: {}", e)))?;
+
+    let json = with_renderer(|r| r.get_web_layers_state(&project, frame_index as u64));
+
+    Ok(json)
 }
 
 /// Render a single frame from VidraScript source directly.
@@ -373,9 +381,13 @@ fn apply_caption_segments(
         child.transform.opacity = 0.0;
 
         let fade = 0.06_f64.min((duration_s / 2.0).max(0.0));
-        let mut anim = vidra_ir::animation::Animation::new(vidra_ir::animation::AnimatableProperty::Opacity)
-            .with_delay(vidra_core::Duration::from_seconds(seg.start_s));
-        anim.add_keyframe(vidra_ir::animation::Keyframe::new(vidra_core::Duration::zero(), 0.0));
+        let mut anim =
+            vidra_ir::animation::Animation::new(vidra_ir::animation::AnimatableProperty::Opacity)
+                .with_delay(vidra_core::Duration::from_seconds(seg.start_s));
+        anim.add_keyframe(vidra_ir::animation::Keyframe::new(
+            vidra_core::Duration::zero(),
+            0.0,
+        ));
         anim.add_keyframe(
             vidra_ir::animation::Keyframe::new(vidra_core::Duration::from_seconds(fade), 1.0)
                 .with_easing(vidra_core::types::Easing::EaseOut),

@@ -1,7 +1,10 @@
-use wgpu::{Adapter, Device, Instance, Queue, Texture, TextureDescriptor, Extent3d, TextureFormat, TextureUsages};
 use anyhow::Result;
-use std::sync::Mutex;
 use std::collections::HashMap;
+use std::sync::Mutex;
+use wgpu::{
+    Adapter, Device, Extent3d, Instance, Queue, Texture, TextureDescriptor, TextureFormat,
+    TextureUsages,
+};
 
 #[derive(Hash, Eq, PartialEq, Clone)]
 struct TextureDescKey {
@@ -22,10 +25,23 @@ impl TexturePool {
         }
     }
 
-    pub fn acquire(&self, device: &Device, label: Option<&str>, width: u32, height: u32, format: TextureFormat, usage: TextureUsages) -> Texture {
-        let key = TextureDescKey { width, height, format, usage };
+    pub fn acquire(
+        &self,
+        device: &Device,
+        label: Option<&str>,
+        width: u32,
+        height: u32,
+        format: TextureFormat,
+        usage: TextureUsages,
+    ) -> Texture {
+        let key = TextureDescKey {
+            width,
+            height,
+            format,
+            usage,
+        };
         let mut pool = self.free_textures.lock().unwrap();
-        
+
         if let Some(textures) = pool.get_mut(&key) {
             if let Some(texture) = textures.pop() {
                 // If a texture is available, reuse it
@@ -36,7 +52,11 @@ impl TexturePool {
         // Creating a new texture if pool is empty
         device.create_texture(&TextureDescriptor {
             label,
-            size: Extent3d { width, height, depth_or_array_layers: 1 },
+            size: Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -46,8 +66,20 @@ impl TexturePool {
         })
     }
 
-    pub fn release(&self, texture: Texture, width: u32, height: u32, format: TextureFormat, usage: TextureUsages) {
-        let key = TextureDescKey { width, height, format, usage };
+    pub fn release(
+        &self,
+        texture: Texture,
+        width: u32,
+        height: u32,
+        format: TextureFormat,
+        usage: TextureUsages,
+    ) {
+        let key = TextureDescKey {
+            width,
+            height,
+            format,
+            usage,
+        };
         let mut pool = self.free_textures.lock().unwrap();
         pool.entry(key).or_insert_with(Vec::new).push(texture);
     }

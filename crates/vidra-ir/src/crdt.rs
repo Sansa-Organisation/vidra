@@ -27,7 +27,7 @@ impl Clock {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum CursorPosition {
-    Node(String), // The path to the node they are currently selecting/editing
+    Node(String),              // The path to the node they are currently selecting/editing
     TextOffset(String, usize), // For text editing logic
 }
 
@@ -73,10 +73,7 @@ pub struct SyncMessage {
 impl SyncMessage {
     pub fn new(client_id: String, counter: u64, operations: Vec<CrdtOperation>) -> Self {
         Self {
-            clock: Clock {
-                client_id,
-                counter,
-            },
+            clock: Clock { client_id, counter },
             operations,
         }
     }
@@ -148,7 +145,10 @@ impl CrdtDocument {
     pub fn new(root_id: impl Into<String>) -> Result<Self, CrdtError> {
         let root_id = root_id.into();
         let mut nodes = HashMap::new();
-        let mut root = CrdtNode::new(root_id.clone(), serde_json::Value::Object(serde_json::Map::new()));
+        let mut root = CrdtNode::new(
+            root_id.clone(),
+            serde_json::Value::Object(serde_json::Map::new()),
+        );
         root.parent_id = None;
         nodes.insert(root_id.clone(), root);
 
@@ -247,7 +247,11 @@ impl CrdtDocument {
             CrdtOperation::DeleteNode { node_id } => {
                 self.delete_subtree(node_id, clock);
             }
-            CrdtOperation::UpdateProperty { node_id, key, value } => {
+            CrdtOperation::UpdateProperty {
+                node_id,
+                key,
+                value,
+            } => {
                 let Some(node) = self.nodes.get_mut(node_id) else {
                     return;
                 };
@@ -365,7 +369,11 @@ impl CrdtDocument {
             .unwrap_or_else(|| serde_json::json!({ "node_id": self.root_id, "deleted": false, "data": {}, "children": [] }))
     }
 
-    fn export_node_recursive(&self, node_id: &str, visited: &mut HashSet<String>) -> Option<serde_json::Value> {
+    fn export_node_recursive(
+        &self,
+        node_id: &str,
+        visited: &mut HashSet<String>,
+    ) -> Option<serde_json::Value> {
         if !visited.insert(node_id.to_string()) {
             return None;
         }

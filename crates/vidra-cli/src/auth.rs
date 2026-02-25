@@ -1,12 +1,12 @@
-use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc, Duration};
-use std::path::PathBuf;
-use ed25519_dalek::{Verifier, VerifyingKey, Signature};
-use anyhow::{Context, Result, bail};
-use base64::Engine;
+use anyhow::{bail, Context, Result};
 use base64::prelude::BASE64_STANDARD;
+use base64::Engine;
+use chrono::{DateTime, Duration, Utc};
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use rand_core::RngCore;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::path::PathBuf;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VltLimits {
@@ -44,7 +44,9 @@ fn resolve_home_dir() -> Result<PathBuf> {
         if p.is_absolute() {
             return Ok(p);
         }
-        return Ok(std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join(p));
+        return Ok(std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(p));
     }
     dirs::home_dir().context("failed to resolve home dir")
 }
@@ -62,7 +64,9 @@ fn vlt_token_path() -> Result<PathBuf> {
         if pb.is_absolute() {
             return Ok(pb);
         }
-        return Ok(std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join(pb));
+        return Ok(std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(pb));
     }
     Ok(resolve_home_dir()?.join(".vidra").join("vlt.token"))
 }
@@ -129,10 +133,8 @@ impl Vlt {
         if !path.exists() {
             bail!("No VLT found at {:?}. Please run `vidra auth login`.", path);
         }
-        let content = std::fs::read_to_string(&path)
-            .context("Failed to read VLT token file")?;
-        let vlt: Vlt = serde_json::from_str(&content)
-            .context("Failed to parse VLT token JSON")?;
+        let content = std::fs::read_to_string(&path).context("Failed to read VLT token file")?;
+        let vlt: Vlt = serde_json::from_str(&content).context("Failed to parse VLT token JSON")?;
         Ok(vlt)
     }
 
@@ -165,27 +167,35 @@ impl Vlt {
         // 1. Check signature
         // The signature is over the canonical JSON of the payload.
         // For simplicity, we assume the platform signs the canonical JSON string of VltPayload.
-        let pubkey_bytes = BASE64_STANDARD.decode(VIDRA_PLATFORM_PUBKEY_B64)
+        let pubkey_bytes = BASE64_STANDARD
+            .decode(VIDRA_PLATFORM_PUBKEY_B64)
             .context("Invalid embedded pubkey base64")?;
         let pubkey = VerifyingKey::from_bytes(
-            pubkey_bytes.as_slice().try_into().context("Invalid pubkey length")?
-        ).context("Failed to parse verifying key")?;
+            pubkey_bytes
+                .as_slice()
+                .try_into()
+                .context("Invalid pubkey length")?,
+        )
+        .context("Failed to parse verifying key")?;
 
-        let sig_part = self.signature.strip_prefix("ed25519:")
+        let sig_part = self
+            .signature
+            .strip_prefix("ed25519:")
             .context("Invalid signature format; must start with ed25519:")?;
-        
-        let sig_bytes = BASE64_STANDARD.decode(sig_part)
+
+        let sig_bytes = BASE64_STANDARD
+            .decode(sig_part)
             .context("Invalid signature base64")?;
-        
-        let signature = Signature::from_slice(&sig_bytes)
-            .context("Invalid signature length")?;
+
+        let signature = Signature::from_slice(&sig_bytes).context("Invalid signature length")?;
 
         // Serialization must be deterministic. We use canonical-like JSON.
         // Note: For a robust system, we would store the raw payload bytes and parse them.
-        let msg = serde_json::to_string(&self.payload)
-            .context("Failed to serialize VLT payload")?;
+        let msg =
+            serde_json::to_string(&self.payload).context("Failed to serialize VLT payload")?;
 
-        pubkey.verify(msg.as_bytes(), &signature)
+        pubkey
+            .verify(msg.as_bytes(), &signature)
             .context("VLT signature verification failed! The token is invalid or tampered with.")?;
 
         // 2. Check Expiry + 7-day grace
@@ -219,7 +229,11 @@ impl Vlt {
 
         if let Some(max_amt) = limit {
             if current_usage >= max_amt {
-                bail!("Plan limit reached for {}: max allowed is {}", limit_name, max_amt);
+                bail!(
+                    "Plan limit reached for {}: max allowed is {}",
+                    limit_name,
+                    max_amt
+                );
             }
         }
         Ok(())
@@ -257,7 +271,7 @@ pub fn login() -> Result<()> {
 
     vlt.save_local()?;
     tracing::info!("Authentication successful! VLT saved locally.");
-    
+
     Ok(())
 }
 
@@ -429,17 +443,14 @@ impl RbacRole {
     pub fn viewer() -> Self {
         Self {
             name: "viewer".to_string(),
-            permissions: vec![
-                "project:read".to_string(),
-                "assets:read".to_string(),
-            ],
+            permissions: vec!["project:read".to_string(), "assets:read".to_string()],
         }
     }
 
     pub fn has_permission(&self, perm: &str) -> bool {
-        self.permissions.iter().any(|p| {
-            p == perm || p.ends_with(":*") && perm.starts_with(&p[..p.len()-1])
-        })
+        self.permissions
+            .iter()
+            .any(|p| p == perm || p.ends_with(":*") && perm.starts_with(&p[..p.len() - 1]))
     }
 }
 

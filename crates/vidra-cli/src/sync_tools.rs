@@ -173,7 +173,10 @@ pub fn push_receipts_local(receipts_root: &Path) -> Result<usize> {
 
         // If a receipt with same name already exists in sent/, keep the newer one by suffixing.
         let dest = if dest.exists() {
-            let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("receipt");
+            let stem = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("receipt");
             let mut i = 1u32;
             loop {
                 let candidate = sent_dir.join(format!("{}_{}.json", stem, i));
@@ -190,7 +193,9 @@ pub fn push_receipts_local(receipts_root: &Path) -> Result<usize> {
             // Cross-device fallback: copy + delete
             std::fs::copy(&path, &dest)
                 .context("failed to copy receipt")
-                .and_then(|_| std::fs::remove_file(&path).context("failed to delete original receipt"))
+                .and_then(|_| {
+                    std::fs::remove_file(&path).context("failed to delete original receipt")
+                })
         })?;
         moved += 1;
     }
@@ -224,9 +229,17 @@ fn enqueue_upload_path_inner(
     }
 
     if canon.is_dir() {
-        for entry in std::fs::read_dir(&canon).with_context(|| format!("failed to read dir: {}", canon.display()))? {
+        for entry in std::fs::read_dir(&canon)
+            .with_context(|| format!("failed to read dir: {}", canon.display()))?
+        {
             let entry = entry?;
-            enqueue_upload_path_inner(project_root, &entry.path(), queued_dir, blobs_dir, enqueued)?;
+            enqueue_upload_path_inner(
+                project_root,
+                &entry.path(),
+                queued_dir,
+                blobs_dir,
+                enqueued,
+            )?;
         }
         return Ok(());
     }
@@ -235,7 +248,8 @@ fn enqueue_upload_path_inner(
         return Ok(());
     }
 
-    let bytes = std::fs::read(&canon).with_context(|| format!("failed to read file: {}", canon.display()))?;
+    let bytes = std::fs::read(&canon)
+        .with_context(|| format!("failed to read file: {}", canon.display()))?;
     let sha = sha256_bytes(&bytes);
     let blob_path = blobs_dir.join(format!("{}.bin", sha));
     if !blob_path.exists() {
@@ -286,7 +300,10 @@ pub fn push_uploads_local(project_root: &Path) -> Result<usize> {
             .unwrap_or("upload.json");
         let dest = sent_dir.join(file_name);
         let dest = if dest.exists() {
-            let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("upload");
+            let stem = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("upload");
             let mut i = 1u32;
             loop {
                 let candidate = sent_dir.join(format!("{}_{}.json", stem, i));
@@ -302,7 +319,9 @@ pub fn push_uploads_local(project_root: &Path) -> Result<usize> {
         std::fs::rename(&path, &dest).or_else(|_| {
             std::fs::copy(&path, &dest)
                 .context("failed to copy upload metadata")
-                .and_then(|_| std::fs::remove_file(&path).context("failed to delete original upload metadata"))
+                .and_then(|_| {
+                    std::fs::remove_file(&path).context("failed to delete original upload metadata")
+                })
         })?;
         moved += 1;
     }
@@ -327,7 +346,9 @@ fn read_upload_entries_from_dir(status: &'static str, dir: &Path) -> Result<Vec<
     if !dir.exists() {
         return Ok(out);
     }
-    for entry in std::fs::read_dir(dir).with_context(|| format!("failed to read uploads dir: {}", dir.display()))? {
+    for entry in std::fs::read_dir(dir)
+        .with_context(|| format!("failed to read uploads dir: {}", dir.display()))?
+    {
         let path = entry?.path();
         if path.is_dir() {
             continue;
@@ -374,9 +395,7 @@ pub fn resolve_upload_blob(project_root: &Path, name: &str) -> Result<Option<(Pa
             .unwrap_or(&item.entry.blob_sha256)
             .to_lowercase();
 
-        let matches = base == needle
-            || blob_hex == needle_hex
-            || blob_hex.starts_with(&needle_hex);
+        let matches = base == needle || blob_hex == needle_hex || blob_hex.starts_with(&needle_hex);
         if !matches {
             continue;
         }
@@ -389,7 +408,10 @@ pub fn resolve_upload_blob(project_root: &Path, name: &str) -> Result<Option<(Pa
     Ok(None)
 }
 
-pub fn generate_asset_manifest(project_id: &str, assets: &AssetRegistry) -> Result<(AssetManifest, AssetManifestStats)> {
+pub fn generate_asset_manifest(
+    project_id: &str,
+    assets: &AssetRegistry,
+) -> Result<(AssetManifest, AssetManifestStats)> {
     let mut out = Vec::new();
     let mut missing = 0usize;
     let mut hashed = 0usize;
@@ -449,11 +471,14 @@ pub fn generate_asset_manifest(project_id: &str, assets: &AssetRegistry) -> Resu
 
 pub fn write_asset_manifest(path: &Path, manifest: &AssetManifest) -> Result<()> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create asset manifest dir: {}", parent.display()))?;
+        std::fs::create_dir_all(parent).with_context(|| {
+            format!("failed to create asset manifest dir: {}", parent.display())
+        })?;
     }
-    let json = serde_json::to_string_pretty(manifest).context("failed to serialize asset manifest")?;
-    std::fs::write(path, json).with_context(|| format!("failed to write asset manifest: {}", path.display()))?;
+    let json =
+        serde_json::to_string_pretty(manifest).context("failed to serialize asset manifest")?;
+    std::fs::write(path, json)
+        .with_context(|| format!("failed to write asset manifest: {}", path.display()))?;
     Ok(())
 }
 
@@ -495,7 +520,9 @@ fn sha256_file(path: &Path) -> Result<String> {
     let mut hasher = Sha256::new();
     let mut buf = [0u8; 1024 * 64];
     loop {
-        let n = f.read(&mut buf).context("failed to read file for hashing")?;
+        let n = f
+            .read(&mut buf)
+            .context("failed to read file for hashing")?;
         if n == 0 {
             break;
         }
@@ -559,14 +586,22 @@ mod tests {
         assert_eq!(stats.total, 1);
         assert_eq!(stats.missing, 0);
         assert_eq!(stats.hashed, 1);
-        assert_eq!(m.assets[0].sha256.as_deref().unwrap().starts_with("sha256:"), true);
+        assert_eq!(
+            m.assets[0]
+                .sha256
+                .as_deref()
+                .unwrap()
+                .starts_with("sha256:"),
+            true
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]
     fn asset_manifest_roundtrip_read_write() {
-        let tmp = std::env::temp_dir().join(format!("vidra_asset_manifest_rw_{}", std::process::id()));
+        let tmp =
+            std::env::temp_dir().join(format!("vidra_asset_manifest_rw_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
 
@@ -618,7 +653,8 @@ mod tests {
 
     #[test]
     fn resolve_upload_blob_by_basename() {
-        let root = std::env::temp_dir().join(format!("vidra_upload_resolve_{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("vidra_upload_resolve_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
 

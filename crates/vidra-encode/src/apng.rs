@@ -47,9 +47,11 @@ impl ApngEncoder {
         let mut encoder = png::Encoder::new(writer, width, height);
         encoder.set_color(png::ColorType::Rgba);
         encoder.set_depth(png::BitDepth::Eight);
-        encoder.set_animated(frames.len() as u32, loop_count.unwrap_or(0))
+        encoder
+            .set_animated(frames.len() as u32, loop_count.unwrap_or(0))
             .map_err(|e| VidraError::Encode(format!("failed to set APNG animation: {}", e)))?;
-        encoder.set_frame_delay(delay_num, delay_den)
+        encoder
+            .set_frame_delay(delay_num, delay_den)
             .map_err(|e| VidraError::Encode(format!("failed to set APNG frame delay: {}", e)))?;
 
         let mut writer = encoder
@@ -65,14 +67,17 @@ impl ApngEncoder {
             }
 
             // Set per-frame delay for consistent timing
-            writer.set_frame_delay(delay_num, delay_den)
-                .map_err(|e| VidraError::Encode(format!("failed to set delay on frame {}: {}", i, e)))?;
+            writer.set_frame_delay(delay_num, delay_den).map_err(|e| {
+                VidraError::Encode(format!("failed to set delay on frame {}: {}", i, e))
+            })?;
 
-            writer.write_image_data(&frame.data)
-                .map_err(|e| VidraError::Encode(format!("failed to write APNG frame {}: {}", i, e)))?;
+            writer.write_image_data(&frame.data).map_err(|e| {
+                VidraError::Encode(format!("failed to write APNG frame {}: {}", i, e))
+            })?;
         }
 
-        writer.finish()
+        writer
+            .finish()
             .map_err(|e| VidraError::Encode(format!("failed to finalize APNG: {}", e)))?;
 
         tracing::info!(

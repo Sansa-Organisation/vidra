@@ -5,14 +5,14 @@
 //! GPU acceleration comes in Phase 1.
 
 pub mod compositor;
+pub mod custom_shader;
+pub mod effects;
+pub mod gpu;
 pub mod image_loader;
 pub mod pipeline;
 pub mod text;
 pub mod video_decoder;
-pub mod gpu;
-pub mod effects;
-pub mod custom_shader;
 
-pub use pipeline::{RenderContext, RenderPipeline, RenderResult};
 pub use gpu::GpuContext;
+pub use pipeline::{RenderContext, RenderPipeline, RenderResult};
 pub use video_decoder::VideoDecoder;

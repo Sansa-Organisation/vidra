@@ -48,6 +48,73 @@ Every layer contains exactly one **Layer Content**, followed by optional propert
 | AutoCaption| `autocaption("path/to.mp3", font: "Inter", size: 32)` | Automatically transcribe and layout animated words. |
 | Shape | `shape(rect, fill: #ff0000, width: 100, height: 100)` | Primitive shapes (`rect`, `circle`, etc). |
 | Component | `use("Name", prop: "value")` | Place an instantiated component block. |
+| **Web** | `web("source", viewport: 800x600)` | **Render a web page (HTML/React/D3) as a layer.** |
+
+### Web Scenes
+
+The `web()` content type lets you embed live HTML content as a composited layer. This is ideal for data visualizations, interactive overlays, React components, D3 charts, Three.js scenes, and any web-based content.
+
+**Syntax:**
+
+```javascript
+layer("dashboard") {
+    web("web/chart.html", viewport: 1280x720)
+    position(960, 540)
+}
+```
+
+**Named arguments:**
+
+| Argument | Type | Default | Description |
+|---|---|---|---|
+| `source` | `String` | (required) | Path to HTML file or URL |
+| `viewport` | `WxH` | `1920x1080` | Viewport dimensions for the embedded browser |
+| `mode` | `capture` \| `realtime` | `capture` | `capture` renders frame-by-frame; `realtime` uses live DOM |
+| `wait_for` | `String` | — | CSS selector to wait for before capturing (e.g., `".chart-ready"`) |
+| `variables` | `{ key: value }` | `{}` | Variables injected into the web page via `window.__vidra.vars` |
+
+**Modes:**
+
+- **`capture` mode** (default): The capture engine loads the page in a headless browser, advances the timeline frame-by-frame via the `__vidra_advance_frame` protocol, and rasterizes each frame into the compositing pipeline. This is pixel-perfect and deterministic.
+- **`realtime` mode**: The browser player renders the web layer as an `<iframe>` overlay, synced to the timeline position. Ideal for interactive previews.
+
+**Examples:**
+
+```javascript
+// D3 chart with data passed via variables
+layer("revenue_chart") {
+    web("web/revenue.html", viewport: 800x400, variables: { year: 2025, currency: "USD" })
+    position(960, 400)
+    animation(opacity, from: 0, to: 1, duration: 0.5s)
+}
+
+// React component in capture mode
+layer("react_overlay") {
+    web("web/ticker.html", viewport: 400x100, mode: capture, wait_for: ".loaded")
+    position(960, 980)
+}
+
+// Interactive Three.js scene (realtime in browser player)
+layer("3d_scene") {
+    web("web/globe.html", viewport: 1920x1080, mode: realtime)
+}
+```
+
+**Integrated mode (`@vidra/web-capture`):**
+
+When building web content specifically for Vidra, use the `@sansavision/vidra-web-capture` npm package to access the capture bridge:
+
+```tsx
+import { useVidraScene } from '@sansavision/vidra-web-capture/react';
+
+function AnimatedChart() {
+    const { frame, time, fps, vars, emit } = useVidraScene();
+    // Use frame/time to drive animations deterministically
+    return <div>Frame: {frame}, Value: {vars.revenue}</div>;
+}
+```
+
+The hook gracefully degrades when running outside the capture harness — `frame` defaults to 0, `time` uses `Date.now()`, and `emit()` is a no-op.
 
 ### Properties
 

@@ -158,7 +158,9 @@ impl Parser {
     }
 
     /// Parse an imported module: just imports and components
-    pub fn parse_module(&mut self) -> Result<(Vec<ImportNode>, Vec<AssetNode>, Vec<ComponentNode>), VidraError> {
+    pub fn parse_module(
+        &mut self,
+    ) -> Result<(Vec<ImportNode>, Vec<AssetNode>, Vec<ComponentNode>), VidraError> {
         let mut imports = Vec::new();
         let mut assets = Vec::new();
         let mut components = Vec::new();
@@ -174,7 +176,10 @@ impl Parser {
             } else {
                 let span = self.current_span();
                 return Err(VidraError::parse(
-                    format!("expected import or component in module, got {}", self.peek()),
+                    format!(
+                        "expected import or component in module, got {}",
+                        self.peek()
+                    ),
                     &self.file,
                     span.line,
                     span.column,
@@ -186,7 +191,7 @@ impl Parser {
         Ok((imports, assets, components))
     }
 
-    /// Parse an asset block: `asset("id", font, "path")` or `asset(font, "id", "path")` 
+    /// Parse an asset block: `asset("id", font, "path")` or `asset(font, "id", "path")`
     /* syntax: `asset(font, "Inter", "assets/Inter.ttf")` */
     fn parse_asset(&mut self) -> Result<AssetNode, VidraError> {
         let span = self.current_span();
@@ -207,7 +212,7 @@ impl Parser {
         let path = self.parse_string()?;
         self.skip_newlines();
         self.expect(&TokenKind::RightParen)?;
-        
+
         Ok(AssetNode {
             asset_type,
             id,
@@ -222,11 +227,8 @@ impl Parser {
         self.expect(&TokenKind::Import)?;
         self.skip_newlines();
         let path = self.parse_string()?;
-        
-        Ok(ImportNode {
-            path,
-            span,
-        })
+
+        Ok(ImportNode { path, span })
     }
 
     /// Parse layout rules: `layout rules { when aspect(16:9) { ... } }`
@@ -251,10 +253,7 @@ impl Parser {
         self.expect(&TokenKind::RightBrace)?;
         self.skip_newlines();
 
-        Ok(LayoutRulesNode {
-            rules,
-            span,
-        })
+        Ok(LayoutRulesNode { rules, span })
     }
 
     /// Parse a variable definition: `@var name = value`
@@ -270,18 +269,14 @@ impl Parser {
                 span.column,
             ));
         }
-        
+
         let name = self.parse_identifier()?;
         self.skip_newlines();
         self.expect(&TokenKind::Equals)?;
         self.skip_newlines();
         let value = self.parse_value()?;
-        
-        Ok(VarDefNode {
-            name,
-            value,
-            span,
-        })
+
+        Ok(VarDefNode { name, value, span })
     }
 
     /// Parse a single layout rule: `when aspect(16:9) { ... }`
@@ -300,7 +295,7 @@ impl Parser {
         }
         self.expect(&TokenKind::RightParen)?;
         self.skip_newlines();
-        
+
         // Block
         self.expect(&TokenKind::LeftBrace)?;
         self.skip_newlines();
@@ -337,11 +332,11 @@ impl Parser {
 
         let mut props = Vec::new();
         let mut version = None;
-        
+
         while self.peek() == &TokenKind::Comma {
             self.advance();
             self.skip_newlines();
-            
+
             // Reached parenthesis even after a trailing comma?
             if self.peek() == &TokenKind::RightParen {
                 break;
@@ -350,10 +345,10 @@ impl Parser {
             let prop_span = self.current_span();
             let prop_name = self.parse_identifier()?;
             self.skip_newlines();
-            
+
             self.expect(&TokenKind::Colon)?;
             self.skip_newlines();
-            
+
             if prop_name == "version" {
                 version = Some(self.parse_string()?);
                 self.skip_newlines();
@@ -419,7 +414,7 @@ impl Parser {
         self.skip_newlines();
         let name = self.parse_string()?;
         self.skip_newlines();
-        
+
         let overrides = if self.peek() == &TokenKind::Comma {
             self.advance();
             self.skip_newlines();
@@ -427,10 +422,10 @@ impl Parser {
         } else {
             Vec::new()
         };
-        
+
         self.expect(&TokenKind::RightParen)?;
         self.skip_newlines();
-        
+
         Ok(VariantNode {
             name,
             overrides,
@@ -588,7 +583,9 @@ impl Parser {
         let mut then_branch = Vec::new();
         while self.peek() != &TokenKind::RightBrace && self.peek() != &TokenKind::Eof {
             self.skip_newlines();
-            if self.peek() == &TokenKind::RightBrace { break; }
+            if self.peek() == &TokenKind::RightBrace {
+                break;
+            }
             then_branch.push(self.parse_layer_block_item()?);
             self.skip_newlines();
         }
@@ -599,14 +596,16 @@ impl Parser {
         if self.peek() == &TokenKind::Else {
             self.advance();
             self.skip_newlines();
-            
+
             // Handle `else if` transparently as wrapping recursion if needed? No, just keep it simple block `else { ... }` for now
             self.expect(&TokenKind::LeftBrace)?;
             self.skip_newlines();
             let mut branch = Vec::new();
             while self.peek() != &TokenKind::RightBrace && self.peek() != &TokenKind::Eof {
                 self.skip_newlines();
-                if self.peek() == &TokenKind::RightBrace { break; }
+                if self.peek() == &TokenKind::RightBrace {
+                    break;
+                }
                 branch.push(self.parse_layer_block_item()?);
                 self.skip_newlines();
             }
@@ -636,10 +635,28 @@ impl Parser {
 
         // Parse layer content (first statement inside the block)
         let mut content = LayerContentNode::Empty;
-        
+
         let is_content = match self.peek() {
-            TokenKind::Text | TokenKind::Image | TokenKind::Spritesheet | TokenKind::Video | TokenKind::Audio | TokenKind::Solid | TokenKind::Shape | TokenKind::Shader | TokenKind::Slot | TokenKind::TTS | TokenKind::AutoCaption => true,
-            TokenKind::Identifier(name) if name != "position" && name != "animation" && name != "size" && name != "scale" => true,
+            TokenKind::Text
+            | TokenKind::Image
+            | TokenKind::Spritesheet
+            | TokenKind::Video
+            | TokenKind::Audio
+            | TokenKind::Solid
+            | TokenKind::Shape
+            | TokenKind::Shader
+            | TokenKind::Slot
+            | TokenKind::TTS
+            | TokenKind::AutoCaption
+            | TokenKind::Web => true,
+            TokenKind::Identifier(name)
+                if name != "position"
+                    && name != "animation"
+                    && name != "size"
+                    && name != "scale" =>
+            {
+                true
+            }
             _ => false,
         };
 
@@ -731,10 +748,10 @@ impl Parser {
                 self.advance();
                 self.expect(&TokenKind::LeftParen)?;
                 let text = self.parse_value()?;
-                
+
                 // Expect a comma, then the voice
                 self.expect(&TokenKind::Comma)?;
-                
+
                 let voice = self.parse_value()?;
                 let args = self.parse_trailing_named_args()?;
                 self.expect(&TokenKind::RightParen)?;
@@ -768,16 +785,21 @@ impl Parser {
                 let shape_type_str = match shape_type {
                     ValueNode::String(s) => s,
                     ValueNode::Identifier(s) => s,
-                    _ => return Err(VidraError::parse(
-                        format!("expected string or identifier for shape type"),
-                        &self.file,
-                        self.current_span().line,
-                        self.current_span().column,
-                    )),
+                    _ => {
+                        return Err(VidraError::parse(
+                            format!("expected string or identifier for shape type"),
+                            &self.file,
+                            self.current_span().line,
+                            self.current_span().column,
+                        ))
+                    }
                 };
                 let args = self.parse_trailing_named_args()?;
                 self.expect(&TokenKind::RightParen)?;
-                Ok(LayerContentNode::Shape { shape_type: shape_type_str, args })
+                Ok(LayerContentNode::Shape {
+                    shape_type: shape_type_str,
+                    args,
+                })
             }
             TokenKind::Shader => {
                 self.advance();
@@ -786,6 +808,14 @@ impl Parser {
                 let args = self.parse_trailing_named_args()?;
                 self.expect(&TokenKind::RightParen)?;
                 Ok(LayerContentNode::Shader { path, args })
+            }
+            TokenKind::Web => {
+                self.advance();
+                self.expect(&TokenKind::LeftParen)?;
+                let source = self.parse_value()?;
+                let args = self.parse_trailing_named_args()?;
+                self.expect(&TokenKind::RightParen)?;
+                Ok(LayerContentNode::Web { source, args })
             }
             TokenKind::Identifier(name) => {
                 // E.g., CustomComponent(prop: "value")
@@ -869,7 +899,11 @@ impl Parser {
                 }
 
                 self.expect(&TokenKind::RightBrace)?;
-                Ok(PropertyNode::OnEvent { event, actions, span })
+                Ok(PropertyNode::OnEvent {
+                    event,
+                    actions,
+                    span,
+                })
             }
             TokenKind::Identifier(ref name) if name == "position" => {
                 self.advance();
@@ -892,7 +926,9 @@ impl Parser {
                     let mut animations = Vec::new();
                     while self.peek() != &TokenKind::RightBrace && self.peek() != &TokenKind::Eof {
                         self.skip_newlines();
-                        if self.peek() == &TokenKind::RightBrace { break; }
+                        if self.peek() == &TokenKind::RightBrace {
+                            break;
+                        }
                         animations.push(self.parse_property()?);
                         self.skip_newlines();
                     }
@@ -905,7 +941,9 @@ impl Parser {
                     let mut animations = Vec::new();
                     while self.peek() != &TokenKind::RightBrace && self.peek() != &TokenKind::Eof {
                         self.skip_newlines();
-                        if self.peek() == &TokenKind::RightBrace { break; }
+                        if self.peek() == &TokenKind::RightBrace {
+                            break;
+                        }
                         animations.push(self.parse_property()?);
                         self.skip_newlines();
                     }
@@ -913,8 +951,13 @@ impl Parser {
                     Ok(PropertyNode::AnimationSequence { animations, span })
                 } else {
                     Err(VidraError::parse(
-                        format!("expected 'group' or 'sequence' after 'animate.', got {}", ident),
-                        &self.file, span.line, span.column
+                        format!(
+                            "expected 'group' or 'sequence' after 'animate.', got {}",
+                            ident
+                        ),
+                        &self.file,
+                        span.line,
+                        span.column,
                     ))
                 }
             }
@@ -1123,10 +1166,14 @@ impl Parser {
             let mut items = Vec::new();
             while self.peek() != &TokenKind::RightBracket && self.peek() != &TokenKind::Eof {
                 self.skip_newlines();
-                if self.peek() == &TokenKind::RightBracket { break; }
+                if self.peek() == &TokenKind::RightBracket {
+                    break;
+                }
                 items.push(self.parse_value()?);
                 self.skip_newlines();
-                if self.peek() == &TokenKind::Comma { self.advance(); }
+                if self.peek() == &TokenKind::Comma {
+                    self.advance();
+                }
                 self.skip_newlines();
             }
             self.expect(&TokenKind::RightBracket)?;
@@ -1226,7 +1273,7 @@ impl Parser {
             if self.peek() == &TokenKind::RightParen {
                 break;
             }
-            
+
             let span = self.current_span();
             let name = self.parse_identifier()?;
             self.skip_newlines();
@@ -1234,7 +1281,7 @@ impl Parser {
             self.skip_newlines();
             let value = self.parse_value()?;
             args.push(NamedArg { name, value, span });
-            
+
             self.skip_newlines();
             if self.peek() == &TokenKind::Comma {
                 self.advance();
@@ -1332,7 +1379,11 @@ mod tests {
         "#,
         );
 
-        let layer = if let LayerBlockItem::Layer(l) = &project.scenes[0].items[0] { l } else { panic!("Expected layer") };
+        let layer = if let LayerBlockItem::Layer(l) = &project.scenes[0].items[0] {
+            l
+        } else {
+            panic!("Expected layer")
+        };
         match &layer.content {
             LayerContentNode::Text { text, args } => {
                 assert_eq!(text, &ValueNode::String("Hello Vidra".into()));
@@ -1342,6 +1393,37 @@ mod tests {
                 assert_eq!(args[2].name, "color");
             }
             _ => panic!("expected text content"),
+        }
+    }
+
+    #[test]
+    fn test_parse_web_layer() {
+        let project = parse(
+            r#"
+            project(1920, 1080, 30) {
+                scene("s", 3s) {
+                    layer("web_view") {
+                        web("http://localhost:3000", viewport: "1920x1080", mode: "realtime")
+                    }
+                }
+            }
+        "#,
+        );
+        let layer = if let LayerBlockItem::Layer(l) = &project.scenes[0].items[0] {
+            l
+        } else {
+            panic!("Expected layer")
+        };
+        match &layer.content {
+            LayerContentNode::Web { source, args } => {
+                assert_eq!(source, &ValueNode::String("http://localhost:3000".into()));
+                assert_eq!(args.len(), 2);
+                assert_eq!(args[0].name, "viewport");
+                assert_eq!(args[1].name, "mode");
+                assert_eq!(args[0].value, ValueNode::String("1920x1080".into()));
+                assert_eq!(args[1].value, ValueNode::String("realtime".into()));
+            }
+            _ => panic!("expected web content"),
         }
     }
 
@@ -1360,7 +1442,11 @@ mod tests {
         "#,
         );
 
-        let layer = if let LayerBlockItem::Layer(l) = &project.scenes[0].items[0] { l } else { panic!("Expected layer") };
+        let layer = if let LayerBlockItem::Layer(l) = &project.scenes[0].items[0] {
+            l
+        } else {
+            panic!("Expected layer")
+        };
         assert_eq!(layer.properties.len(), 1);
         match &layer.properties[0] {
             PropertyNode::Position { x, y: _, .. } => {
@@ -1389,7 +1475,11 @@ mod tests {
         "#,
         );
 
-        let layer = if let LayerBlockItem::Layer(l) = &project.scenes[0].items[0] { l } else { panic!("Expected layer") };
+        let layer = if let LayerBlockItem::Layer(l) = &project.scenes[0].items[0] {
+            l
+        } else {
+            panic!("Expected layer")
+        };
         assert_eq!(layer.properties.len(), 1);
         match &layer.properties[0] {
             PropertyNode::Animation { property, args, .. } => {
@@ -1434,7 +1524,7 @@ mod tests {
         "#,
         );
         assert_eq!(project.assets.len(), 2);
-        
+
         let a1 = &project.assets[0];
         assert_eq!(a1.asset_type, "font");
         assert_eq!(a1.id, "Roboto");
@@ -1476,10 +1566,10 @@ mod tests {
         assert_eq!(project.layout_rules.len(), 1);
         let rules_node = &project.layout_rules[0];
         assert_eq!(rules_node.rules.len(), 2);
-        
+
         assert_eq!(rules_node.rules[0].aspect, "16:9");
         assert_eq!(rules_node.rules[0].items.len(), 1);
-        
+
         assert_eq!(rules_node.rules[1].aspect, "9:16");
         assert_eq!(rules_node.rules[1].items.len(), 1);
     }

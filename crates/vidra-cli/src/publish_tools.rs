@@ -11,7 +11,9 @@ fn add_dir_to_zip<W: Write + Seek>(
     base: &Path,
     dir: &Path,
 ) -> Result<()> {
-    for entry in std::fs::read_dir(dir).with_context(|| format!("failed to read dir: {}", dir.display()))? {
+    for entry in
+        std::fs::read_dir(dir).with_context(|| format!("failed to read dir: {}", dir.display()))?
+    {
         let path = entry?.path();
         let rel = path
             .strip_prefix(base)
@@ -32,7 +34,8 @@ fn add_dir_to_zip<W: Write + Seek>(
             continue;
         }
 
-        let bytes = std::fs::read(&path).with_context(|| format!("failed to read file: {}", path.display()))?;
+        let bytes = std::fs::read(&path)
+            .with_context(|| format!("failed to read file: {}", path.display()))?;
         let options = zip::write::SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Deflated);
         zip.start_file(rel, options)
@@ -50,7 +53,10 @@ pub fn package_for_publish(input: &Path) -> Result<(PathBuf, bool)> {
         return Ok((input.to_path_buf(), false));
     }
     if !input.is_dir() {
-        anyhow::bail!("publish path must be a file or directory: {}", input.display());
+        anyhow::bail!(
+            "publish path must be a file or directory: {}",
+            input.display()
+        );
     }
 
     let base = std::fs::canonicalize(input).unwrap_or_else(|_| input.to_path_buf());
@@ -58,7 +64,8 @@ pub fn package_for_publish(input: &Path) -> Result<(PathBuf, bool)> {
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or("resource");
-    let out = std::env::temp_dir().join(format!("vidra_publish_{}_{}.zip", name, std::process::id()));
+    let out =
+        std::env::temp_dir().join(format!("vidra_publish_{}_{}.zip", name, std::process::id()));
 
     let f = std::fs::File::create(&out)
         .with_context(|| format!("failed to create publish zip: {}", out.display()))?;

@@ -25,6 +25,8 @@ pub enum LayerType {
     AutoCaption,
     /// A custom WGSL shader.
     Shader,
+    /// Web scene captured via browser.
+    Web,
 }
 
 impl std::fmt::Display for LayerType {
@@ -41,6 +43,7 @@ impl std::fmt::Display for LayerType {
             LayerType::TTS => write!(f, "tts"),
             LayerType::AutoCaption => write!(f, "autocaption"),
             LayerType::Shader => write!(f, "shader"),
+            LayerType::Web => write!(f, "web"),
         }
     }
 }

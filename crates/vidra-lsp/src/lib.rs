@@ -50,7 +50,9 @@ impl LanguageServer for Backend {
     }
 
     async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
-        if params.content_changes.is_empty() { return; }
+        if params.content_changes.is_empty() {
+            return;
+        }
         self.on_change(TextDocumentItem {
             uri: params.text_document.uri,
             text: params.content_changes.remove(0).text,
@@ -172,9 +174,9 @@ impl LanguageServer for Backend {
 
     async fn hover(&self, _params: HoverParams) -> Result<Option<Hover>> {
         Ok(Some(Hover {
-            contents: HoverContents::Scalar(
-                MarkedString::String("VidraScript code block".to_string())
-            ),
+            contents: HoverContents::Scalar(MarkedString::String(
+                "VidraScript code block".to_string(),
+            )),
             range: None,
         }))
     }
@@ -192,13 +194,15 @@ impl Backend {
             Ok(t) => t,
             Err(e) => {
                 diagnostics.push(error_to_diagnostic(e));
-                self.client.publish_diagnostics(uri.clone(), diagnostics, Some(item.version)).await;
+                self.client
+                    .publish_diagnostics(uri.clone(), diagnostics, Some(item.version))
+                    .await;
                 return;
             }
         };
 
         let mut parser = vidra_lang::Parser::new(tokens, uri.as_str());
-        
+
         match parser.parse() {
             Ok(ast) => {
                 let checker = vidra_lang::TypeChecker::new(uri.as_str().to_string());
@@ -227,37 +231,64 @@ fn checker_diag_to_lsp_diag(diag: vidra_lang::checker::Diagnostic) -> Diagnostic
         vidra_lang::checker::DiagnosticSeverity::Warning => DiagnosticSeverity::WARNING,
         vidra_lang::checker::DiagnosticSeverity::Info => DiagnosticSeverity::INFORMATION,
     };
-    
+
     let line_idx = diag.span.line.saturating_sub(1) as u32;
     let col_idx = diag.span.column.saturating_sub(1) as u32;
     let length = diag.span.end.saturating_sub(diag.span.start);
     let end_col_idx = (diag.span.column + length).saturating_sub(1) as u32;
-    
+
     Diagnostic::new(
-        Range::new(Position::new(line_idx, col_idx), Position::new(line_idx, end_col_idx)),
+        Range::new(
+            Position::new(line_idx, col_idx),
+            Position::new(line_idx, end_col_idx),
+        ),
         Some(severity),
-        None, None, diag.message, None, None,
+        None,
+        None,
+        diag.message,
+        None,
+        None,
     )
 }
 
 fn error_to_diagnostic(err: vidra_core::VidraError) -> Diagnostic {
     match err {
-        vidra_core::VidraError::Parse { message, line, column, .. } | vidra_core::VidraError::Type { message, line, column, .. } => {
+        vidra_core::VidraError::Parse {
+            message,
+            line,
+            column,
+            ..
+        }
+        | vidra_core::VidraError::Type {
+            message,
+            line,
+            column,
+            ..
+        } => {
             let line_idx = line.saturating_sub(1) as u32;
             let col_idx = column.saturating_sub(1) as u32;
             Diagnostic::new(
-                Range::new(Position::new(line_idx, col_idx), Position::new(line_idx, col_idx + 1)),
+                Range::new(
+                    Position::new(line_idx, col_idx),
+                    Position::new(line_idx, col_idx + 1),
+                ),
                 Some(DiagnosticSeverity::ERROR),
-                None, None, message, None, None,
+                None,
+                None,
+                message,
+                None,
+                None,
             )
         }
-        _ => {
-            Diagnostic::new(
-                Range::new(Position::new(0, 0), Position::new(0, 0)),
-                Some(DiagnosticSeverity::ERROR),
-                None, None, err.to_string(), None, None,
-            )
-        }
+        _ => Diagnostic::new(
+            Range::new(Position::new(0, 0), Position::new(0, 0)),
+            Some(DiagnosticSeverity::ERROR),
+            None,
+            None,
+            err.to_string(),
+            None,
+            None,
+        ),
     }
 }
 

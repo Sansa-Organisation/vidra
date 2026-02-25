@@ -55,11 +55,18 @@ fn save_json_vec<T: Serialize>(path: &Path, items: &[T]) -> Result<()> {
 pub fn create_project(name: &str, width: u32, height: u32, fps: u32) -> Result<PathBuf> {
     let project_dir = PathBuf::from(name);
     if project_dir.exists() {
-        anyhow::bail!("project directory already exists: {}", project_dir.display());
+        anyhow::bail!(
+            "project directory already exists: {}",
+            project_dir.display()
+        );
     }
 
-    std::fs::create_dir_all(project_dir.join("assets"))
-        .with_context(|| format!("failed to create project dirs for {}", project_dir.display()))?;
+    std::fs::create_dir_all(project_dir.join("assets")).with_context(|| {
+        format!(
+            "failed to create project dirs for {}",
+            project_dir.display()
+        )
+    })?;
 
     let mut config = vidra_core::VidraConfig::default();
     config.project.name = name.to_string();
@@ -87,7 +94,9 @@ pub fn add_scene_to_vidra_file(file: &Path, scene_name: &str, duration_seconds: 
     let mut src = std::fs::read_to_string(file)
         .with_context(|| format!("failed to read vidra file: {}", file.display()))?;
 
-    let insert_at = src.rfind('}').context("invalid vidra file: could not find project closing brace")?;
+    let insert_at = src
+        .rfind('}')
+        .context("invalid vidra file: could not find project closing brace")?;
     let scene_block = format!(
         "\n    scene(\"{}\", {}s) {{\n        layer(\"{}__placeholder\") {{\n            solid(#111111)\n        }}\n    }}\n",
         scene_name,
@@ -350,7 +359,10 @@ fn extract_numeric_for_property(value: &Value, property: &str) -> Option<String>
 
 fn read_endpoint_value_alias(anim: &Value, keys: &[&str], property: &str) -> Option<String> {
     for key in keys {
-        if let Some(v) = anim.get(*key).and_then(|x| extract_numeric_for_property(x, property)) {
+        if let Some(v) = anim
+            .get(*key)
+            .and_then(|x| extract_numeric_for_property(x, property))
+        {
             return Some(v);
         }
     }
@@ -384,7 +396,11 @@ fn normalize_easing_token(raw: &str) -> Option<String> {
 
 fn read_easing_alias(anim: &Value) -> Option<String> {
     for key in ["easing", "curve", "timingFunction", "timing"] {
-        if let Some(s) = anim.get(key).and_then(|v| v.as_str()).and_then(normalize_easing_token) {
+        if let Some(s) = anim
+            .get(key)
+            .and_then(|v| v.as_str())
+            .and_then(normalize_easing_token)
+        {
             return Some(s);
         }
     }
@@ -421,7 +437,11 @@ fn parse_keyframe_time_value(v: &Value, start_n: f64, end_n: f64) -> Option<f64>
 
 fn parse_keyframe_offset_value(v: &Value, start_n: f64, end_n: f64) -> Option<f64> {
     if let Some(n) = v.as_f64() {
-        let fraction = if (0.0..=1.0).contains(&n) { n } else { n / 100.0 };
+        let fraction = if (0.0..=1.0).contains(&n) {
+            n
+        } else {
+            n / 100.0
+        };
         let clamped = fraction.clamp(0.0, 1.0);
         return Some(start_n + (end_n - start_n) * clamped);
     }
@@ -435,7 +455,11 @@ fn parse_keyframe_offset_value(v: &Value, start_n: f64, end_n: f64) -> Option<f6
             }
         }
         if let Ok(n) = t.parse::<f64>() {
-            let fraction = if (0.0..=1.0).contains(&n) { n } else { n / 100.0 };
+            let fraction = if (0.0..=1.0).contains(&n) {
+                n
+            } else {
+                n / 100.0
+            };
             let clamped = fraction.clamp(0.0, 1.0);
             return Some(start_n + (end_n - start_n) * clamped);
         }
@@ -444,7 +468,12 @@ fn parse_keyframe_offset_value(v: &Value, start_n: f64, end_n: f64) -> Option<f6
     parse_keyframe_time_value(v, start_n, end_n)
 }
 
-fn read_keyframes(anim: &Value, start_n: f64, end_n: f64, property: &str) -> Option<Vec<(f64, String, Option<String>)>> {
+fn read_keyframes(
+    anim: &Value,
+    start_n: f64,
+    end_n: f64,
+    property: &str,
+) -> Option<Vec<(f64, String, Option<String>)>> {
     let frames = anim
         .get("keyframes")
         .or_else(|| anim.get("frames"))
@@ -457,7 +486,11 @@ fn read_keyframes(anim: &Value, start_n: f64, end_n: f64, property: &str) -> Opt
             .or_else(|| frame.get("t"))
             .or_else(|| frame.get("at"))
             .and_then(|v| parse_keyframe_time_value(v, start_n, end_n))
-            .or_else(|| frame.get("offset").and_then(|v| parse_keyframe_offset_value(v, start_n, end_n)))
+            .or_else(|| {
+                frame
+                    .get("offset")
+                    .and_then(|v| parse_keyframe_offset_value(v, start_n, end_n))
+            })
             .or_else(|| read_number_alias(frame, &["timeMs", "atMs"]).map(|ms| ms / 1000.0));
         let value = read_endpoint_value_alias(frame, &["value", "v", "val", "to"], property)
             .or_else(|| extract_numeric_for_property(frame, property))?;
@@ -473,7 +506,11 @@ fn read_keyframes(anim: &Value, start_n: f64, end_n: f64, property: &str) -> Opt
     if explicit_count == 0 {
         let len = tmp.len() as f64;
         for (idx, (time, _, _)) in tmp.iter_mut().enumerate() {
-            let fraction = if len <= 1.0 { 0.0 } else { (idx as f64) / (len - 1.0) };
+            let fraction = if len <= 1.0 {
+                0.0
+            } else {
+                (idx as f64) / (len - 1.0)
+            };
             *time = Some(start_n + (end_n - start_n) * fraction);
         }
     } else if explicit_count != tmp.len() {
@@ -591,7 +628,7 @@ fn build_simple_animation_block(anim: &Value) -> Option<String> {
     let delay_ms = read_number_alias(anim, &["delayMs", "startDelayMs"]);
     let duration_ms = read_number_alias(anim, &["durationMs", "lengthMs"]);
 
-    let start_n = read_number_alias(anim, &["start", "startTime", "fromTime"]) 
+    let start_n = read_number_alias(anim, &["start", "startTime", "fromTime"])
         .or_else(|| read_number_alias(anim, &["delay", "startDelay"]))
         .or_else(|| delay_ms.map(|ms| ms / 1000.0))
         .unwrap_or(0.0);
@@ -621,7 +658,10 @@ fn build_simple_animation_block(anim: &Value) -> Option<String> {
                 body.push_str(&format!("                {}s -> {}", t, value));
             } else {
                 let segment_easing = frame_easing.as_deref().unwrap_or(easing.as_str());
-                body.push_str(&format!("\n                {}s -> {} ~ {}", t, value, segment_easing));
+                body.push_str(&format!(
+                    "\n                {}s -> {} ~ {}",
+                    t, value, segment_easing
+                ));
             }
         }
     } else {
@@ -663,7 +703,11 @@ fn apply_single_animation_block(block: &mut String, anim: &Value) {
     }
 }
 
-pub fn apply_layer_properties_to_vidra_file(file: &Path, layer_id: &str, properties: &Value) -> Result<bool> {
+pub fn apply_layer_properties_to_vidra_file(
+    file: &Path,
+    layer_id: &str,
+    properties: &Value,
+) -> Result<bool> {
     let mut src = std::fs::read_to_string(file)
         .with_context(|| format!("failed to read vidra file: {}", file.display()))?;
 
@@ -712,11 +756,19 @@ pub fn apply_layer_properties_to_vidra_file(file: &Path, layer_id: &str, propert
         }
     }
     if let (Some(x), Some(y)) = (pos_x, pos_y) {
-        block = upsert_property_line(&block, "position(", &format!("            position({}, {})", x, y));
+        block = upsert_property_line(
+            &block,
+            "position(",
+            &format!("            position({}, {})", x, y),
+        );
     }
 
     if let Some(opacity) = properties.get("opacity").and_then(num_as_string) {
-        block = upsert_property_line(&block, "opacity(", &format!("            opacity({})", opacity));
+        block = upsert_property_line(
+            &block,
+            "opacity(",
+            &format!("            opacity({})", opacity),
+        );
     }
 
     if let Some(v) = properties
@@ -724,7 +776,11 @@ pub fn apply_layer_properties_to_vidra_file(file: &Path, layer_id: &str, propert
         .or_else(|| properties.get("corner_radius"))
         .and_then(num_as_string)
     {
-        block = upsert_property_line(&block, "cornerRadius(", &format!("            cornerRadius({})", v));
+        block = upsert_property_line(
+            &block,
+            "cornerRadius(",
+            &format!("            cornerRadius({})", v),
+        );
     }
 
     if let Some(v) = properties
@@ -732,7 +788,11 @@ pub fn apply_layer_properties_to_vidra_file(file: &Path, layer_id: &str, propert
         .or_else(|| properties.get("stroke_width"))
         .and_then(num_as_string)
     {
-        block = upsert_property_line(&block, "strokeWidth(", &format!("            strokeWidth({})", v));
+        block = upsert_property_line(
+            &block,
+            "strokeWidth(",
+            &format!("            strokeWidth({})", v),
+        );
     }
 
     if let Some(fill) = properties
@@ -750,7 +810,11 @@ pub fn apply_layer_properties_to_vidra_file(file: &Path, layer_id: &str, propert
         .or_else(|| properties.get("stroke_color"))
         .and_then(|v| v.as_str())
     {
-        block = upsert_property_line(&block, "stroke(", &format!("            stroke({})", stroke));
+        block = upsert_property_line(
+            &block,
+            "stroke(",
+            &format!("            stroke({})", stroke),
+        );
     }
 
     // Minimal animation support: properties.animate = object or [objects]
@@ -766,7 +830,11 @@ pub fn apply_layer_properties_to_vidra_file(file: &Path, layer_id: &str, propert
     }
 
     if let Some(rotation) = properties.get("rotation").and_then(num_as_string) {
-        block = upsert_property_line(&block, "rotation(", &format!("            rotation({})", rotation));
+        block = upsert_property_line(
+            &block,
+            "rotation(",
+            &format!("            rotation({})", rotation),
+        );
     }
 
     let scale = properties.get("scale").and_then(num_as_string);
@@ -780,7 +848,11 @@ pub fn apply_layer_properties_to_vidra_file(file: &Path, layer_id: &str, propert
         .and_then(num_as_string);
 
     if let (Some(sx), Some(sy)) = (scale_x.clone(), scale_y.clone()) {
-        block = upsert_property_line(&block, "scale(", &format!("            scale({}, {})", sx, sy));
+        block = upsert_property_line(
+            &block,
+            "scale(",
+            &format!("            scale({}, {})", sx, sy),
+        );
     } else if let Some(s) = scale {
         block = upsert_property_line(&block, "scale(", &format!("            scale({})", s));
     } else if let Some(sx) = scale_x {
@@ -798,7 +870,12 @@ pub fn apply_layer_properties_to_vidra_file(file: &Path, layer_id: &str, propert
     Ok(true)
 }
 
-pub fn record_layer_edit(project_root: &Path, scene_id: &str, layer_path: &str, properties: Value) -> Result<PathBuf> {
+pub fn record_layer_edit(
+    project_root: &Path,
+    scene_id: &str,
+    layer_path: &str,
+    properties: Value,
+) -> Result<PathBuf> {
     let path = patches_path(project_root)?;
     let mut patches: Vec<McpPatch> = load_json_vec(&path)?;
     patches.push(McpPatch {
@@ -812,7 +889,11 @@ pub fn record_layer_edit(project_root: &Path, scene_id: &str, layer_path: &str, 
     Ok(path)
 }
 
-pub fn record_style_set(project_root: &Path, target_id: &str, style_props: Value) -> Result<PathBuf> {
+pub fn record_style_set(
+    project_root: &Path,
+    target_id: &str,
+    style_props: Value,
+) -> Result<PathBuf> {
     let path = patches_path(project_root)?;
     let mut patches: Vec<McpPatch> = load_json_vec(&path)?;
     patches.push(McpPatch {
@@ -826,7 +907,12 @@ pub fn record_style_set(project_root: &Path, target_id: &str, style_props: Value
     Ok(path)
 }
 
-pub fn register_asset(project_root: &Path, id: &str, asset_path: &str, asset_type: &str) -> Result<PathBuf> {
+pub fn register_asset(
+    project_root: &Path,
+    id: &str,
+    asset_path: &str,
+    asset_type: &str,
+) -> Result<PathBuf> {
     let path = assets_path(project_root)?;
     let mut assets: Vec<McpAsset> = load_json_vec(&path)?;
     assets.retain(|a| a.id != id);
@@ -905,7 +991,8 @@ mod tests {
 
     #[test]
     fn apply_layer_text_style_properties_updates_text_call() {
-        let root = std::env::temp_dir().join(format!("vidra_mcp_text_style_{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("vidra_mcp_text_style_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
 
@@ -978,7 +1065,8 @@ mod tests {
 
     #[test]
     fn apply_layer_shape_style_properties_updates_shape_lines() {
-        let root = std::env::temp_dir().join(format!("vidra_mcp_shape_style_{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("vidra_mcp_shape_style_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
 
@@ -1062,7 +1150,8 @@ mod tests {
 
     #[test]
     fn apply_layer_animation_properties_replaces_existing_block() {
-        let root = std::env::temp_dir().join(format!("vidra_mcp_anim_replace_{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("vidra_mcp_anim_replace_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
 
@@ -1107,7 +1196,8 @@ mod tests {
 
     #[test]
     fn apply_layer_animation_array_inserts_multiple_blocks() {
-        let root = std::env::temp_dir().join(format!("vidra_mcp_anim_array_{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("vidra_mcp_anim_array_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
 
@@ -1158,7 +1248,8 @@ mod tests {
 
     #[test]
     fn apply_layer_animation_delay_duration_and_loop() {
-        let root = std::env::temp_dir().join(format!("vidra_mcp_anim_timing_{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("vidra_mcp_anim_timing_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
 
@@ -1202,7 +1293,8 @@ mod tests {
 
     #[test]
     fn apply_layer_animation_alias_timing_and_repeat() {
-        let root = std::env::temp_dir().join(format!("vidra_mcp_anim_alias_{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("vidra_mcp_anim_alias_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
 
@@ -1246,7 +1338,8 @@ mod tests {
 
     #[test]
     fn apply_layer_animation_property_alias_maps_to_canonical() {
-        let root = std::env::temp_dir().join(format!("vidra_mcp_anim_prop_alias_{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("vidra_mcp_anim_prop_alias_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
 
@@ -1303,7 +1396,8 @@ mod tests {
 
     #[test]
     fn apply_layer_animation_value_aliases_are_supported() {
-        let root = std::env::temp_dir().join(format!("vidra_mcp_anim_value_alias_{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("vidra_mcp_anim_value_alias_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
 
@@ -1345,7 +1439,10 @@ mod tests {
 
     #[test]
     fn apply_layer_animation_easing_aliases_are_normalized() {
-        let root = std::env::temp_dir().join(format!("vidra_mcp_anim_easing_alias_{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!(
+            "vidra_mcp_anim_easing_alias_{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
 
@@ -1386,7 +1483,8 @@ mod tests {
 
     #[test]
     fn apply_layer_animation_keyframes_are_rendered_and_sorted() {
-        let root = std::env::temp_dir().join(format!("vidra_mcp_anim_keyframes_{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("vidra_mcp_anim_keyframes_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
 
@@ -1431,7 +1529,10 @@ mod tests {
 
     #[test]
     fn apply_layer_animation_keyframes_respect_per_frame_easing() {
-        let root = std::env::temp_dir().join(format!("vidra_mcp_anim_keyframe_easing_{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!(
+            "vidra_mcp_anim_keyframe_easing_{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
 
@@ -1474,7 +1575,10 @@ mod tests {
 
     #[test]
     fn apply_layer_animation_keyframe_percent_times_map_to_span() {
-        let root = std::env::temp_dir().join(format!("vidra_mcp_anim_keyframe_percent_{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!(
+            "vidra_mcp_anim_keyframe_percent_{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
 
@@ -1520,7 +1624,10 @@ mod tests {
 
     #[test]
     fn apply_layer_animation_object_values_map_by_property() {
-        let root = std::env::temp_dir().join(format!("vidra_mcp_anim_object_values_{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!(
+            "vidra_mcp_anim_object_values_{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
 
@@ -1564,7 +1671,10 @@ mod tests {
 
     #[test]
     fn apply_layer_animation_scale_uses_composite_object_average() {
-        let root = std::env::temp_dir().join(format!("vidra_mcp_anim_scale_object_{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!(
+            "vidra_mcp_anim_scale_object_{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
 
@@ -1606,7 +1716,8 @@ mod tests {
 
     #[test]
     fn apply_layer_animation_scale_reads_array_values() {
-        let root = std::env::temp_dir().join(format!("vidra_mcp_anim_scale_array_{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("vidra_mcp_anim_scale_array_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
 
@@ -1648,7 +1759,10 @@ mod tests {
 
     #[test]
     fn apply_layer_animation_keyframes_without_time_are_distributed() {
-        let root = std::env::temp_dir().join(format!("vidra_mcp_anim_keyframes_implicit_{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!(
+            "vidra_mcp_anim_keyframes_implicit_{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
 
@@ -1693,7 +1807,10 @@ mod tests {
 
     #[test]
     fn apply_layer_animation_keyframes_support_offset_fraction() {
-        let root = std::env::temp_dir().join(format!("vidra_mcp_anim_keyframes_offset_{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!(
+            "vidra_mcp_anim_keyframes_offset_{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
 
@@ -1739,7 +1856,10 @@ mod tests {
 
     #[test]
     fn apply_layer_animation_keyframes_mixed_times_are_interpolated() {
-        let root = std::env::temp_dir().join(format!("vidra_mcp_anim_keyframes_mixed_{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!(
+            "vidra_mcp_anim_keyframes_mixed_{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
 
@@ -1789,7 +1909,10 @@ mod tests {
 
     #[test]
     fn apply_layer_animation_keyframes_support_offset_percent_number() {
-        let root = std::env::temp_dir().join(format!("vidra_mcp_anim_keyframes_offset_percent_num_{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!(
+            "vidra_mcp_anim_keyframes_offset_percent_num_{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
 
@@ -1835,7 +1958,10 @@ mod tests {
 
     #[test]
     fn apply_layer_animation_keyframes_clamp_out_of_range_offsets() {
-        let root = std::env::temp_dir().join(format!("vidra_mcp_anim_keyframes_offset_clamp_{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!(
+            "vidra_mcp_anim_keyframes_offset_clamp_{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
 

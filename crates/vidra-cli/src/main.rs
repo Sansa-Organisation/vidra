@@ -1,26 +1,27 @@
-mod dev_server;
-mod test_runner;
-mod auth;
 mod ai;
-mod media;
-mod remote_assets;
-mod sync_tools;
-mod sync_cloud;
-mod jobs_tools;
-mod jobs_cloud;
-mod telemetry_tools;
+mod auth;
 mod brand_tools;
-mod plugin_tools;
-mod workspace_tools;
-mod publish_tools;
+mod dev_server;
+mod editor_server;
+mod jobs_cloud;
+mod jobs_tools;
 mod licenses_tools;
-mod storyboard_tools;
 mod mcp_tools;
+mod media;
+mod plugin_tools;
+mod publish_tools;
+mod remote_assets;
+mod storyboard_tools;
+mod sync_cloud;
+mod sync_tools;
+mod telemetry_tools;
+mod test_runner;
+mod workspace_tools;
 
+pub mod mcp;
+pub mod receipt;
 #[cfg(test)]
 mod test_support;
-pub mod receipt;
-pub mod mcp;
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -124,10 +125,10 @@ enum Commands {
     Lsp,
 
     /// Start the Model Context Protocol Server (JSON-RPC)
-    /// 
+    ///
     /// This command starts an MCP stdio server. Do not run this manually.
     /// Configure your AI assistant (e.g. Claude Desktop, Cursor) with:
-    /// 
+    ///
     /// { "command": "bunx", "args": ["--bun", "@sansavision/vidra@latest", "mcp"] }
     ///
     /// Available tools for LLMs:
@@ -182,7 +183,7 @@ enum Commands {
         /// Text prompt to generate the storyboard
         #[arg()]
         prompt: String,
-        
+
         /// Output path for the generated grid (defaults to storyboard.png)
         #[arg(short, long)]
         output: Option<PathBuf>,
@@ -274,6 +275,21 @@ enum Commands {
 
     /// Run an environment health check
     Doctor,
+
+    /// Launch the visual editor for a Vidra project
+    Editor {
+        /// Path to the .vidra file to edit (default: main.vidra)
+        #[arg(default_value = "main.vidra")]
+        file: PathBuf,
+
+        /// Port for the editor server (default: 3001)
+        #[arg(long, default_value_t = 3001)]
+        port: u16,
+
+        /// Auto-open the editor in the default browser
+        #[arg(long)]
+        open: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -410,22 +426,31 @@ fn main() -> Result<()> {
 
     let is_mcp_or_lsp = matches!(cli.command, Commands::Mcp | Commands::Lsp);
 
-    let subscriber = tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        );
+    let subscriber = tracing_subscriber::fmt().with_env_filter(
+        tracing_subscriber::EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+    );
 
     if is_mcp_or_lsp {
         // MCP/LSP: write logs to stderr with no ANSI colors to avoid polluting
         // the JSON-RPC stream on stdout.
-        subscriber.with_ansi(false).with_writer(std::io::stderr).init();
+        subscriber
+            .with_ansi(false)
+            .with_writer(std::io::stderr)
+            .init();
     } else {
         subscriber.init();
     }
 
     match cli.command {
-        Commands::Render { file, output, format, targets, cloud, data } => cmd_render(file, output, format, targets, cloud, data),
+        Commands::Render {
+            file,
+            output,
+            format,
+            targets,
+            cloud,
+            data,
+        } => cmd_render(file, output, format, targets, cloud, data),
         Commands::Check { file } => cmd_check(file),
         Commands::Fmt { file, check } => cmd_fmt(file, check),
         Commands::Test { file, update } => test_runner::run_test(file, update),
@@ -434,12 +459,10 @@ fn main() -> Result<()> {
         Commands::Info => cmd_info(),
         Commands::Init { name, kit } => cmd_init(&name, kit),
         Commands::Dev { file } => run_async(dev_server::run_dev_server(file)),
-        Commands::Lsp => {
-            run_async(async {
-                vidra_lsp::start_lsp().await;
-                Ok(())
-            })
-        },
+        Commands::Lsp => run_async(async {
+            vidra_lsp::start_lsp().await;
+            Ok(())
+        }),
         Commands::Mcp => {
             // Redirect stdout → stderr so that any println! from sub-tools
             // (e.g. cmd_render, cmd_preview) goes to stderr instead of
@@ -450,7 +473,7 @@ fn main() -> Result<()> {
                 mcp::run_mcp_server(saved_stdout).await?;
                 Ok(())
             })
-        },
+        }
         Commands::Inspect { file, frame } => cmd_inspect(file, frame),
         Commands::Auth { command } => match command {
             AuthCommands::Login => auth::login(),
@@ -507,6 +530,9 @@ fn main() -> Result<()> {
             PluginCommands::Info { name } => cmd_plugin_info(&name),
         },
         Commands::Dashboard => cmd_dashboard(),
+        Commands::Editor { file, port, open } => {
+            run_async(editor_server::run_editor_server(file, port, open))
+        }
     }
 }
 
@@ -569,7 +595,14 @@ fn cmd_share(file: Option<PathBuf>) -> Result<()> {
 fn cmd_preview(file: PathBuf, share: bool) -> Result<()> {
     println!("🎬 Generating local preview for {}...", file.display());
     let out = std::path::PathBuf::from("output").join("preview.mp4");
-    cmd_render(file, Some(out.clone()), Some("mp4".to_string()), None, false, None)?;
+    cmd_render(
+        file,
+        Some(out.clone()),
+        Some("mp4".to_string()),
+        None,
+        false,
+        None,
+    )?;
 
     if share {
         println!("🔗 Sharing preview...");
@@ -599,7 +632,10 @@ fn telemetry_show() -> Result<()> {
 fn telemetry_set(tier: &str) -> Result<()> {
     let t = telemetry_tools::parse_tier(tier)?;
     let cfg = telemetry_tools::save_telemetry_config(t)?;
-    println!("✅ Telemetry tier successfully set to: {}", cfg.tier.as_str());
+    println!(
+        "✅ Telemetry tier successfully set to: {}",
+        cfg.tier.as_str()
+    );
     Ok(())
 }
 
@@ -614,7 +650,9 @@ fn telemetry_export() -> Result<()> {
 fn telemetry_delete() -> Result<()> {
     telemetry_tools::delete_local_telemetry_data()?;
     println!("🗑️  Local telemetry config deleted.");
-    println!("   (Note: receipts/uploads queues are retained; use `vidra sync` to manage sync state.)");
+    println!(
+        "   (Note: receipts/uploads queues are retained; use `vidra sync` to manage sync state.)"
+    );
     Ok(())
 }
 
@@ -625,7 +663,11 @@ fn cmd_doctor() -> Result<()> {
 
     println!("🩺 Vidra Doctor");
     println!("   CLI version: {}", env!("CARGO_PKG_VERSION"));
-    println!("   OS: {} ({})", std::env::consts::OS, std::env::consts::ARCH);
+    println!(
+        "   OS: {} ({})",
+        std::env::consts::OS,
+        std::env::consts::ARCH
+    );
 
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     println!("   CWD: {}", cwd.display());
@@ -679,7 +721,10 @@ fn cmd_doctor() -> Result<()> {
 
     // VLT token (plan + offline validation).
     match crate::auth::Vlt::load_local().and_then(|v| v.validate_offline().map(|_| v)) {
-        Ok(vlt) => println!("   VLT: {} (plan: {})", vlt.payload.vlt_id, vlt.payload.plan),
+        Ok(vlt) => println!(
+            "   VLT: {} (plan: {})",
+            vlt.payload.vlt_id, vlt.payload.plan
+        ),
         Err(e) => warnings.push(format!("VLT: {:#}", e)),
     }
 
@@ -713,7 +758,11 @@ fn cmd_doctor() -> Result<()> {
                     m.generated_at.to_rfc3339()
                 );
             }
-            Err(e) => warnings.push(format!("asset manifest unreadable ({}): {:#}", manifest_path.display(), e)),
+            Err(e) => warnings.push(format!(
+                "asset manifest unreadable ({}): {:#}",
+                manifest_path.display(),
+                e
+            )),
         }
     } else {
         println!("   Asset manifest: (none) — run `vidra sync assets`");
@@ -739,7 +788,14 @@ fn cmd_doctor() -> Result<()> {
     Ok(())
 }
 
-fn cmd_render(file: PathBuf, output: Option<PathBuf>, format: Option<String>, targets: Option<String>, cloud: bool, data: Option<PathBuf>) -> Result<()> {
+fn cmd_render(
+    file: PathBuf,
+    output: Option<PathBuf>,
+    format: Option<String>,
+    targets: Option<String>,
+    cloud: bool,
+    data: Option<PathBuf>,
+) -> Result<()> {
     let start = Instant::now();
 
     // Best-effort config load (rendering a standalone file without a project folder is allowed).
@@ -752,7 +808,8 @@ fn cmd_render(file: PathBuf, output: Option<PathBuf>, format: Option<String>, ta
         };
         jobs_tools::ensure_jobs_dirs(&jobs_root)?;
 
-        let project_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+        let project_root =
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
         let job_id = {
             let ts = chrono::Utc::now().to_rfc3339();
             let mut hasher = sha2::Sha256::new();
@@ -780,7 +837,7 @@ fn cmd_render(file: PathBuf, output: Option<PathBuf>, format: Option<String>, ta
         println!("   Job ID: {}", job_id);
         println!("   Project: {}", project_root.display());
         println!("   File: {}", file.display());
-        println!("   Next: run `vidra jobs run` (or `vidra jobs watch`)" );
+        println!("   Next: run `vidra jobs run` (or `vidra jobs watch`)");
         return Ok(());
     }
 
@@ -794,8 +851,8 @@ fn cmd_render(file: PathBuf, output: Option<PathBuf>, format: Option<String>, ta
         println!("   Source:    {}", file.display());
         println!("   Data:      {}", data_path.display());
 
-        let dataset = vidra_ir::data::DataSet::load(data_path)
-            .map_err(|e| anyhow::anyhow!("{}", e))?;
+        let dataset =
+            vidra_ir::data::DataSet::load(data_path).map_err(|e| anyhow::anyhow!("{}", e))?;
 
         println!("   Rows:      {}", dataset.rows.len());
         println!("   Columns:   {:?}", dataset.columns);
@@ -803,7 +860,8 @@ fn cmd_render(file: PathBuf, output: Option<PathBuf>, format: Option<String>, ta
 
         let stem = file.file_stem().unwrap_or_default().to_string_lossy();
         let out_ext_str = format.as_deref().unwrap_or("mp4");
-        let out_dir = output.as_ref()
+        let out_dir = output
+            .as_ref()
             .and_then(|o| o.parent())
             .unwrap_or(std::path::Path::new("output"));
         std::fs::create_dir_all(out_dir)?;
@@ -813,11 +871,19 @@ fn cmd_render(file: PathBuf, output: Option<PathBuf>, format: Option<String>, ta
             let row_output = out_dir.join(format!("{}_{}.{}", stem, row_idx + 1, out_ext_str));
 
             // Write interpolated source to a temp file, then render it
-            let tmp_file = std::env::temp_dir().join(format!("vidra_batch_{}_{}.vidra", stem, row_idx));
+            let tmp_file =
+                std::env::temp_dir().join(format!("vidra_batch_{}_{}.vidra", stem, row_idx));
             std::fs::write(&tmp_file, &row_source)?;
-            
+
             println!("   ── Row {} ──", row_idx + 1);
-            match cmd_render(tmp_file.clone(), Some(row_output.clone()), format.clone(), targets.clone(), false, None) {
+            match cmd_render(
+                tmp_file.clone(),
+                Some(row_output.clone()),
+                format.clone(),
+                targets.clone(),
+                false,
+                None,
+            ) {
                 Ok(_) => println!("      ✓ Row {} → {}", row_idx + 1, row_output.display()),
                 Err(e) => println!("      ✗ Row {} failed: {}", row_idx + 1, e),
             }
@@ -826,7 +892,11 @@ fn cmd_render(file: PathBuf, output: Option<PathBuf>, format: Option<String>, ta
 
         let total = start.elapsed();
         println!();
-        println!("   ⚡ Batch complete: {} rows in {:.2}s", dataset.rows.len(), total.as_secs_f64());
+        println!(
+            "   ⚡ Batch complete: {} rows in {:.2}s",
+            dataset.rows.len(),
+            total.as_secs_f64()
+        );
         return Ok(());
     }
 
@@ -865,9 +935,11 @@ fn cmd_render(file: PathBuf, output: Option<PathBuf>, format: Option<String>, ta
                         println!("   ⚠️ {}", d);
                     }
                 }
-                let msgs: Vec<String> = diags.into_iter()
+                let msgs: Vec<String> = diags
+                    .into_iter()
                     .filter(|d| d.severity == vidra_lang::checker::DiagnosticSeverity::Error)
-                    .map(|e| e.to_string()).collect();
+                    .map(|e| e.to_string())
+                    .collect();
                 anyhow::bail!("Type errors:\n  {}", msgs.join("\n  "));
             }
         };
@@ -881,15 +953,28 @@ fn cmd_render(file: PathBuf, output: Option<PathBuf>, format: Option<String>, ta
         }
         let type_time = type_start.elapsed();
         type_time_secs = type_time.as_secs_f64();
-        println!("   ✓ Type checked and linted in {:.1}ms", type_time_secs * 1000.0);
-        
+        println!(
+            "   ✓ Type checked and linted in {:.1}ms",
+            type_time_secs * 1000.0
+        );
+
         (Some(ast), None)
     };
 
-    let base_minor = if let Some(a) = &ast { a.width.min(a.height) } else { base_ir.as_ref().unwrap().settings.width.min(base_ir.as_ref().unwrap().settings.height) };
+    let base_minor = if let Some(a) = &ast {
+        a.width.min(a.height)
+    } else {
+        base_ir
+            .as_ref()
+            .unwrap()
+            .settings
+            .width
+            .min(base_ir.as_ref().unwrap().settings.height)
+    };
 
     let target_list = if let Some(t_str) = targets {
-        t_str.split(',')
+        t_str
+            .split(',')
             .filter(|s| !s.is_empty())
             .map(|s| s.to_string())
             .collect::<Vec<_>>()
@@ -914,7 +999,10 @@ fn cmd_render(file: PathBuf, output: Option<PathBuf>, format: Option<String>, ta
                             a.width = base_minor;
                             a.height = base_minor;
                         }
-                        println!("\n▶ Generating target: {} ({}x{})", target, a.width, a.height);
+                        println!(
+                            "\n▶ Generating target: {} ({}x{})",
+                            target, a.width, a.height
+                        );
                     } else {
                         println!("   ⚠️ Invalid target format: {}", target);
                         continue;
@@ -925,10 +1013,7 @@ fn cmd_render(file: PathBuf, output: Option<PathBuf>, format: Option<String>, ta
             let p = vidra_lang::Compiler::compile(&a).map_err(|e| anyhow::anyhow!("{}", e))?;
             let compile_time = compile_start.elapsed();
             compile_time_secs = compile_time.as_secs_f64();
-            println!(
-                "   ✓ Compiled to IR in {:.1}ms",
-                compile_time_secs * 1000.0
-            );
+            println!("   ✓ Compiled to IR in {:.1}ms", compile_time_secs * 1000.0);
             p
         } else {
             let mut ir = base_ir.clone().unwrap();
@@ -945,10 +1030,13 @@ fn cmd_render(file: PathBuf, output: Option<PathBuf>, format: Option<String>, ta
                             ir.settings.width = base_minor;
                             ir.settings.height = base_minor;
                         }
-                        println!("\n▶ Generating target: {} ({}x{})", target, ir.settings.width, ir.settings.height);
+                        println!(
+                            "\n▶ Generating target: {} ({}x{})",
+                            target, ir.settings.width, ir.settings.height
+                        );
                     } else {
-                         println!("   ⚠️ Invalid target format: {}", target);
-                         continue;
+                        println!("   ⚠️ Invalid target format: {}", target);
+                        continue;
                     }
                 }
             }
@@ -1049,7 +1137,8 @@ fn cmd_render(file: PathBuf, output: Option<PathBuf>, format: Option<String>, ta
         // Phase 5: Encode — detect output format
         // Determine the output format: explicit --format flag > file extension > default mp4
         let out_ext = format.as_deref().unwrap_or_else(|| {
-            output.as_ref()
+            output
+                .as_ref()
                 .and_then(|p| p.extension())
                 .and_then(|e| e.to_str())
                 .unwrap_or("mp4")
@@ -1069,7 +1158,7 @@ fn cmd_render(file: PathBuf, output: Option<PathBuf>, format: Option<String>, ta
             } else {
                 PathBuf::from("output")
             };
-            
+
             if output.is_some() && output.as_ref().unwrap().is_file() {
                 let mut dir = p.parent().unwrap_or(std::path::Path::new("")).to_path_buf();
                 let f_stem = p.file_stem().unwrap_or_default().to_string_lossy();
@@ -1171,9 +1260,11 @@ fn cmd_render(file: PathBuf, output: Option<PathBuf>, format: Option<String>, ta
         if let Some(receipts_dir) = crate::receipt::receipts_dir() {
             let signing_key = crate::receipt::load_or_create_device_signing_key();
 
-            let output_hash = sha256_file_prefixed(&output_path)
-                .unwrap_or_else(|_| "sha256:".to_string());
-            let vlt_id = match crate::auth::Vlt::load_local().and_then(|v| v.validate_offline().map(|_| v)) {
+            let output_hash =
+                sha256_file_prefixed(&output_path).unwrap_or_else(|_| "sha256:".to_string());
+            let vlt_id = match crate::auth::Vlt::load_local()
+                .and_then(|v| v.validate_offline().map(|_| v))
+            {
                 Ok(vlt) => vlt.payload.vlt_id,
                 Err(_) => "vlt_missing".to_string(),
             };
@@ -1181,10 +1272,7 @@ fn cmd_render(file: PathBuf, output: Option<PathBuf>, format: Option<String>, ta
             if let Ok(signing_key) = signing_key {
                 let output_format = format!(
                     "{}_{}x{}_{}fps",
-                    out_ext,
-                    project.settings.width,
-                    project.settings.height,
-                    project.settings.fps
+                    out_ext, project.settings.width, project.settings.height, project.settings.fps
                 );
 
                 if let Ok(receipt) = crate::receipt::RenderReceipt::new(
@@ -1222,7 +1310,12 @@ fn extract_audio_tracks(project: &vidra_ir::Project) -> Vec<vidra_encode::ffmpeg
     tracks
 }
 
-fn extract_layer_audio(layer: &vidra_ir::layer::Layer, project: &vidra_ir::Project, time_offset: f64, tracks: &mut Vec<vidra_encode::ffmpeg::AudioTrack>) {
+fn extract_layer_audio(
+    layer: &vidra_ir::layer::Layer,
+    project: &vidra_ir::Project,
+    time_offset: f64,
+    tracks: &mut Vec<vidra_encode::ffmpeg::AudioTrack>,
+) {
     match &layer.content {
         vidra_ir::layer::LayerContent::Audio {
             asset_id,
@@ -1258,10 +1351,7 @@ fn extract_layer_audio(layer: &vidra_ir::layer::Layer, project: &vidra_ir::Proje
                     duck: None,
                 });
             } else {
-                tracing::warn!(
-                    "TTS layer references missing audio asset_id: {}",
-                    asset_id
-                );
+                tracing::warn!("TTS layer references missing audio asset_id: {}", asset_id);
             }
         }
         _ => {}
@@ -1284,7 +1374,8 @@ fn cmd_check(file: PathBuf) -> Result<()> {
     println!("   ✓ Parse OK");
 
     // Type Check
-    let checker = vidra_lang::TypeChecker::new(file.file_name().unwrap().to_string_lossy().to_string());
+    let checker =
+        vidra_lang::TypeChecker::new(file.file_name().unwrap().to_string_lossy().to_string());
     match checker.check(&ast) {
         Ok(diags) => {
             for diag in diags {
@@ -1302,9 +1393,11 @@ fn cmd_check(file: PathBuf) -> Result<()> {
                     println!("   ⚠️ {}", d);
                 }
             }
-            let msgs: Vec<String> = diags.into_iter()
+            let msgs: Vec<String> = diags
+                .into_iter()
                 .filter(|d| d.severity == vidra_lang::checker::DiagnosticSeverity::Error)
-                .map(|e| e.to_string()).collect();
+                .map(|e| e.to_string())
+                .collect();
             anyhow::bail!("Type checking failed:\n  {}", msgs.join("\n  "));
         }
     }
@@ -1332,9 +1425,9 @@ fn cmd_fmt(file: PathBuf, check: bool) -> Result<()> {
         .with_context(|| format!("failed to read file: {}", file.display()))?;
 
     let ast = parse_and_resolve_imports(&file)?;
-    
+
     let formatted = vidra_lang::Formatter::format(&ast);
-    
+
     if check {
         if source != formatted {
             anyhow::bail!("File is not properly formatted: {}", file.display());
@@ -1390,8 +1483,9 @@ fn cmd_init(name: &str, kit: Option<String>) -> Result<()> {
     if let Some(ref k) = kit {
         config.brand.kit = Some(k.clone());
     }
-    
-    config.save_to_file(&project_dir.join("vidra.config.toml"))
+
+    config
+        .save_to_file(&project_dir.join("vidra.config.toml"))
         .map_err(|e| anyhow::anyhow!("{}", e))
         .with_context(|| format!("failed to create vidra.config.toml in: {}", name))?;
 
@@ -1407,7 +1501,9 @@ project(1920, 1080, 60) {
         }
     }
 }
-"#.trim_start().to_string(),
+"#
+            .trim_start()
+            .to_string(),
             _ => r#"
 project(1920, 1080, 60) {
     scene("main", 5s) {
@@ -1417,7 +1513,9 @@ project(1920, 1080, 60) {
         }
     }
 }
-"#.trim_start().to_string()
+"#
+            .trim_start()
+            .to_string(),
         }
     } else {
         r#"
@@ -1429,9 +1527,11 @@ project(1920, 1080, 60) {
         }
     }
 }
-"#.trim_start().to_string()
+"#
+        .trim_start()
+        .to_string()
     };
-    
+
     std::fs::write(project_dir.join("main.vidra"), main_content)
         .with_context(|| format!("failed to create main.vidra in: {}", name))?;
 
@@ -1457,7 +1557,10 @@ fn cmd_inspect(file: PathBuf, target_frame: Option<u64>) -> Result<()> {
         let ast = parse_and_resolve_imports(&file)?;
         let checker = vidra_lang::TypeChecker::new(file_name.clone());
         if let Err(diags) = checker.check(&ast) {
-            let errors: Vec<_> = diags.into_iter().filter(|d| d.severity == vidra_lang::checker::DiagnosticSeverity::Error).collect();
+            let errors: Vec<_> = diags
+                .into_iter()
+                .filter(|d| d.severity == vidra_lang::checker::DiagnosticSeverity::Error)
+                .collect();
             if !errors.is_empty() {
                 anyhow::bail!("Type errors; attach --check for details.");
             }
@@ -1466,25 +1569,46 @@ fn cmd_inspect(file: PathBuf, target_frame: Option<u64>) -> Result<()> {
     };
 
     println!("🔍 Vidra Render Tree Inspector");
-    println!("📦 Project: {} ({}x{} @ {}fps)", file.display(), project.settings.width, project.settings.height, project.settings.fps);
+    println!(
+        "📦 Project: {} ({}x{} @ {}fps)",
+        file.display(),
+        project.settings.width,
+        project.settings.height,
+        project.settings.fps
+    );
 
     if let Some(f) = target_frame {
-        println!("⏱️  Evaluating at Frame: {} ({:.2}s)", f, f as f64 / project.settings.fps);
+        println!(
+            "⏱️  Evaluating at Frame: {} ({:.2}s)",
+            f,
+            f as f64 / project.settings.fps
+        );
     }
 
     println!("├── 🎬 Scenes ({} total)", project.scenes.len());
     let mut current_global: u64 = 0;
-    
+
     for (i, scene) in project.scenes.iter().enumerate() {
         let sc_frames = scene.frame_count(project.settings.fps);
-        let evaluates_here = target_frame.map_or(false, |f| f >= current_global && f < current_global + sc_frames);
+        let evaluates_here = target_frame.map_or(false, |f| {
+            f >= current_global && f < current_global + sc_frames
+        });
 
         let is_last_scene = i == project.scenes.len() - 1 && project.assets.count() == 0;
-        let scene_prefix = if is_last_scene { "└──" } else { "├──" };
+        let scene_prefix = if is_last_scene {
+            "└──"
+        } else {
+            "├──"
+        };
         let node_prefix = if is_last_scene { "    " } else { "│   " };
-        
-        println!("{} 🎞️  Scene '{}' [{:.2}s]", scene_prefix, scene.id, scene.duration.as_seconds());
-        
+
+        println!(
+            "{} 🎞️  Scene '{}' [{:.2}s]",
+            scene_prefix,
+            scene.id,
+            scene.duration.as_seconds()
+        );
+
         let mut layers_to_print: Vec<&vidra_ir::layer::Layer> = Vec::new();
         // If we specified a frame but it's not in this scene, we skip printing layers.
         if target_frame.is_none() || evaluates_here {
@@ -1497,7 +1621,9 @@ fn cmd_inspect(file: PathBuf, target_frame: Option<u64>) -> Result<()> {
 
         let eval_time = if evaluates_here {
             let local_f = target_frame.unwrap() - current_global;
-            Some(vidra_core::Duration::from_seconds(local_f as f64 / project.settings.fps))
+            Some(vidra_core::Duration::from_seconds(
+                local_f as f64 / project.settings.fps,
+            ))
         } else {
             None
         };
@@ -1506,7 +1632,7 @@ fn cmd_inspect(file: PathBuf, target_frame: Option<u64>) -> Result<()> {
             let is_last_layer = j == layers_to_print.len() - 1;
             print_layer(layer, &node_prefix, is_last_layer, eval_time);
         }
-        
+
         current_global += sc_frames;
     }
 
@@ -1516,27 +1642,61 @@ fn cmd_inspect(file: PathBuf, target_frame: Option<u64>) -> Result<()> {
         let assets: Vec<_> = project.assets.all().collect();
         for (i, asset) in assets.iter().enumerate() {
             let is_last_asset = i == assets.len() - 1;
-            let ast_prefix = if is_last_asset { "    └──" } else { "    ├──" };
-            println!("{} [{}] {} -> {}", ast_prefix, asset.asset_type, asset.id, asset.path.display());
+            let ast_prefix = if is_last_asset {
+                "    └──"
+            } else {
+                "    ├──"
+            };
+            println!(
+                "{} [{}] {} -> {}",
+                ast_prefix,
+                asset.asset_type,
+                asset.id,
+                asset.path.display()
+            );
         }
     }
 
     Ok(())
 }
 
-fn print_layer(layer: &vidra_ir::layer::Layer, prefix: &str, is_last: bool, eval_time: Option<vidra_core::Duration>) {
+fn print_layer(
+    layer: &vidra_ir::layer::Layer,
+    prefix: &str,
+    is_last: bool,
+    eval_time: Option<vidra_core::Duration>,
+) {
     let layer_prefix = if is_last { "└──" } else { "├──" };
-    let nested_prefix = if is_last { format!("{}    ", prefix) } else { format!("{}│   ", prefix) };
+    let nested_prefix = if is_last {
+        format!("{}    ", prefix)
+    } else {
+        format!("{}│   ", prefix)
+    };
 
     let content_type = match &layer.content {
         vidra_ir::layer::LayerContent::Text { text, .. } => format!("Text (\"{}\")", text),
         vidra_ir::layer::LayerContent::Image { asset_id } => format!("Image (asset: {})", asset_id),
-        vidra_ir::layer::LayerContent::Video { asset_id, .. } => format!("Video (asset: {})", asset_id),
-        vidra_ir::layer::LayerContent::Audio { asset_id, volume, .. } => format!("Audio (asset: {}, vol: {:.2})", asset_id, volume),
-        vidra_ir::layer::LayerContent::Waveform { asset_id, width, height, .. } => {
+        vidra_ir::layer::LayerContent::Video { asset_id, .. } => {
+            format!("Video (asset: {})", asset_id)
+        }
+        vidra_ir::layer::LayerContent::Audio {
+            asset_id, volume, ..
+        } => format!("Audio (asset: {}, vol: {:.2})", asset_id, volume),
+        vidra_ir::layer::LayerContent::Waveform {
+            asset_id,
+            width,
+            height,
+            ..
+        } => {
             format!("Waveform (audio: {}, {}x{})", asset_id, width, height)
         }
-        vidra_ir::layer::LayerContent::Spritesheet { asset_id, frame_width, frame_height, fps, .. } => {
+        vidra_ir::layer::LayerContent::Spritesheet {
+            asset_id,
+            frame_width,
+            frame_height,
+            fps,
+            ..
+        } => {
             format!(
                 "Spritesheet (asset: {}, tile: {}x{}, fps: {:.2})",
                 asset_id, frame_width, frame_height, fps
@@ -1544,9 +1704,16 @@ fn print_layer(layer: &vidra_ir::layer::Layer, prefix: &str, is_last: bool, eval
         }
         vidra_ir::layer::LayerContent::Shape { shape, .. } => format!("Shape ({:?})", shape),
         vidra_ir::layer::LayerContent::Solid { color } => format!("Solid ({})", color),
-        vidra_ir::layer::LayerContent::TTS { text, voice, .. } => format!("TTS (\"{}\" voice: {})", text, voice),
-        vidra_ir::layer::LayerContent::AutoCaption { asset_id, .. } => format!("AutoCaption (source: {})", asset_id),
-        vidra_ir::layer::LayerContent::Shader { asset_id, .. } => format!("Shader (asset: {})", asset_id),
+        vidra_ir::layer::LayerContent::TTS { text, voice, .. } => {
+            format!("TTS (\"{}\" voice: {})", text, voice)
+        }
+        vidra_ir::layer::LayerContent::AutoCaption { asset_id, .. } => {
+            format!("AutoCaption (source: {})", asset_id)
+        }
+        vidra_ir::layer::LayerContent::Shader { asset_id, .. } => {
+            format!("Shader (asset: {})", asset_id)
+        }
+        vidra_ir::layer::LayerContent::Web { source, .. } => format!("Web (source: {})", source),
         vidra_ir::layer::LayerContent::Empty => "Component/Group".to_string(),
     };
 
@@ -1566,28 +1733,43 @@ fn print_layer(layer: &vidra_ir::layer::Layer, prefix: &str, is_last: bool, eval
                     vidra_ir::animation::AnimatableProperty::ScaleX => scale_x = val,
                     vidra_ir::animation::AnimatableProperty::ScaleY => scale_y = val,
                     vidra_ir::animation::AnimatableProperty::Opacity => opacity = val,
-                    vidra_ir::animation::AnimatableProperty::Rotation => {},
+                    vidra_ir::animation::AnimatableProperty::Rotation => {}
                     _ => {} // Extended properties (fontSize, color, etc.)
                 }
             }
         }
-        state_suffix = format!(" -> pos({:.1}, {:.1}) scale({:.2}, {:.2}) opacity({:.2})", x, y, scale_x, scale_y, opacity);
+        state_suffix = format!(
+            " -> pos({:.1}, {:.1}) scale({:.2}, {:.2}) opacity({:.2})",
+            x, y, scale_x, scale_y, opacity
+        );
     }
 
-    println!("{}{} 🏷️  Layer '{}' ({}){}", prefix, layer_prefix, layer.id, content_type, state_suffix);
+    println!(
+        "{}{} 🏷️  Layer '{}' ({}){}",
+        prefix, layer_prefix, layer.id, content_type, state_suffix
+    );
 
     // Print animations
     for anim in &layer.animations {
-        let is_last_anim = layer.children.is_empty() && layer.animations.last().unwrap() as *const _ == anim as *const _;
-        let anim_prefix = if is_last_anim { "└──" } else { "├──" };
+        let is_last_anim = layer.children.is_empty()
+            && layer.animations.last().unwrap() as *const _ == anim as *const _;
+        let anim_prefix = if is_last_anim {
+            "└──"
+        } else {
+            "├──"
+        };
         let mut keyframes_str = String::new();
         for (k, keyframe) in anim.keyframes.iter().enumerate() {
-            keyframes_str.push_str(&format!("[{:.2}s -> {:.1}]", keyframe.time.as_seconds(), keyframe.value));
+            keyframes_str.push_str(&format!(
+                "[{:.2}s -> {:.1}]",
+                keyframe.time.as_seconds(),
+                keyframe.value
+            ));
             if k < anim.keyframes.len() - 1 {
                 keyframes_str.push_str(" ");
             }
         }
-        
+
         let eval_str = if let Some(t) = eval_time {
             if let Some(val) = anim.evaluate(t) {
                 format!(" => {:.2}", val)
@@ -1598,7 +1780,10 @@ fn print_layer(layer: &vidra_ir::layer::Layer, prefix: &str, is_last: bool, eval
             "".to_string()
         };
 
-        println!("{}{} ✨ Animation {} : {}{}", nested_prefix, anim_prefix, anim.property, keyframes_str, eval_str);
+        println!(
+            "{}{} ✨ Animation {} : {}{}",
+            nested_prefix, anim_prefix, anim.property, keyframes_str, eval_str
+        );
     }
 
     // Print children
@@ -1608,7 +1793,9 @@ fn print_layer(layer: &vidra_ir::layer::Layer, prefix: &str, is_last: bool, eval
     }
 }
 
-pub(crate) fn parse_and_resolve_imports(file: &std::path::Path) -> Result<vidra_lang::ast::ProjectNode> {
+pub(crate) fn parse_and_resolve_imports(
+    file: &std::path::Path,
+) -> Result<vidra_lang::ast::ProjectNode> {
     let source = std::fs::read_to_string(file)
         .with_context(|| format!("failed to read file: {}", file.display()))?;
 
@@ -1621,7 +1808,8 @@ pub(crate) fn parse_and_resolve_imports(file: &std::path::Path) -> Result<vidra_
     let mut visited_files = std::collections::HashSet::new();
     visited_files.insert(std::fs::canonicalize(file).unwrap_or_else(|_| file.to_path_buf()));
 
-    let mut pending_imports: std::collections::VecDeque<(PathBuf, String)> = std::collections::VecDeque::new();
+    let mut pending_imports: std::collections::VecDeque<(PathBuf, String)> =
+        std::collections::VecDeque::new();
     for imp in ast.imports.drain(..) {
         pending_imports.push_back((file.to_path_buf(), imp.path));
     }
@@ -1629,13 +1817,14 @@ pub(crate) fn parse_and_resolve_imports(file: &std::path::Path) -> Result<vidra_
     while let Some((base_file, import_path)) = pending_imports.pop_front() {
         let parent = base_file.parent().unwrap_or(std::path::Path::new(""));
         let target_path = if import_path.starts_with("/") {
-             PathBuf::from(&import_path)
+            PathBuf::from(&import_path)
         } else {
-             parent.join(&import_path)
+            parent.join(&import_path)
         };
-        let canonical_target = std::fs::canonicalize(&target_path).unwrap_or_else(|_| target_path.clone());
+        let canonical_target =
+            std::fs::canonicalize(&target_path).unwrap_or_else(|_| target_path.clone());
         if visited_files.contains(&canonical_target) {
-             continue; // prevent loops
+            continue; // prevent loops
         }
         visited_files.insert(canonical_target.clone());
 
@@ -1644,7 +1833,9 @@ pub(crate) fn parse_and_resolve_imports(file: &std::path::Path) -> Result<vidra_
         let mut lexer = vidra_lang::Lexer::new(&imported_src);
         let tokens = lexer.tokenize().map_err(|e| anyhow::anyhow!("{}", e))?;
         let mut parser = vidra_lang::Parser::new(tokens, import_path.clone());
-        let (mut new_imports, mut new_assets, new_components) = parser.parse_module().map_err(|e| anyhow::anyhow!("{}: {}", import_path, e))?;
+        let (mut new_imports, mut new_assets, new_components) = parser
+            .parse_module()
+            .map_err(|e| anyhow::anyhow!("{}: {}", import_path, e))?;
 
         // Merge components into `ast`
         for comp in new_components {
@@ -1675,7 +1866,9 @@ fn sha256_file_prefixed(path: &std::path::Path) -> Result<String> {
     let mut hasher = sha2::Sha256::new();
     let mut buf = [0u8; 1024 * 64];
     loop {
-        let n = f.read(&mut buf).context("failed to read file for hashing")?;
+        let n = f
+            .read(&mut buf)
+            .context("failed to read file for hashing")?;
         if n == 0 {
             break;
         }
@@ -1699,7 +1892,10 @@ fn cmd_sync_push() -> Result<()> {
         );
         if !report.receipt_failures.is_empty() || !report.upload_failures.is_empty() {
             if !report.receipt_failures.is_empty() {
-                println!("   ⚠️  Receipt failures ({}):", report.receipt_failures.len());
+                println!(
+                    "   ⚠️  Receipt failures ({}):",
+                    report.receipt_failures.len()
+                );
                 for f in &report.receipt_failures {
                     println!("      - {}", f);
                 }
@@ -1740,7 +1936,10 @@ fn cmd_sync_pull() -> Result<()> {
         );
         if !report.receipt_failures.is_empty() || !report.upload_failures.is_empty() {
             if !report.receipt_failures.is_empty() {
-                println!("   ⚠️  Receipt failures ({}):", report.receipt_failures.len());
+                println!(
+                    "   ⚠️  Receipt failures ({}):",
+                    report.receipt_failures.len()
+                );
                 for f in &report.receipt_failures {
                     println!("      - {}", f);
                 }
@@ -1772,8 +1971,12 @@ fn cmd_sync_status() -> Result<()> {
     }
 
     if let Some(dir) = sync_tools::receipts_root_dir() {
-        let status = sync_tools::receipt_sync_status(&dir).unwrap_or(sync_tools::ReceiptSyncStatus { queued: 0, sent: 0 });
-        println!("   Render receipts: {} queued, {} sent", status.queued, status.sent);
+        let status = sync_tools::receipt_sync_status(&dir)
+            .unwrap_or(sync_tools::ReceiptSyncStatus { queued: 0, sent: 0 });
+        println!(
+            "   Render receipts: {} queued, {} sent",
+            status.queued, status.sent
+        );
     } else {
         println!("   Render receipts: (unknown)");
     }
@@ -1793,7 +1996,10 @@ fn cmd_sync_status() -> Result<()> {
                 );
             }
             Err(_) => {
-                println!("   Assets: manifest unreadable ({})", manifest_path.display());
+                println!(
+                    "   Assets: manifest unreadable ({})",
+                    manifest_path.display()
+                );
             }
         }
     } else {
@@ -1829,7 +2035,7 @@ fn cmd_sync_assets() -> Result<()> {
                 break;
             }
         }
-        found.ok_or_else(|| anyhow::anyhow!("no entry .vidra file found (expected main.vidra)") )?
+        found.ok_or_else(|| anyhow::anyhow!("no entry .vidra file found (expected main.vidra)"))?
     };
 
     let ast = parse_and_resolve_imports(&entry)?;
@@ -1849,7 +2055,10 @@ fn cmd_sync_assets() -> Result<()> {
     sync_tools::write_asset_manifest(&out_path, &manifest)?;
 
     println!("   ✓ Asset manifest: {}", out_path.display());
-    println!("   ✓ Assets: {} total ({} missing, {} hashed)", stats.total, stats.missing, stats.hashed);
+    println!(
+        "   ✓ Assets: {} total ({} missing, {} hashed)",
+        stats.total, stats.missing, stats.hashed
+    );
     if stats.missing > 0 {
         println!("   ⚠️  Some assets are missing on disk");
     }
@@ -1865,7 +2074,9 @@ fn cmd_jobs_list() -> Result<()> {
         match jobs_cloud::fetch_jobs_from_cloud(&base)
             .and_then(|jobs| jobs_cloud::enqueue_cloud_jobs(&jobs_root, jobs, None))
         {
-            Ok(added) if added > 0 => println!("☁️  Synced {} cloud job(s) into local queue", added),
+            Ok(added) if added > 0 => {
+                println!("☁️  Synced {} cloud job(s) into local queue", added)
+            }
             Ok(_) => {}
             Err(e) => println!("⚠️  Cloud jobs fetch failed: {:#}", e),
         }
@@ -1927,7 +2138,11 @@ fn cmd_jobs_run(all: bool) -> Result<()> {
 
         let prev_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
         if let Err(e) = std::env::set_current_dir(&claimed.spec.project_root) {
-            let msg = format!("failed to set current dir to {}: {}", claimed.spec.project_root.display(), e);
+            let msg = format!(
+                "failed to set current dir to {}: {}",
+                claimed.spec.project_root.display(),
+                e
+            );
             let _ = jobs_tools::mark_job_failed(&jobs_root, &claimed, &msg);
             anyhow::bail!(msg);
         }
@@ -2003,7 +2218,10 @@ fn cmd_assets_list() -> Result<()> {
             );
             for a in m.assets.iter().take(50) {
                 let status = if a.exists { "✓" } else { "✗" };
-                let size = a.size_bytes.map(|s| format!("{}B", s)).unwrap_or_else(|| "?".to_string());
+                let size = a
+                    .size_bytes
+                    .map(|s| format!("{}B", s))
+                    .unwrap_or_else(|| "?".to_string());
                 println!("   - [{}] {} ({}, {})", status, a.path, a.asset_type, size);
             }
             if m.assets.len() > 50 {
@@ -2025,7 +2243,8 @@ fn cmd_assets_list() -> Result<()> {
 
 fn cmd_assets_pull(name: &str) -> Result<()> {
     let project_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let Some((blob_path, suggested_name)) = sync_tools::resolve_upload_blob(&project_root, name)? else {
+    let Some((blob_path, suggested_name)) = sync_tools::resolve_upload_blob(&project_root, name)?
+    else {
         anyhow::bail!("asset '{}' not found in local upload queue", name);
     };
 
@@ -2112,9 +2331,14 @@ fn cmd_licenses() -> Result<()> {
     }
 
     println!();
-    println!("   Summary: {} known, {} unknown, {} missing", known, unknown, missing);
+    println!(
+        "   Summary: {} known, {} unknown, {} missing",
+        known, unknown, missing
+    );
     if unknown > 0 {
-        println!("   Tip: add a sidecar file like <asset>.license.txt with the license identifier/text.");
+        println!(
+            "   Tip: add a sidecar file like <asset>.license.txt with the license identifier/text."
+        );
     }
     Ok(())
 }
@@ -2147,12 +2371,13 @@ fn cmd_brand_apply(name: &str) -> Result<()> {
     if !path.exists() {
         anyhow::bail!("vidra.config.toml not found in current directory");
     }
-    let mut config = vidra_core::VidraConfig::load_from_file(&path)
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    let mut config =
+        vidra_core::VidraConfig::load_from_file(&path).map_err(|e| anyhow::anyhow!("{}", e))?;
     config.brand.kit = Some(name.to_string());
-    config.save_to_file(&path)
+    config
+        .save_to_file(&path)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
-    
+
     println!("✅ Applied brand kit '{}' to project.", name);
     Ok(())
 }
@@ -2174,7 +2399,11 @@ fn cmd_workspace_list() -> Result<()> {
         return Ok(());
     }
     for w in s.workspaces {
-        let marker = if s.active.as_deref() == Some(&w.name) { ">" } else { " " };
+        let marker = if s.active.as_deref() == Some(&w.name) {
+            ">"
+        } else {
+            " "
+        };
         println!("   {} {}", marker, w.name);
     }
     Ok(())
@@ -2324,12 +2553,18 @@ fn cmd_dashboard() -> Result<()> {
     // Local-first queue status
     if let Some(dir) = sync_tools::receipts_root_dir() {
         if let Ok(s) = sync_tools::receipt_sync_status(&dir) {
-            println!("   Receipts queue:       {} queued, {} sent", s.queued, s.sent);
+            println!(
+                "   Receipts queue:       {} queued, {} sent",
+                s.queued, s.sent
+            );
         }
     }
     let project_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     if let Ok(s) = sync_tools::upload_sync_status(&project_root) {
-        println!("   Upload queue:         {} queued, {} sent", s.queued, s.sent);
+        println!(
+            "   Upload queue:         {} queued, {} sent",
+            s.queued, s.sent
+        );
     }
     if let Some(jobs_root) = jobs_tools::jobs_root_dir() {
         if let Ok(j) = jobs_tools::list_queued_jobs(&jobs_root) {

@@ -10,15 +10,15 @@ pub fn compile_spring(
     initial_velocity: f64,
 ) -> Animation {
     let mut anim = Animation::new(property);
-    
+
     // Euler integration parameters
     let mass = 1.0;
     let dt = 1.0 / 60.0;
-    
+
     let mut position = from;
     let mut velocity = initial_velocity;
     let mut t = 0.0;
-    
+
     anim.add_keyframe(Keyframe::new(Duration::from_seconds(0.0), position));
 
     let epsilon = 0.001;
@@ -27,16 +27,16 @@ pub fn compile_spring(
 
     while t < max_duration && stable_frames < 5 {
         t += dt;
-        
+
         // F = -kX - cv
         let displacement = position - to;
         let spring_force = -stiffness * displacement;
         let damping_force = -damping * velocity;
-        
+
         let acceleration = (spring_force + damping_force) / mass;
         velocity += acceleration * dt;
         position += velocity * dt;
-        
+
         anim.add_keyframe(Keyframe::new(Duration::from_seconds(t), position));
 
         if displacement.abs() < epsilon && velocity.abs() < epsilon {
@@ -49,7 +49,7 @@ pub fn compile_spring(
     if anim.keyframes.len() < 2 {
         anim.add_keyframe(Keyframe::new(Duration::from_seconds(dt), to));
     }
-    
+
     // Hard set the final value to the exact `to` value to avoid drift
     if let Some(last) = anim.keyframes.last_mut() {
         last.value = to;
@@ -66,10 +66,10 @@ pub fn compile_expression(
     audio_amp_samples: Option<&[f64]>,
 ) -> Animation {
     let mut anim = Animation::new(property);
-    
+
     let dt = 1.0 / 60.0;
     let mut t = 0.0;
-    
+
     let compiled: Node<DefaultNumericTypes> = match build_operator_tree(expr_str) {
         Ok(c) => c,
         Err(_) => {
@@ -109,10 +109,7 @@ pub fn compile_expression(
     anim
 }
 
-pub fn compile_path_animations(
-    _path_data: &str,
-    _duration: f64,
-) -> (Animation, Animation) {
+pub fn compile_path_animations(_path_data: &str, _duration: f64) -> (Animation, Animation) {
     // Stubbed until needed
     let mut anim_x = Animation::new(AnimatableProperty::PositionX);
     let mut anim_y = Animation::new(AnimatableProperty::PositionY);
@@ -120,4 +117,3 @@ pub fn compile_path_animations(
     anim_y.add_keyframe(Keyframe::new(Duration::from_seconds(0.0), 0.0));
     (anim_x, anim_y)
 }
-

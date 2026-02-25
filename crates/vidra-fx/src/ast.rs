@@ -17,7 +17,11 @@ pub struct Param {
 
 #[derive(Debug, Clone)]
 pub enum Statement {
-    Let { name: String, value: Expr, span: Span },
+    Let {
+        name: String,
+        value: Expr,
+        span: Span,
+    },
     Expr(Expr),
 }
 

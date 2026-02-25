@@ -110,9 +110,8 @@ impl RenderReceipt {
         let sig_bytes = base64::prelude::BASE64_STANDARD
             .decode(sig_part)
             .context("Invalid signature base64")?;
-        
-        let signature = Signature::from_slice(&sig_bytes)
-            .context("Invalid signature length")?;
+
+        let signature = Signature::from_slice(&sig_bytes).context("Invalid signature length")?;
 
         let msg = serde_json::to_string(&self.payload)?;
 

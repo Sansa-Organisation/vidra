@@ -1,7 +1,7 @@
 use dashmap::DashMap;
 use rayon::prelude::*;
-use std::path::Path;
 use std::collections::HashMap;
+use std::path::Path;
 
 use vidra_core::frame::FrameBuffer;
 use vidra_core::hash::{self, ContentHash};
@@ -12,10 +12,16 @@ use vidra_ir::layer::{Layer, LayerContent};
 use vidra_ir::project::Project;
 use vidra_ir::scene::Scene;
 
-use evalexpr::{build_operator_tree, ContextWithMutableVariables, DefaultNumericTypes, HashMapContext, Value};
+use evalexpr::{
+    build_operator_tree, ContextWithMutableVariables, DefaultNumericTypes, HashMapContext, Value,
+};
 
 use crate::text::TextRenderer;
 use crate::video_decoder::VideoDecoder;
+
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use vidra_web::{PlaywrightBackend, WebCaptureSession, WebCaptureSessionConfig};
 
 /// Context for rendering a single frame.
 pub struct RenderContext {
@@ -84,18 +90,19 @@ pub struct RenderPipeline {
     gpu_ctx: std::sync::Arc<crate::gpu::GpuContext>,
     compositor: crate::compositor::GpuCompositor,
     shader_renderer: crate::custom_shader::CustomShaderRenderer,
+    tokio_rt: Arc<tokio::runtime::Runtime>,
+    web_sessions: DashMap<String, Arc<Mutex<WebCaptureSession>>>,
 }
 
 impl RenderPipeline {
     /// Create a new render pipeline.
     pub fn new() -> Result<Self, vidra_core::VidraError> {
-        let gpu_ctx = std::sync::Arc::new(
-            crate::gpu::GpuContext::init().map_err(|e| {
-                vidra_core::VidraError::Render(format!("Failed to initialize WGPU context: {}", e))
-            })?
-        );
+        let gpu_ctx = std::sync::Arc::new(crate::gpu::GpuContext::init().map_err(|e| {
+            vidra_core::VidraError::Render(format!("Failed to initialize WGPU context: {}", e))
+        })?);
         let compositor = crate::compositor::GpuCompositor::new(gpu_ctx.clone());
         let shader_renderer = crate::custom_shader::CustomShaderRenderer::new(gpu_ctx.clone());
+        let tokio_rt = Arc::new(tokio::runtime::Runtime::new().unwrap());
 
         Ok(Self {
             text_renderer: TextRenderer::new(),
@@ -105,6 +112,8 @@ impl RenderPipeline {
             gpu_ctx,
             compositor,
             shader_renderer,
+            tokio_rt,
+            web_sessions: DashMap::new(),
         })
     }
 
@@ -113,17 +122,35 @@ impl RenderPipeline {
         for asset in project.assets.all() {
             if asset.asset_type == vidra_ir::asset::AssetType::Font {
                 tracing::info!("Loading font {} from {}", asset.id.0, asset.path.display());
-                self.text_renderer.load_font(&asset.id.0, &asset.path)
-                    .map_err(|e| vidra_core::VidraError::Render(format!("Asset load error {}: {}", asset.id.0, e)))?;
+                self.text_renderer
+                    .load_font(&asset.id.0, &asset.path)
+                    .map_err(|e| {
+                        vidra_core::VidraError::Render(format!(
+                            "Asset load error {}: {}",
+                            asset.id.0, e
+                        ))
+                    })?;
             } else if asset.asset_type == vidra_ir::asset::AssetType::Image {
                 tracing::info!("Loading image {} from {}", asset.id.0, asset.path.display());
-                let fb = crate::image_loader::load_image(&asset.path)
-                    .map_err(|e| vidra_core::VidraError::Render(format!("Asset load error {}: {}", asset.id.0, e)))?;
+                let fb = crate::image_loader::load_image(&asset.path).map_err(|e| {
+                    vidra_core::VidraError::Render(format!(
+                        "Asset load error {}: {}",
+                        asset.id.0, e
+                    ))
+                })?;
                 self.image_cache.insert(asset.id.to_string(), fb);
             } else if asset.path.extension().map(|e| e == "wgsl").unwrap_or(false) {
-                tracing::info!("Loading shader {} from {}", asset.id.0, asset.path.display());
-                let source = std::fs::read_to_string(&asset.path)
-                    .map_err(|e| vidra_core::VidraError::Render(format!("Failed to read custom shader {}: {}", asset.id.0, e)))?;
+                tracing::info!(
+                    "Loading shader {} from {}",
+                    asset.id.0,
+                    asset.path.display()
+                );
+                let source = std::fs::read_to_string(&asset.path).map_err(|e| {
+                    vidra_core::VidraError::Render(format!(
+                        "Failed to read custom shader {}: {}",
+                        asset.id.0, e
+                    ))
+                })?;
                 self.shader_cache.insert(asset.id.to_string(), source);
             }
         }
@@ -134,7 +161,7 @@ impl RenderPipeline {
     pub fn render(project: &Project) -> Result<RenderResult, vidra_core::VidraError> {
         let mut pipeline = Self::new()?;
         pipeline.load_assets(project)?;
-        
+
         let ctx = RenderContext {
             width: project.settings.width,
             height: project.settings.height,
@@ -147,9 +174,7 @@ impl RenderPipeline {
         let total_frames = project.total_frames();
         let frames: Result<Vec<FrameBuffer>, _> = (0..total_frames)
             .into_par_iter()
-            .map(|global_frame| {
-                pipeline.render_frame_index(project, global_frame)
-            })
+            .map(|global_frame| pipeline.render_frame_index(project, global_frame))
             .collect();
 
         let frames = frames?;
@@ -179,35 +204,43 @@ impl RenderPipeline {
         };
 
         let mut current_global = 0u64;
-        
+
         let mut target_scenes = Vec::new();
 
         for (i, scene) in project.scenes.iter().enumerate() {
             let sf = scene.frame_count(project.settings.fps);
             let trans_f = if i > 0 {
                 if let Some(trans) = &scene.transition {
-                    let max_overlap = project.scenes[i - 1].frame_count(project.settings.fps).min(sf);
-                    trans.duration.frame_count(project.settings.fps).min(max_overlap)
+                    let max_overlap = project.scenes[i - 1]
+                        .frame_count(project.settings.fps)
+                        .min(sf);
+                    trans
+                        .duration
+                        .frame_count(project.settings.fps)
+                        .min(max_overlap)
                 } else {
                     0
                 }
             } else {
                 0
             };
-            
+
             let start_f = current_global.saturating_sub(trans_f);
             let end_f = start_f + sf;
-            
+
             if global_frame >= start_f && global_frame < end_f {
                 let local_f = global_frame - start_f;
                 target_scenes.push((scene, local_f));
             }
-            
+
             current_global = end_f;
         }
 
         if target_scenes.is_empty() {
-            return Err(vidra_core::VidraError::Render(format!("frame out of bounds: {}", global_frame)));
+            return Err(vidra_core::VidraError::Render(format!(
+                "frame out of bounds: {}",
+                global_frame
+            )));
         }
 
         if target_scenes.len() == 1 {
@@ -218,34 +251,49 @@ impl RenderPipeline {
             // They are added in order, so index 0 is the older scene, index 1 is the entering scene
             let (scene1, local_f1) = target_scenes[0];
             let (scene2, local_f2) = target_scenes[1];
-            
+
             let frame1 = self.render_frame(&ctx, project, scene1, local_f1, global_frame)?;
             let frame2 = self.render_frame(&ctx, project, scene2, local_f2, global_frame)?;
-            
+
             let trans = scene2.transition.as_ref().unwrap();
             let trans_frames = trans.duration.frame_count(project.settings.fps) as f64;
             let progress = local_f2 as f64 / trans_frames;
             let eased_progress = trans.easing.apply(progress);
 
-            self.apply_transition(frame1, frame2, &trans.effect, eased_progress, ctx.width, ctx.height)
+            self.apply_transition(
+                frame1,
+                frame2,
+                &trans.effect,
+                eased_progress,
+                ctx.width,
+                ctx.height,
+            )
         }
     }
-    
-    fn apply_transition(&self, frame1: FrameBuffer, frame2: FrameBuffer, effect: &vidra_ir::transition::TransitionType, progress: f64, width: u32, height: u32) -> Result<FrameBuffer, vidra_core::VidraError> {
+
+    fn apply_transition(
+        &self,
+        frame1: FrameBuffer,
+        frame2: FrameBuffer,
+        effect: &vidra_ir::transition::TransitionType,
+        progress: f64,
+        width: u32,
+        height: u32,
+    ) -> Result<FrameBuffer, vidra_core::VidraError> {
         let mut out = frame1.clone();
-        
+
         match effect {
             vidra_ir::transition::TransitionType::Crossfade => {
                 for y in 0..height {
                     for x in 0..width {
                         let c1 = frame1.get_pixel(x, y).unwrap_or([0, 0, 0, 0]);
                         let c2 = frame2.get_pixel(x, y).unwrap_or([0, 0, 0, 0]);
-                        
+
                         let r = (c1[0] as f64 * (1.0 - progress) + c2[0] as f64 * progress) as u8;
                         let g = (c1[1] as f64 * (1.0 - progress) + c2[1] as f64 * progress) as u8;
                         let b = (c1[2] as f64 * (1.0 - progress) + c2[2] as f64 * progress) as u8;
                         let a = (c1[3] as f64 * (1.0 - progress) + c2[3] as f64 * progress) as u8;
-                        
+
                         out.set_pixel(x, y, [r, g, b, a]);
                     }
                 }
@@ -275,30 +323,71 @@ impl RenderPipeline {
                         match direction.as_str() {
                             "left" => {
                                 if x >= width - offset_x {
-                                    out.set_pixel(x, y, frame2.get_pixel(x - (width - offset_x), y).unwrap_or([0, 0, 0, 0]));
+                                    out.set_pixel(
+                                        x,
+                                        y,
+                                        frame2
+                                            .get_pixel(x - (width - offset_x), y)
+                                            .unwrap_or([0, 0, 0, 0]),
+                                    );
                                 } else {
-                                    out.set_pixel(x, y, frame1.get_pixel(x + offset_x, y).unwrap_or([0, 0, 0, 0]));
+                                    out.set_pixel(
+                                        x,
+                                        y,
+                                        frame1.get_pixel(x + offset_x, y).unwrap_or([0, 0, 0, 0]),
+                                    );
                                 }
                             }
                             "up" => {
                                 if y >= height - offset_y {
-                                    out.set_pixel(x, y, frame2.get_pixel(x, y - (height - offset_y)).unwrap_or([0, 0, 0, 0]));
+                                    out.set_pixel(
+                                        x,
+                                        y,
+                                        frame2
+                                            .get_pixel(x, y - (height - offset_y))
+                                            .unwrap_or([0, 0, 0, 0]),
+                                    );
                                 } else {
-                                    out.set_pixel(x, y, frame1.get_pixel(x, y + offset_y).unwrap_or([0, 0, 0, 0]));
+                                    out.set_pixel(
+                                        x,
+                                        y,
+                                        frame1.get_pixel(x, y + offset_y).unwrap_or([0, 0, 0, 0]),
+                                    );
                                 }
                             }
                             "down" => {
                                 if y < offset_y {
-                                    out.set_pixel(x, y, frame2.get_pixel(x, height - offset_y + y).unwrap_or([0, 0, 0, 0]));
+                                    out.set_pixel(
+                                        x,
+                                        y,
+                                        frame2
+                                            .get_pixel(x, height - offset_y + y)
+                                            .unwrap_or([0, 0, 0, 0]),
+                                    );
                                 } else {
-                                    out.set_pixel(x, y, frame1.get_pixel(x, y - offset_y).unwrap_or([0, 0, 0, 0]));
+                                    out.set_pixel(
+                                        x,
+                                        y,
+                                        frame1.get_pixel(x, y - offset_y).unwrap_or([0, 0, 0, 0]),
+                                    );
                                 }
                             }
-                            _ => { // right
+                            _ => {
+                                // right
                                 if x < offset_x {
-                                    out.set_pixel(x, y, frame2.get_pixel(width - offset_x + x, y).unwrap_or([0, 0, 0, 0]));
+                                    out.set_pixel(
+                                        x,
+                                        y,
+                                        frame2
+                                            .get_pixel(width - offset_x + x, y)
+                                            .unwrap_or([0, 0, 0, 0]),
+                                    );
                                 } else {
-                                    out.set_pixel(x, y, frame1.get_pixel(x - offset_x, y).unwrap_or([0, 0, 0, 0]));
+                                    out.set_pixel(
+                                        x,
+                                        y,
+                                        frame1.get_pixel(x - offset_x, y).unwrap_or([0, 0, 0, 0]),
+                                    );
                                 }
                             }
                         }
@@ -313,22 +402,47 @@ impl RenderPipeline {
                         match direction.as_str() {
                             "left" => {
                                 if x >= width - offset_x {
-                                    out.set_pixel(x, y, frame2.get_pixel(x - (width - offset_x), y).unwrap_or([0, 0, 0, 0]));
+                                    out.set_pixel(
+                                        x,
+                                        y,
+                                        frame2
+                                            .get_pixel(x - (width - offset_x), y)
+                                            .unwrap_or([0, 0, 0, 0]),
+                                    );
                                 }
                             }
                             "up" => {
                                 if y >= height - offset_y {
-                                    out.set_pixel(x, y, frame2.get_pixel(x, y - (height - offset_y)).unwrap_or([0, 0, 0, 0]));
+                                    out.set_pixel(
+                                        x,
+                                        y,
+                                        frame2
+                                            .get_pixel(x, y - (height - offset_y))
+                                            .unwrap_or([0, 0, 0, 0]),
+                                    );
                                 }
                             }
                             "down" => {
                                 if y < offset_y {
-                                    out.set_pixel(x, y, frame2.get_pixel(x, height - offset_y + y).unwrap_or([0, 0, 0, 0]));
+                                    out.set_pixel(
+                                        x,
+                                        y,
+                                        frame2
+                                            .get_pixel(x, height - offset_y + y)
+                                            .unwrap_or([0, 0, 0, 0]),
+                                    );
                                 }
                             }
-                            _ => { // right
+                            _ => {
+                                // right
                                 if x < offset_x {
-                                    out.set_pixel(x, y, frame2.get_pixel(width - offset_x + x, y).unwrap_or([0, 0, 0, 0]));
+                                    out.set_pixel(
+                                        x,
+                                        y,
+                                        frame2
+                                            .get_pixel(width - offset_x + x, y)
+                                            .unwrap_or([0, 0, 0, 0]),
+                                    );
                                 }
                             }
                         }
@@ -336,7 +450,7 @@ impl RenderPipeline {
                 }
             }
         }
-        
+
         Ok(out)
     }
 
@@ -362,8 +476,13 @@ impl RenderPipeline {
             let sf = scene.frame_count(project.settings.fps);
             let trans_f = if i > 0 {
                 if let Some(trans) = &scene.transition {
-                    let max_overlap = project.scenes[i - 1].frame_count(project.settings.fps).min(sf);
-                    trans.duration.frame_count(project.settings.fps).min(max_overlap)
+                    let max_overlap = project.scenes[i - 1]
+                        .frame_count(project.settings.fps)
+                        .min(sf);
+                    trans
+                        .duration
+                        .frame_count(project.settings.fps)
+                        .min(max_overlap)
                 } else {
                     0
                 }
@@ -372,7 +491,7 @@ impl RenderPipeline {
             };
             let start_f = current_global.saturating_sub(trans_f);
             let end_f = start_f + sf;
-            
+
             if global_frame >= start_f && global_frame < end_f {
                 let local_f = global_frame - start_f;
                 target_scenes.push((scene, local_f));
@@ -426,15 +545,21 @@ impl RenderPipeline {
                 continue;
             }
             let (content, effects) = Self::compute_layer_animated_state(ctx, layer, local_frame);
-            if let Ok(mut layer_buf) = self.render_layer(ctx, project, layer, &content, local_frame) {
+            if let Ok(mut layer_buf) = self.render_layer(ctx, project, layer, &content, local_frame)
+            {
                 let (dx, dy) = Self::compute_layer_position(ctx, layer, local_frame);
-                
+
                 if let Some(mask_id) = &layer.mask {
                     if let Some(mask_layer) = scene.layers.iter().find(|l| &l.id == mask_id) {
-                        let (m_content, _) = Self::compute_layer_animated_state(ctx, mask_layer, local_frame);
-                        if let Ok(mask_buf) = self.render_layer(ctx, project, mask_layer, &m_content, local_frame) {
-                            let (mdx, mdy) = Self::compute_layer_position(ctx, mask_layer, local_frame);
-                            let (mcx, mcy) = Self::apply_anchor(mdx, mdy, &mask_buf, mask_layer, &m_content);
+                        let (m_content, _) =
+                            Self::compute_layer_animated_state(ctx, mask_layer, local_frame);
+                        if let Ok(mask_buf) =
+                            self.render_layer(ctx, project, mask_layer, &m_content, local_frame)
+                        {
+                            let (mdx, mdy) =
+                                Self::compute_layer_position(ctx, mask_layer, local_frame);
+                            let (mcx, mcy) =
+                                Self::apply_anchor(mdx, mdy, &mask_buf, mask_layer, &m_content);
                             // For masks, keep the existing 2D anchor-based alignment (masking is applied
                             // in the layer's local buffer space).
                             let (cx, cy) = Self::apply_anchor(dx, dy, &layer_buf, layer, &content);
@@ -447,12 +572,14 @@ impl RenderPipeline {
 
                 let transform = Self::compute_layer_transform(ctx, layer, local_frame, dx, dy);
                 if Self::needs_projective_composite(&transform) {
-                    let corners = transform.project_corners(layer_buf.width as f64, layer_buf.height as f64);
+                    let corners =
+                        transform.project_corners(layer_buf.width as f64, layer_buf.height as f64);
                     self.compositor
                         .composite_projected(&mut canvas, &layer_buf, corners, &effects);
                 } else {
                     let (cx, cy) = Self::apply_anchor(dx, dy, &layer_buf, layer, &content);
-                    self.compositor.composite(&mut canvas, &layer_buf, cx, cy, &effects);
+                    self.compositor
+                        .composite(&mut canvas, &layer_buf, cx, cy, &effects);
                 }
             }
         }
@@ -550,7 +677,11 @@ impl RenderPipeline {
     }
 
     /// Compute the layer content and effects updated with animation values at the given frame.
-    fn compute_layer_animated_state(ctx: &RenderContext, layer: &Layer, frame: u64) -> (LayerContent, Vec<vidra_core::types::LayerEffect>) {
+    fn compute_layer_animated_state(
+        ctx: &RenderContext,
+        layer: &Layer,
+        frame: u64,
+    ) -> (LayerContent, Vec<vidra_core::types::LayerEffect>) {
         let time = vidra_core::Duration::from_seconds(frame as f64 / ctx.fps);
         let mut content = layer.content.clone();
         let mut effects = layer.effects.clone();
@@ -561,44 +692,66 @@ impl RenderPipeline {
                     AnimatableProperty::ColorR => match &mut content {
                         LayerContent::Text { color, .. } => color.r = value as f32,
                         LayerContent::Solid { color } => color.r = value as f32,
-                        LayerContent::Shape { fill, .. } => if let Some(c) = fill { c.r = value as f32; }
+                        LayerContent::Shape { fill, .. } => {
+                            if let Some(c) = fill {
+                                c.r = value as f32;
+                            }
+                        }
                         _ => {}
                     },
                     AnimatableProperty::ColorG => match &mut content {
                         LayerContent::Text { color, .. } => color.g = value as f32,
                         LayerContent::Solid { color } => color.g = value as f32,
-                        LayerContent::Shape { fill, .. } => if let Some(c) = fill { c.g = value as f32; }
+                        LayerContent::Shape { fill, .. } => {
+                            if let Some(c) = fill {
+                                c.g = value as f32;
+                            }
+                        }
                         _ => {}
                     },
                     AnimatableProperty::ColorB => match &mut content {
                         LayerContent::Text { color, .. } => color.b = value as f32,
                         LayerContent::Solid { color } => color.b = value as f32,
-                        LayerContent::Shape { fill, .. } => if let Some(c) = fill { c.b = value as f32; }
+                        LayerContent::Shape { fill, .. } => {
+                            if let Some(c) = fill {
+                                c.b = value as f32;
+                            }
+                        }
                         _ => {}
                     },
                     AnimatableProperty::ColorA => match &mut content {
                         LayerContent::Text { color, .. } => color.a = value as f32,
                         LayerContent::Solid { color } => color.a = value as f32,
-                        LayerContent::Shape { fill, .. } => if let Some(c) = fill { c.a = value as f32; }
+                        LayerContent::Shape { fill, .. } => {
+                            if let Some(c) = fill {
+                                c.a = value as f32;
+                            }
+                        }
                         _ => {}
                     },
                     AnimatableProperty::FontSize => {
                         if let LayerContent::Text { font_size, .. } = &mut content {
                             *font_size = value;
                         }
-                    },
+                    }
                     AnimatableProperty::CornerRadius => {
-                        if let LayerContent::Shape { shape: vidra_core::types::ShapeType::Rect { corner_radius, .. }, .. } = &mut content {
+                        if let LayerContent::Shape {
+                            shape: vidra_core::types::ShapeType::Rect { corner_radius, .. },
+                            ..
+                        } = &mut content
+                        {
                             *corner_radius = value;
                         }
-                    },
+                    }
                     AnimatableProperty::StrokeWidth => {
                         if let LayerContent::Shape { stroke_width, .. } = &mut content {
                             *stroke_width = value;
                         }
-                    },
+                    }
                     AnimatableProperty::Volume => {
-                        if let LayerContent::Audio { volume, .. } | LayerContent::TTS { volume, .. } = &mut content {
+                        if let LayerContent::Audio { volume, .. }
+                        | LayerContent::TTS { volume, .. } = &mut content
+                        {
                             *volume = value;
                         }
                     }
@@ -660,7 +813,13 @@ impl RenderPipeline {
             let _ = context.set_value("mouse_y".to_string(), Value::Float(ctx.mouse_y));
             let _ = context.set_value("audio_amp".to_string(), Value::Float(0.0));
             for (k, v) in &ctx.state_vars {
-                if k != "t" && k != "p" && k != "T" && k != "mouse_x" && k != "mouse_y" && k != "audio_amp" {
+                if k != "t"
+                    && k != "p"
+                    && k != "T"
+                    && k != "mouse_x"
+                    && k != "mouse_y"
+                    && k != "audio_amp"
+                {
                     let _ = context.set_value(k.clone(), Value::Float(*v));
                 }
             }
@@ -687,12 +846,20 @@ impl RenderPipeline {
                 | LayerContent::TTS { .. }
                 | LayerContent::AutoCaption { .. }
                 | LayerContent::Waveform { .. }
+                | LayerContent::Spritesheet { .. }
+                | LayerContent::Web { .. }
         )
     }
 
     /// Apply anchor-point offset to the raw position.
     /// For full-canvas layers (Solid, Empty, Audio), the position is returned unchanged.
-    fn apply_anchor(dx: i32, dy: i32, buf: &FrameBuffer, layer: &Layer, content: &LayerContent) -> (i32, i32) {
+    fn apply_anchor(
+        dx: i32,
+        dy: i32,
+        buf: &FrameBuffer,
+        layer: &Layer,
+        content: &LayerContent,
+    ) -> (i32, i32) {
         if Self::has_intrinsic_size(content) {
             let cx = dx - (buf.width as f64 * layer.transform.anchor.x).round() as i32;
             let cy = dy - (buf.height as f64 * layer.transform.anchor.y).round() as i32;
@@ -794,7 +961,16 @@ impl RenderPipeline {
                 frame_count,
             } => {
                 let sheet = self.load_image_asset(project, asset_id, opacity);
-                self.render_spritesheet_frame(&sheet, *frame_width, *frame_height, *fps, *start_frame, *frame_count, frame, ctx.fps)
+                self.render_spritesheet_frame(
+                    &sheet,
+                    *frame_width,
+                    *frame_height,
+                    *fps,
+                    *start_frame,
+                    *frame_count,
+                    frame,
+                    ctx.fps,
+                )
             }
             LayerContent::Waveform { .. } => {
                 // If waveform materialization didn't run, show a placeholder.
@@ -808,8 +984,12 @@ impl RenderPipeline {
             } => self.render_video_frame(ctx, project, asset_id, trim_start, frame, opacity),
             LayerContent::TTS { text, .. } => {
                 // Audio visualization component
-                self.text_renderer
-                    .render_text(&format!("🔊 {}", text), "Inter", 32.0, &Color::WHITE)
+                self.text_renderer.render_text(
+                    &format!("🔊 {}", text),
+                    "Inter",
+                    32.0,
+                    &Color::WHITE,
+                )
             }
             LayerContent::AutoCaption { .. } => {
                 // AI AutoCaption component — fallback text display
@@ -821,16 +1001,73 @@ impl RenderPipeline {
                 // Or maybe the user set a custom scale/size on the layer. We'll default to project for this prototype phase.
                 if let Some(source) = self.shader_cache.get(&asset_id.to_string()) {
                     let time_sec = frame as f32 / ctx.fps as f32;
-                    match self.shader_renderer.render(source.value(), ctx.width, ctx.height, time_sec) {
+                    match self.shader_renderer.render(
+                        source.value(),
+                        ctx.width,
+                        ctx.height,
+                        time_sec,
+                    ) {
                         Ok(fb) => fb,
                         Err(e) => {
-                            tracing::error!("Custom shader render failed for {}: {}", asset_id.to_string(), e);
+                            tracing::error!(
+                                "Custom shader render failed for {}: {}",
+                                asset_id.to_string(),
+                                e
+                            );
                             FrameBuffer::new(ctx.width, ctx.height, vidra_core::PixelFormat::Rgba8)
                         }
                     }
                 } else {
                     tracing::warn!("Custom shader {} not found in cache", asset_id.to_string());
                     FrameBuffer::new(ctx.width, ctx.height, vidra_core::PixelFormat::Rgba8)
+                }
+            }
+            LayerContent::Web {
+                source,
+                viewport_width,
+                viewport_height,
+                mode,
+                wait_for,
+                variables,
+            } => {
+                let session_arc = self
+                    .web_sessions
+                    .entry(layer.id.0.clone())
+                    .or_insert_with(|| {
+                        let config = WebCaptureSessionConfig {
+                            source: source.clone(),
+                            viewport_width: *viewport_width,
+                            viewport_height: *viewport_height,
+                            mode: *mode,
+                            wait_for: wait_for.clone(),
+                            fps: ctx.fps as f64,
+                            format: vidra_core::frame::PixelFormat::Rgba8,
+                        };
+                        Arc::new(Mutex::new(WebCaptureSession::new(
+                            config,
+                            Box::new(PlaywrightBackend::new()),
+                        )))
+                    })
+                    .value()
+                    .clone();
+
+                let time_seconds = frame as f64 / ctx.fps as f64;
+
+                let res = self.tokio_rt.block_on(async {
+                    let mut session = session_arc.lock().await;
+                    session.capture_frame(time_seconds, variables).await
+                });
+
+                match res {
+                    Ok(fb) => fb,
+                    Err(e) => {
+                        tracing::error!("Failed to capture web layer: {}", e);
+                        FrameBuffer::new(
+                            *viewport_width,
+                            *viewport_height,
+                            vidra_core::frame::PixelFormat::Rgba8,
+                        )
+                    }
                 }
             }
         };
@@ -882,7 +1119,10 @@ impl RenderPipeline {
         let cols = (sheet.width / frame_w).max(1);
         let rows = (sheet.height / frame_h).max(1);
         let derived_total = cols.saturating_mul(rows) as u32;
-        let total = frame_count.unwrap_or(derived_total).max(1).min(derived_total.max(1));
+        let total = frame_count
+            .unwrap_or(derived_total)
+            .max(1)
+            .min(derived_total.max(1));
 
         let t = local_frame as f64 / timeline_fps;
         let idx = if sheet_fps <= 0.0 {

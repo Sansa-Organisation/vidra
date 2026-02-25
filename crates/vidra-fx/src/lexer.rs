@@ -10,7 +10,12 @@ pub struct Span {
 
 impl Span {
     pub fn new(start: usize, end: usize, line: usize, column: usize) -> Self {
-        Self { start, end, line, column }
+        Self {
+            start,
+            end,
+            line,
+            column,
+        }
     }
 }
 
@@ -19,7 +24,7 @@ pub enum TokenKind {
     Effect,
     Let,
     Pipe, // ->
-    
+
     Identifier(String),
     NumberLiteral(f64),
     ColorLiteral(String),
@@ -32,7 +37,7 @@ pub enum TokenKind {
     Comma,
     Colon,
     Equals,
-    
+
     Plus,
     Minus,
     Star,

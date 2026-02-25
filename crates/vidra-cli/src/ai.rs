@@ -1,19 +1,19 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
-use reqwest::blocking::Client;
 use reqwest::blocking::multipart;
+use reqwest::blocking::Client;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
-use vidra_core::VidraConfig;
-use vidra_ir::asset::{Asset, AssetId, AssetType};
-use vidra_ir::animation::{AnimatableProperty, Animation, Keyframe};
-use vidra_ir::layer::{Layer, LayerContent};
-use vidra_ir::asset::AssetRegistry;
-use vidra_ir::Project;
 use vidra_core::types::Easing;
 use vidra_core::types::LayerEffect;
+use vidra_core::VidraConfig;
+use vidra_ir::animation::{AnimatableProperty, Animation, Keyframe};
+use vidra_ir::asset::AssetRegistry;
+use vidra_ir::asset::{Asset, AssetId, AssetType};
+use vidra_ir::layer::{Layer, LayerContent};
+use vidra_ir::Project;
 
 pub struct AiPrepareReport {
     pub tts_layers_materialized: usize,
@@ -56,10 +56,18 @@ fn materialize_layer_ai(
     report: &mut AiPrepareReport,
 ) -> Result<()> {
     // Background removal (image-only): materialize to a cached PNG-with-alpha and swap the asset.
-    if layer.effects.iter().any(|e| matches!(e, LayerEffect::RemoveBackground)) {
+    if layer
+        .effects
+        .iter()
+        .any(|e| matches!(e, LayerEffect::RemoveBackground))
+    {
         if let LayerContent::Image { asset_id } = &layer.content {
-            let input_path = resolve_asset_path(assets, asset_id)
-                .ok_or_else(|| anyhow!("removeBackground: failed to resolve image path for asset_id '{}'", asset_id))?;
+            let input_path = resolve_asset_path(assets, asset_id).ok_or_else(|| {
+                anyhow!(
+                    "removeBackground: failed to resolve image path for asset_id '{}'",
+                    asset_id
+                )
+            })?;
             let new_asset_id = materialize_removebg_png(assets, config, cache_root, &input_path)?;
 
             // Swap the image content to the new alpha image.
@@ -68,7 +76,9 @@ fn materialize_layer_ai(
             };
 
             // Drop the effect so render doesn't attempt anything (and so we don't re-materialize).
-            layer.effects.retain(|e| !matches!(e, LayerEffect::RemoveBackground));
+            layer
+                .effects
+                .retain(|e| !matches!(e, LayerEffect::RemoveBackground));
             report.bg_removals_materialized += 1;
         } else {
             // For now, only Image layers are supported.
@@ -165,8 +175,12 @@ fn materialize_removebg_png(
         )
     })?;
 
-    let bytes = std::fs::read(image_path)
-        .with_context(|| format!("failed to read image for background removal: {}", image_path.display()))?;
+    let bytes = std::fs::read(image_path).with_context(|| {
+        format!(
+            "failed to read image for background removal: {}",
+            image_path.display()
+        )
+    })?;
     let img_hash = sha256_hex_bytes(&bytes);
 
     let cache_key = sha256_hex(&format!(
@@ -240,7 +254,11 @@ struct CaptionSegment {
     text: String,
 }
 
-fn transcribe_openai_segments(config: &VidraConfig, cache_root: &Path, audio_path: &Path) -> Result<Vec<CaptionSegment>> {
+fn transcribe_openai_segments(
+    config: &VidraConfig,
+    cache_root: &Path,
+    audio_path: &Path,
+) -> Result<Vec<CaptionSegment>> {
     let api_key = std::env::var(&config.ai.openai.api_key_env).map_err(|_| {
         anyhow!(
             "AI is enabled but {} is not set (needed for OpenAI-compatible transcription)",
@@ -298,8 +316,12 @@ fn transcribe_openai_segments(config: &VidraConfig, cache_root: &Path, audio_pat
         }
 
         let text = res.text().context("failed to read transcription body")?;
-        std::fs::write(&out_path, text)
-            .with_context(|| format!("failed to write transcription cache: {}", out_path.display()))?;
+        std::fs::write(&out_path, text).with_context(|| {
+            format!(
+                "failed to write transcription cache: {}",
+                out_path.display()
+            )
+        })?;
     }
 
     let raw = std::fs::read_to_string(&out_path)
@@ -327,7 +349,11 @@ fn parse_verbose_json_segments(raw: &str) -> Result<Vec<CaptionSegment>> {
         if text.is_empty() {
             continue;
         }
-        out.push(CaptionSegment { start_s, end_s, text });
+        out.push(CaptionSegment {
+            start_s,
+            end_s,
+            text,
+        });
     }
     Ok(out)
 }
@@ -354,7 +380,8 @@ fn refine_caption_segments_gemini(
             })
         })
         .collect();
-    let segments_json_str = serde_json::to_string(&segments_json).context("failed to serialize segments")?;
+    let segments_json_str =
+        serde_json::to_string(&segments_json).context("failed to serialize segments")?;
     let segments_hash = sha256_hex(&segments_json_str);
 
     let cache_key = sha256_hex(&format!(
@@ -397,7 +424,10 @@ fn refine_caption_segments_gemini(
 
         let client = Client::new();
         let base = config.ai.gemini.base_url.trim_end_matches('/');
-        let url = format!("{}/v1beta/models/{}:generateContent", base, config.ai.gemini.model);
+        let url = format!(
+            "{}/v1beta/models/{}:generateContent",
+            base, config.ai.gemini.model
+        );
 
         let res = client
             .post(url)
@@ -409,7 +439,11 @@ fn refine_caption_segments_gemini(
         if !res.status().is_success() {
             let status = res.status();
             let text = res.text().unwrap_or_default();
-            return Err(anyhow!("Gemini generateContent failed: {}: {}", status, text));
+            return Err(anyhow!(
+                "Gemini generateContent failed: {}: {}",
+                status,
+                text
+            ));
         }
 
         let raw: serde_json::Value = res.json().context("failed to parse Gemini response JSON")?;
@@ -426,12 +460,20 @@ fn refine_caption_segments_gemini(
             .ok_or_else(|| anyhow!("unexpected Gemini response shape (missing candidates[0].content.parts[0].text)"))?;
 
         // Gemini typically returns JSON-as-text for structured outputs.
-        std::fs::write(&out_path, text)
-            .with_context(|| format!("failed to write Gemini caption refine cache: {}", out_path.display()))?;
+        std::fs::write(&out_path, text).with_context(|| {
+            format!(
+                "failed to write Gemini caption refine cache: {}",
+                out_path.display()
+            )
+        })?;
     }
 
-    let refined_raw = std::fs::read_to_string(&out_path)
-        .with_context(|| format!("failed to read Gemini caption refine cache: {}", out_path.display()))?;
+    let refined_raw = std::fs::read_to_string(&out_path).with_context(|| {
+        format!(
+            "failed to read Gemini caption refine cache: {}",
+            out_path.display()
+        )
+    })?;
     let refined_json: serde_json::Value = serde_json::from_str(&refined_raw)
         .context("Gemini caption refine output was not valid JSON")?;
     let texts = refined_json
@@ -450,7 +492,9 @@ fn refine_caption_segments_gemini(
     let mut out = Vec::with_capacity(segments.len());
     for (seg, text_val) in segments.iter().zip(texts.iter()) {
         let Some(text) = text_val.as_str() else {
-            return Err(anyhow!("Gemini caption refine 'texts' must be an array of strings"));
+            return Err(anyhow!(
+                "Gemini caption refine 'texts' must be an array of strings"
+            ));
         };
         out.push(CaptionSegment {
             start_s: seg.start_s,
@@ -499,17 +543,20 @@ fn apply_caption_segments(
 
         // Opacity envelope: 0 → 1 quickly, hold, then 0.
         let fade = 0.06_f64.min((duration_s / 2.0).max(0.0));
-        let mut anim = Animation::new(AnimatableProperty::Opacity).with_delay(vidra_core::Duration::from_seconds(seg.start_s));
+        let mut anim = Animation::new(AnimatableProperty::Opacity)
+            .with_delay(vidra_core::Duration::from_seconds(seg.start_s));
         anim.add_keyframe(Keyframe::new(vidra_core::Duration::zero(), 0.0));
         anim.add_keyframe(
-            Keyframe::new(vidra_core::Duration::from_seconds(fade), 1.0).with_easing(Easing::EaseOut),
+            Keyframe::new(vidra_core::Duration::from_seconds(fade), 1.0)
+                .with_easing(Easing::EaseOut),
         );
         anim.add_keyframe(Keyframe::new(
             vidra_core::Duration::from_seconds((duration_s - fade).max(fade)),
             1.0,
         ));
         anim.add_keyframe(
-            Keyframe::new(vidra_core::Duration::from_seconds(duration_s), 0.0).with_easing(Easing::EaseIn),
+            Keyframe::new(vidra_core::Duration::from_seconds(duration_s), 0.0)
+                .with_easing(Easing::EaseIn),
         );
         child.animations.push(anim);
 
@@ -731,7 +778,7 @@ mod tests {
 
     #[test]
     fn parse_segments_from_verbose_json() {
-                let raw = r#"{
+        let raw = r#"{
                     "segments": [
                         {"start": 0.1, "end": 1.2, "text": " hello "},
                         {"start": 1.2, "end": 2.0, "text": "world"}
@@ -782,8 +829,14 @@ mod tests {
             text: "hello!".to_string(),
         }];
 
-        let ja = serde_json::to_string(&vec![json!({"start_s": 0.0, "end_s": 1.0, "text": "hello"})]).unwrap();
-        let jb = serde_json::to_string(&vec![json!({"start_s": 0.0, "end_s": 1.0, "text": "hello!"})]).unwrap();
+        let ja = serde_json::to_string(&vec![
+            json!({"start_s": 0.0, "end_s": 1.0, "text": "hello"}),
+        ])
+        .unwrap();
+        let jb = serde_json::to_string(&vec![
+            json!({"start_s": 0.0, "end_s": 1.0, "text": "hello!"}),
+        ])
+        .unwrap();
         assert_ne!(sha256_hex(&ja), sha256_hex(&jb));
 
         // Keep variables used so the compiler doesn't warn in some configurations.

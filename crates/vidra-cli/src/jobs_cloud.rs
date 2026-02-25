@@ -44,8 +44,8 @@ pub fn fetch_jobs_from_cloud(base_url: &str) -> Result<Vec<crate::jobs_tools::Jo
     // Accept either:
     // - [{...job...}, ...]
     // - {"jobs": [{...job...}, ...]}
-    let value: serde_json::Value = serde_json::from_str(&body)
-        .with_context(|| format!("invalid jobs JSON from {}", url))?;
+    let value: serde_json::Value =
+        serde_json::from_str(&body).with_context(|| format!("invalid jobs JSON from {}", url))?;
 
     let jobs_value = if let Some(arr) = value.as_array() {
         serde_json::Value::Array(arr.clone())
@@ -55,8 +55,8 @@ pub fn fetch_jobs_from_cloud(base_url: &str) -> Result<Vec<crate::jobs_tools::Jo
         anyhow::bail!("expected jobs payload to be array or object with `jobs` array");
     };
 
-    let jobs: Vec<crate::jobs_tools::JobSpec> = serde_json::from_value(jobs_value)
-        .context("failed to decode jobs payload")?;
+    let jobs: Vec<crate::jobs_tools::JobSpec> =
+        serde_json::from_value(jobs_value).context("failed to decode jobs payload")?;
     Ok(jobs)
 }
 
@@ -72,7 +72,9 @@ fn existing_job_ids(jobs_root: &Path) -> Result<HashSet<String>> {
         if !dir.exists() {
             continue;
         }
-        for entry in std::fs::read_dir(&dir).with_context(|| format!("failed to read jobs dir: {}", dir.display()))? {
+        for entry in std::fs::read_dir(&dir)
+            .with_context(|| format!("failed to read jobs dir: {}", dir.display()))?
+        {
             let path = entry?.path();
             if !path.is_file() || path.extension().and_then(|e| e.to_str()) != Some("json") {
                 continue;
@@ -87,7 +89,11 @@ fn existing_job_ids(jobs_root: &Path) -> Result<HashSet<String>> {
     Ok(ids)
 }
 
-pub fn enqueue_cloud_jobs(jobs_root: &Path, mut jobs: Vec<crate::jobs_tools::JobSpec>, limit: Option<usize>) -> Result<usize> {
+pub fn enqueue_cloud_jobs(
+    jobs_root: &Path,
+    mut jobs: Vec<crate::jobs_tools::JobSpec>,
+    limit: Option<usize>,
+) -> Result<usize> {
     crate::jobs_tools::ensure_jobs_dirs(jobs_root)?;
     jobs.sort_by_key(|j| j.created_at);
 

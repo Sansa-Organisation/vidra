@@ -12,13 +12,31 @@ struct Vertex {
 
 const VERTICES: &[Vertex] = &[
     // Tri 1
-    Vertex { position: [-1.0, 1.0], uv: [0.0, 0.0] },
-    Vertex { position: [-1.0, -1.0], uv: [0.0, 1.0] },
-    Vertex { position: [1.0, -1.0], uv: [1.0, 1.0] },
+    Vertex {
+        position: [-1.0, 1.0],
+        uv: [0.0, 0.0],
+    },
+    Vertex {
+        position: [-1.0, -1.0],
+        uv: [0.0, 1.0],
+    },
+    Vertex {
+        position: [1.0, -1.0],
+        uv: [1.0, 1.0],
+    },
     // Tri 2
-    Vertex { position: [-1.0, 1.0], uv: [0.0, 0.0] },
-    Vertex { position: [1.0, -1.0], uv: [1.0, 1.0] },
-    Vertex { position: [1.0, 1.0], uv: [1.0, 0.0] },
+    Vertex {
+        position: [-1.0, 1.0],
+        uv: [0.0, 0.0],
+    },
+    Vertex {
+        position: [1.0, -1.0],
+        uv: [1.0, 1.0],
+    },
+    Vertex {
+        position: [1.0, 1.0],
+        uv: [1.0, 0.0],
+    },
 ];
 
 pub struct GpuCompositor {
@@ -38,148 +56,162 @@ pub struct GpuCompositor {
 impl GpuCompositor {
     pub fn new(gpu: Arc<GpuContext>) -> Self {
         let effects_pipeline = crate::effects::GpuEffects::new(gpu.clone());
-        let shader = gpu.device.create_shader_module(wgpu::include_wgsl!("compositor.wgsl"));
+        let shader = gpu
+            .device
+            .create_shader_module(wgpu::include_wgsl!("compositor.wgsl"));
         let shader_projective = gpu
             .device
             .create_shader_module(wgpu::include_wgsl!("compositor_projective.wgsl"));
 
-        let bind_group_layout = gpu.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("compositor_bind_group_layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
-
-        let projective_bind_group_layout = gpu.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("compositor_projective_bind_group_layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-            ],
-        });
-
-        let pipeline_layout = gpu.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("compositor_pipeline_layout"),
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
-        });
-
-        let pipeline_layout_projective = gpu.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("compositor_projective_pipeline_layout"),
-            bind_group_layouts: &[&projective_bind_group_layout],
-            push_constant_ranges: &[],
-        });
-
-        let pipeline = gpu.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("compositor_pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: "vs_main",
-                buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2],
-                }],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: "fs_main",
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba8Unorm,
-                    blend: Some(wgpu::BlendState {
-                        color: wgpu::BlendComponent {
-                            src_factor: wgpu::BlendFactor::One,
-                            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-                            operation: wgpu::BlendOperation::Add,
+        let bind_group_layout =
+            gpu.device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("compositor_bind_group_layout"),
+                    entries: &[
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 0,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Texture {
+                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                                view_dimension: wgpu::TextureViewDimension::D2,
+                                multisampled: false,
+                            },
+                            count: None,
                         },
-                        alpha: wgpu::BlendComponent::OVER,
-                    }),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-        });
-
-        let projective_pipeline = gpu.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("compositor_projective_pipeline"),
-            layout: Some(&pipeline_layout_projective),
-            vertex: wgpu::VertexState {
-                module: &shader_projective,
-                entry_point: "vs_main",
-                buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2],
-                }],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader_projective,
-                entry_point: "fs_main",
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba8Unorm,
-                    blend: Some(wgpu::BlendState {
-                        color: wgpu::BlendComponent {
-                            src_factor: wgpu::BlendFactor::SrcAlpha,
-                            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-                            operation: wgpu::BlendOperation::Add,
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 1,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                            count: None,
                         },
-                        alpha: wgpu::BlendComponent::OVER,
+                    ],
+                });
+
+        let projective_bind_group_layout =
+            gpu.device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("compositor_projective_bind_group_layout"),
+                    entries: &[
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 0,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Texture {
+                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                                view_dimension: wgpu::TextureViewDimension::D2,
+                                multisampled: false,
+                            },
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 1,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 2,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Uniform,
+                                has_dynamic_offset: false,
+                                min_binding_size: None,
+                            },
+                            count: None,
+                        },
+                    ],
+                });
+
+        let pipeline_layout = gpu
+            .device
+            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("compositor_pipeline_layout"),
+                bind_group_layouts: &[&bind_group_layout],
+                push_constant_ranges: &[],
+            });
+
+        let pipeline_layout_projective =
+            gpu.device
+                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("compositor_projective_pipeline_layout"),
+                    bind_group_layouts: &[&projective_bind_group_layout],
+                    push_constant_ranges: &[],
+                });
+
+        let pipeline = gpu
+            .device
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("compositor_pipeline"),
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: "vs_main",
+                    buffers: &[wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2],
+                    }],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: "fs_main",
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Rgba8Unorm,
+                        blend: Some(wgpu::BlendState {
+                            color: wgpu::BlendComponent {
+                                src_factor: wgpu::BlendFactor::One,
+                                dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                                operation: wgpu::BlendOperation::Add,
+                            },
+                            alpha: wgpu::BlendComponent::OVER,
+                        }),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+            });
+
+        let projective_pipeline =
+            gpu.device
+                .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("compositor_projective_pipeline"),
+                    layout: Some(&pipeline_layout_projective),
+                    vertex: wgpu::VertexState {
+                        module: &shader_projective,
+                        entry_point: "vs_main",
+                        buffers: &[wgpu::VertexBufferLayout {
+                            array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
+                            step_mode: wgpu::VertexStepMode::Vertex,
+                            attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2],
+                        }],
+                        compilation_options: wgpu::PipelineCompilationOptions::default(),
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &shader_projective,
+                        entry_point: "fs_main",
+                        compilation_options: wgpu::PipelineCompilationOptions::default(),
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format: wgpu::TextureFormat::Rgba8Unorm,
+                            blend: Some(wgpu::BlendState {
+                                color: wgpu::BlendComponent {
+                                    src_factor: wgpu::BlendFactor::SrcAlpha,
+                                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                                    operation: wgpu::BlendOperation::Add,
+                                },
+                                alpha: wgpu::BlendComponent::OVER,
+                            }),
+                            write_mask: wgpu::ColorWrites::ALL,
+                        })],
                     }),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-        });
+                    primitive: wgpu::PrimitiveState::default(),
+                    depth_stencil: None,
+                    multisample: wgpu::MultisampleState::default(),
+                    multiview: None,
+                });
 
         let sampler = gpu.device.create_sampler(&wgpu::SamplerDescriptor {
             mag_filter: wgpu::FilterMode::Linear,
@@ -187,11 +219,13 @@ impl GpuCompositor {
             ..Default::default()
         });
 
-        let vertex_buffer = gpu.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("compositor_vertex_buffer"),
-            contents: bytemuck::cast_slice(VERTICES),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
+        let vertex_buffer = gpu
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("compositor_vertex_buffer"),
+                contents: bytemuck::cast_slice(VERTICES),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
 
         Self {
             gpu,
@@ -207,7 +241,14 @@ impl GpuCompositor {
 
     /// Uploads source layer and blends it into the destination texture.
     /// In a fully integrated phase, texture allocations would be persistent.
-    pub fn composite(&self, dst: &mut FrameBuffer, src: &FrameBuffer, x: i32, y: i32, effects: &[vidra_core::types::LayerEffect]) {
+    pub fn composite(
+        &self,
+        dst: &mut FrameBuffer,
+        src: &FrameBuffer,
+        x: i32,
+        y: i32,
+        effects: &[vidra_core::types::LayerEffect],
+    ) {
         if dst.format != PixelFormat::Rgba8 || src.format != PixelFormat::Rgba8 {
             return dst.composite_over(src, x, y); // CPU fallback
         }
@@ -221,7 +262,11 @@ impl GpuCompositor {
         }
 
         // Just use CPU if it's offscreen
-        if x >= dst.width as i32 || y >= dst.height as i32 || x + final_src.width as i32 <= 0 || y + final_src.height as i32 <= 0 {
+        if x >= dst.width as i32
+            || y >= dst.height as i32
+            || x + final_src.width as i32 <= 0
+            || y + final_src.height as i32 <= 0
+        {
             return;
         }
 
@@ -252,7 +297,9 @@ impl GpuCompositor {
         }
 
         // If wgpu row alignment requirements aren't met, fall back to CPU.
-        if !is_wgpu_bytes_per_row_aligned(dst.width) || !is_wgpu_bytes_per_row_aligned(final_src.width) {
+        if !is_wgpu_bytes_per_row_aligned(dst.width)
+            || !is_wgpu_bytes_per_row_aligned(final_src.width)
+        {
             dst.composite_over_projected(&final_src, dst_corners);
             return;
         }
@@ -288,11 +335,10 @@ impl GpuCompositor {
         let src_w_u32 = src.width;
         let src_h_u32 = src.height;
 
-        let usage_dst =
-            wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::COPY_SRC
-                | wgpu::TextureUsages::COPY_DST;
+        let usage_dst = wgpu::TextureUsages::TEXTURE_BINDING
+            | wgpu::TextureUsages::RENDER_ATTACHMENT
+            | wgpu::TextureUsages::COPY_SRC
+            | wgpu::TextureUsages::COPY_DST;
         let tex_dst = self.gpu.texture_pool.acquire(
             &self.gpu.device,
             Some("projective_dst"),
@@ -356,37 +402,46 @@ impl GpuCompositor {
 
         // Build projected-quad vertices in NDC.
         let verts = build_projected_vertices(dst_w as f32, dst_h as f32, dst_corners);
-        let vb = self.gpu.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("projective_vertex_buffer"),
-            contents: bytemuck::cast_slice(&verts),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
+        let vb = self
+            .gpu
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("projective_vertex_buffer"),
+                contents: bytemuck::cast_slice(&verts),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
 
         let params = ProjectiveParams::from_inv_h(inv, src_w_u32 as f32, src_h_u32 as f32);
-        let params_buffer = self.gpu.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("projective_params"),
-            contents: bytemuck::cast_slice(&[params]),
-            usage: wgpu::BufferUsages::UNIFORM,
-        });
+        let params_buffer = self
+            .gpu
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("projective_params"),
+                contents: bytemuck::cast_slice(&[params]),
+                usage: wgpu::BufferUsages::UNIFORM,
+            });
 
-        let bind_group = self.gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("projective_bind_group"),
-            layout: &self.projective_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&view_src),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&self.sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: params_buffer.as_entire_binding(),
-                },
-            ],
-        });
+        let bind_group = self
+            .gpu
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("projective_bind_group"),
+                layout: &self.projective_bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&view_src),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: params_buffer.as_entire_binding(),
+                    },
+                ],
+            });
 
         let out_buf = self.gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("projective_readback"),
@@ -453,8 +508,12 @@ impl GpuCompositor {
 
         if rx.recv().unwrap().is_err() {
             out_buf.unmap();
-            self.gpu.texture_pool.release(tex_dst, dst_w, dst_h, format, usage_dst);
-            self.gpu.texture_pool.release(tex_src, src_w_u32, src_h_u32, format, usage_src);
+            self.gpu
+                .texture_pool
+                .release(tex_dst, dst_w, dst_h, format, usage_dst);
+            self.gpu
+                .texture_pool
+                .release(tex_src, src_w_u32, src_h_u32, format, usage_src);
             return Err(anyhow::anyhow!("failed to map projective readback buffer"));
         }
 
@@ -462,8 +521,12 @@ impl GpuCompositor {
         out_buf.unmap();
 
         // Release textures back to pool.
-        self.gpu.texture_pool.release(tex_dst, dst_w, dst_h, format, usage_dst);
-        self.gpu.texture_pool.release(tex_src, src_w_u32, src_h_u32, format, usage_src);
+        self.gpu
+            .texture_pool
+            .release(tex_dst, dst_w, dst_h, format, usage_dst);
+        self.gpu
+            .texture_pool
+            .release(tex_src, src_w_u32, src_h_u32, format, usage_src);
 
         dst.data = data;
         Ok(())
@@ -537,7 +600,12 @@ impl ProjectiveParams {
         let col1 = [inv[1] as f32, inv[4] as f32, inv[7] as f32, 0.0];
         let col2 = [inv[2] as f32, inv[5] as f32, inv[8] as f32, 0.0];
         let src = [src_w, src_h, 0.0, 0.0];
-        Self { col0, col1, col2, src }
+        Self {
+            col0,
+            col1,
+            col2,
+            src,
+        }
     }
 }
 

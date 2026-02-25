@@ -30,7 +30,11 @@ fn mcp_stdout_is_pure_jsonrpc() {
 
     let output = child.wait_with_output().expect("failed waiting for child");
 
-    assert!(output.status.success(), "mcp process failed: {:?}", output.status);
+    assert!(
+        output.status.success(),
+        "mcp process failed: {:?}",
+        output.status
+    );
 
     let stdout = String::from_utf8(output.stdout).expect("stdout not utf-8");
     let stderr = String::from_utf8(output.stderr).expect("stderr not utf-8");
@@ -55,7 +59,10 @@ fn mcp_stdout_is_pure_jsonrpc() {
         serde_json::from_str(lines[0]).expect("stdout line is not valid JSON");
     assert_eq!(value["jsonrpc"], "2.0");
     assert_eq!(value["id"], 1);
-    assert!(value.get("result").is_some(), "response missing result: {value}");
+    assert!(
+        value.get("result").is_some(),
+        "response missing result: {value}"
+    );
 
     assert!(
         stderr.contains("Starting MCP Server"),

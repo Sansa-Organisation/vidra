@@ -85,4 +85,23 @@ And that's it! You've successfully rendered your first video entirely from code.
 Now that you know the basics, here's what you can do next:
 - **Learn the Language**: Read the [VidraScript Reference](vidrascript.md) to learn about components, brand kits, conditional logic, and AI layers.
 - **Add Audio**: Learn how to compose audio and use automated TTS (`tts("Text", "Voice")`).
+- **Use Web Scenes**: Embed HTML/React/D3 content as video layers with `web("page.html")`. See [Web Scenes Guide](web-scenes.md).
+- **Visual Editing**: Launch the editor with `vidra editor main.vidra --open` for a visual editing environment with canvas preview, timeline, and property inspector.
 - **Use the AI Copilot**: Start the MCP server (`vidra mcp`) to integrate Vidra with your favorite AI agent, or use `vidra storyboard "A cinematic intro"` to generate scenes from text.
+
+## 6. Visual Editor
+
+For a visual editing experience, launch the built-in editor:
+
+```bash
+vidra editor main.vidra --open
+```
+
+This starts a local server (default port 3001) and opens the editor in your browser. The editor provides:
+- **Canvas preview**: Real-time frame rendering with arrow-key scrubbing
+- **Scene graph**: Tree view of all scenes and layers
+- **Timeline**: Visual scrubber with play controls
+- **Property inspector**: Edit layer transforms (position, scale, opacity, rotation)
+- **Code editor**: Edit VidraScript source with live recompilation
+
+Changes in the editor automatically recompile and update the preview. You can also switch between visual and code editing modes.
