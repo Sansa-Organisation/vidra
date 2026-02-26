@@ -607,8 +607,8 @@ Docs and example projects that prove the features work and teach developers how 
 | 12.1 | `docs/vidrascript.md` updated | Complete |
 | 12.2 | `docs/web-scenes.md` created | Complete |
 | 12.3 | `docs/architecture.md` updated | Complete |
-| 12.4 | `docs/quickstart.md` updated | README.md update deferred |
-| 12.5 | 3 `.vidra` example files | Companion web/ HTML files deferred |
+| 12.4 | `docs/quickstart.md`, `README.md` | Complete |
+| 12.5 | 3 `.vidra` example files + web | Complete |
 | 12.6 | `examples/index.html` with React | Complete |
 
 ---
