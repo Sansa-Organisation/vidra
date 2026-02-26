@@ -1,6 +1,6 @@
 {
     "name": "@sansavision/vidra-web-capture",
-    "version": "0.1.6-alpha.0",
+    "version": "0.1.7-alpha.0",
     "description": "Client-side SDK for making React/JS apps Vidra-capturable as web() layers",
     "type": "module",
     "main": "dist/index.js",
