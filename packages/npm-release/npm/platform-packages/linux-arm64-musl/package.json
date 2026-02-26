@@ -1,6 +1,6 @@
 {
     "name": "@sansavision/vidra-linux-arm64-musl",
-    "version": "0.1.5",
+    "version": "0.1.6-alpha.0",
     "description": "Native binaries for linux arm64 (musl)",
     "license": "MIT",
     "private": false,

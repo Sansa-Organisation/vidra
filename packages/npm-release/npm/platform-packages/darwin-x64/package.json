@@ -1,6 +1,6 @@
 {
     "name": "@sansavision/vidra-darwin-x64",
-    "version": "0.1.5",
+    "version": "0.1.6-alpha.0",
     "description": "Native binaries for darwin x64",
     "license": "MIT",
     "private": false,
