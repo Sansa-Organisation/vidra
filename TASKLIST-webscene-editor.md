@@ -537,10 +537,10 @@ Connect AI chat and MCP tool invocation through the editor frontend.
 
 | Task | Proof exists? | Gaps / Risks |
 |------|---------------|--------------|
-| 10.1 | AI stub endpoint | Full chat UI deferred |
-| 10.2 | Backend injects project context | SSE streaming deferred |
-| 10.3 | MCP invoke wired | One-click apply UI deferred |
-| 10.4 | `/api/mcp/invoke` available | Console panel UI deferred |
+| 10.1 | AI stub endpoint | Complete (AiChatPanel added) |
+| 10.2 | Backend injects project context | Complete (useAI hook added) |
+| 10.3 | MCP invoke wired | Complete (One-click UI added) |
+| 10.4 | `/api/mcp/invoke` available | Complete (McpConsolePanel added) |
 | 10.5 | `useMcp` hook | Complete |
 | 10.6 | Tools `generate_web_code` + `add_web_scene` | Complete |
 

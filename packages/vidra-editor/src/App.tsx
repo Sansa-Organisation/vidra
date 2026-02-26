@@ -8,13 +8,17 @@ import { SceneGraphPanel } from './panels/SceneGraphPanel';
 import { PropertyPanel } from './panels/PropertyPanel';
 import { CodeEditorPanel } from './panels/CodeEditorPanel';
 import { Toolbar } from './panels/Toolbar';
+import { AiChatPanel } from './panels/AiChatPanel';
+import { McpConsolePanel } from './panels/McpConsolePanel';
 
 type Tab = 'scene-graph' | 'code';
+type RightTab = 'properties' | 'ai-chat' | 'mcp-console';
 
 function App() {
   const { connected, meta, error, requestFrame, setFrameCallback, rest, setError } = useBackend();
   const { setIr, setSource, setScenes, pushUndo } = useProjectStore();
   const [leftTab, setLeftTab] = useState<Tab>('scene-graph');
+  const [rightTab, setRightTab] = useState<RightTab>('properties');
 
   // Layout state
   const [leftWidth, setLeftWidth] = useState(260);
@@ -165,8 +169,29 @@ function App() {
 
         {/* Right panel */}
         <div className="panel-right" style={{ width: rightWidth }}>
-          <div className="panel-title">Properties</div>
-          <PropertyPanel onPatch={handlePatch} />
+          <div style={{ display: 'flex', borderBottom: '1px solid var(--border-subtle)' }}>
+            <button
+              className={`toolbar-btn ${rightTab === 'properties' ? 'active' : ''}`}
+              style={{ flex: 1, borderRadius: 0, height: '32px', fontSize: '11px' }}
+              onClick={() => setRightTab('properties')}
+            >Props</button>
+            <button
+              className={`toolbar-btn ${rightTab === 'ai-chat' ? 'active' : ''}`}
+              style={{ flex: 1, borderRadius: 0, height: '32px', fontSize: '11px' }}
+              onClick={() => setRightTab('ai-chat')}
+            >AI</button>
+            <button
+              className={`toolbar-btn ${rightTab === 'mcp-console' ? 'active' : ''}`}
+              style={{ flex: 1, borderRadius: 0, height: '32px', fontSize: '11px' }}
+              onClick={() => setRightTab('mcp-console')}
+            >MCP</button>
+          </div>
+
+          <div style={{ flex: 1, overflowY: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            {rightTab === 'properties' && <PropertyPanel onPatch={handlePatch} />}
+            {rightTab === 'ai-chat' && <AiChatPanel rest={rest} />}
+            {rightTab === 'mcp-console' && <McpConsolePanel rest={rest} />}
+          </div>
         </div>
       </div>
     </div>
