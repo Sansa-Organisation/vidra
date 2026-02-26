@@ -1373,7 +1373,7 @@ impl Compiler {
                 let mut viewport_height = 1080;
                 let mut mode = vidra_ir::layer::WebCaptureMode::FrameAccurate;
                 let mut wait_for = None;
-                let mut variables = std::collections::HashMap::new();
+                let variables = std::collections::HashMap::new();
 
                 for arg in args {
                     let val = match &arg.value {
