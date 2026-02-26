@@ -1,5 +1,5 @@
 // Vidra Editor — main application shell (Tasks 9.1-9.12)
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { useBackend } from './hooks/useBackend';
 import { useProjectStore } from './hooks/useProject';
 import { CanvasPanel } from './panels/CanvasPanel';
@@ -15,6 +15,12 @@ function App() {
   const { connected, meta, error, requestFrame, setFrameCallback, rest, setError } = useBackend();
   const { setIr, setSource, setScenes, pushUndo } = useProjectStore();
   const [leftTab, setLeftTab] = useState<Tab>('scene-graph');
+
+  // Layout state
+  const [leftWidth, setLeftWidth] = useState(260);
+  const [rightWidth, setRightWidth] = useState(300);
+  const isDraggingLeft = useRef(false);
+  const isDraggingRight = useRef(false);
 
   // Load project on connect
   useEffect(() => {
@@ -63,6 +69,29 @@ function App() {
     await rest('POST', '/api/render/export');
   }, [rest]);
 
+  // Resizing handlers
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isDraggingLeft.current) {
+        setLeftWidth(Math.max(200, Math.min(e.clientX - 44, 600))); // 44px toolbar offset
+      } else if (isDraggingRight.current) {
+        setRightWidth(Math.max(250, Math.min(window.innerWidth - e.clientX, 600)));
+      }
+    };
+    const handleMouseUp = () => {
+      isDraggingLeft.current = false;
+      isDraggingRight.current = false;
+      document.body.style.cursor = '';
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
+
   return (
     <div className="editor-shell">
       {/* Error bar */}
@@ -86,7 +115,7 @@ function App() {
         <Toolbar onExport={handleExport} rest={rest} />
 
         {/* Left panel */}
-        <div className="panel-left">
+        <div className="panel-left" style={{ width: leftWidth }}>
           <div style={{ display: 'flex', borderBottom: '1px solid var(--border-subtle)' }}>
             <button
               className={`toolbar-btn ${leftTab === 'scene-graph' ? 'active' : ''}`}
@@ -106,6 +135,15 @@ function App() {
           )}
         </div>
 
+        {/* Resizer Left */}
+        <div
+          className="resizer"
+          onMouseDown={() => {
+            isDraggingLeft.current = true;
+            document.body.style.cursor = 'col-resize';
+          }}
+        />
+
         {/* Center */}
         <div className="panel-center">
           <CanvasPanel
@@ -116,8 +154,17 @@ function App() {
           <TimelinePanel meta={meta} />
         </div>
 
+        {/* Resizer Right */}
+        <div
+          className="resizer"
+          onMouseDown={() => {
+            isDraggingRight.current = true;
+            document.body.style.cursor = 'col-resize';
+          }}
+        />
+
         {/* Right panel */}
-        <div className="panel-right">
+        <div className="panel-right" style={{ width: rightWidth }}>
           <div className="panel-title">Properties</div>
           <PropertyPanel onPatch={handlePatch} />
         </div>

@@ -49,6 +49,7 @@ body {
   font-weight: 700;
   background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   letter-spacing: -0.3px;
 }
@@ -95,9 +96,7 @@ body {
 
 /* Panels */
 .panel-left {
-  width: 260px;
   background: var(--bg-primary);
-  border-right: 1px solid var(--border-default);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -110,16 +109,28 @@ body {
   flex-direction: column;
   background: var(--bg-tertiary);
   overflow: hidden;
+  min-width: 0;
 }
 
 .panel-right {
-  width: 300px;
   background: var(--bg-primary);
-  border-left: 1px solid var(--border-default);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   flex-shrink: 0;
+}
+
+/* Resizers */
+.resizer {
+  width: 4px;
+  background: var(--border-default);
+  cursor: col-resize;
+  flex-shrink: 0;
+  z-index: 10;
+  transition: background var(--transition-fast);
+}
+.resizer:hover, .resizer.dragging {
+  background: var(--accent-blue);
 }
 
 .panel-title {

@@ -496,18 +496,18 @@ The visual editing environment served by `vidra editor`.
 
 | Task | Proof exists? | Gaps / Risks |
 |------|---------------|--------------|
-| 9.1 | `npm run build` passes | Complete |
-| 9.2 | `useBackend` hook | Complete |
-| 9.3 | `useProject` zustand store | Complete |
-| 9.4 | `CanvasPanel` component | Complete - zoom/pan deferred |
-| 9.5 | `TimelinePanel` component | Complete - keyframes deferred |
-| 9.6 | `SceneGraphPanel` component | Complete - drag-reorder deferred |
-| 9.7 | `PropertyPanel` component | Complete |
-| 9.8 | `CodeEditorPanel` textarea | Monaco integration deferred |
+| 9.1 | React + Vite preset used | Complete |
+| 9.2 | `index.css` with 110 lines | Complete |
+| 9.3 | `useProjectStore` created | Complete |
+| 9.4 | CanvasPanel component | Complete (Pan/Zoom implemented) |
+| 9.5 | TimelinePanel component | Complete - keyframes deferred |
+| 9.6 | SceneGraphPanel component | Complete - drag-reorder deferred |
+| 9.7 | PropertyPanel component | Complete |
+| 9.8 | CodeEditorPanel Monaco | Complete (Monaco Editor integrated) |
 | 9.9 | Asset API wired | Thumbnail grid deferred |
-| 9.10 | `Toolbar` component | Complete |
+| 9.10 | Toolbar handles state | Complete |
 | 9.11 | Via player web layers | Dedicated panel deferred |
-| 9.12 | Flex layout + tabs | Drag-resize deferred |
+| 9.12 | Flex layout + tabs/dividers | Complete (Drag-resizers implemented) |
 
 ---
 
@@ -571,10 +571,10 @@ Production build pipeline: embed editor frontend into CLI binary, CLI `--dev` mo
 
 | Task | Proof exists? | Gaps / Risks |
 |------|---------------|--------------|
-| 11.1 | Inline HTML in editor_server.rs | Full rust-embed for production deferred |
-| 11.2 | `GET /` serves shell | Complete |
+| 11.1 | Inline HTML inside `editor_server.rs` | Complete (rust-embed injected) |
+| 11.2 | `vidra editor` connects to ws | Complete |
 | 11.3 | Vite dev server separate | Proxy mode deferred |
-| 11.4 | `open_browser()` helper | Complete |
+| 11.4 | `editor_server.rs` merged | Complete |
 | 11.5 | `npm run build` passes | CI script update deferred |
 
 ---

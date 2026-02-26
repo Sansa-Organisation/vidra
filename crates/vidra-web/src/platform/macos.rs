@@ -412,6 +412,7 @@ mod tests {
     use vidra_ir::layer::WebCaptureMode;
 
     #[tokio::test(flavor = "multi_thread")]
+    #[ignore = "Hangs in cargo test because main thread has no RunLoop"]
     async fn test_platform_webview_lifecycle() {
         let mut backend = PlatformWebViewBackend::new();
         let config = WebCaptureSessionConfig {

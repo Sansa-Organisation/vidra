@@ -130,8 +130,6 @@ pub async fn run_editor_server(file: PathBuf, port: u16, open: bool) -> Result<(
 
     // Build router
     let app = Router::new()
-        // Embedded frontend
-        .route("/", get(index_html))
         // WebSocket
         .route("/ws", get(ws_handler))
         // Project API (8.4)
@@ -152,7 +150,9 @@ pub async fn run_editor_server(file: PathBuf, port: u16, open: bool) -> Result<(
         .route("/api/assets/{id}", delete(delete_asset))
         // LLM proxy stub (8.8)
         .route("/api/ai/chat", post(ai_chat))
-        .with_state(app_state);
+        .with_state(app_state)
+        // Embedded frontend fallback (SPA routing)
+        .fallback(static_handler);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     println!("📡 Editor Server listening on http://{}", addr);
@@ -194,128 +194,34 @@ fn compile_and_load(file: &PathBuf) -> Result<Project> {
     Ok(project)
 }
 
-// ── Embedded frontend (placeholder) ─────────────────────────────────
+// ── Embedded frontend ───────────────────────────────────────────────
 
-async fn index_html() -> Html<&'static str> {
-    Html(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vidra Editor</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Inter', system-ui, sans-serif; background: #0d1117; color: #c9d1d9; }
-        .shell { display: flex; flex-direction: column; height: 100vh; }
-        header { background: #161b22; border-bottom: 1px solid #30363d; padding: 12px 20px;
-                 display: flex; align-items: center; gap: 12px; }
-        header h1 { font-size: 16px; font-weight: 600; background: linear-gradient(135deg, #58a6ff, #bc8cff);
-                     -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        .status { font-size: 12px; color: #8b949e; margin-left: auto; }
-        .status.connected { color: #3fb950; }
-        .status.error { color: #f85149; }
-        main { flex: 1; display: flex; overflow: hidden; }
-        .panel { border-right: 1px solid #30363d; padding: 16px; overflow-y: auto; }
-        .panel.left { width: 280px; background: #0d1117; }
-        .panel.center { flex: 1; display: flex; flex-direction: column; align-items: center;
-                        justify-content: center; background: #010409; }
-        .panel.right { width: 320px; background: #0d1117; }
-        canvas { border: 1px solid #30363d; max-width: 100%; max-height: 80%; }
-        .panel-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em;
-                       color: #8b949e; margin-bottom: 12px; }
-        .info-row { display: flex; justify-content: space-between; font-size: 13px;
-                    padding: 6px 0; border-bottom: 1px solid #21262d; }
-        .info-key { color: #8b949e; }
-        .info-val { color: #c9d1d9; font-family: 'JetBrains Mono', monospace; }
-        #error-bar { display: none; background: #da3633; color: #fff; padding: 8px 16px;
-                     font-size: 13px; }
-        #error-bar.visible { display: block; }
-    </style>
-</head>
-<body>
-<div class="shell">
-    <div id="error-bar"></div>
-    <header>
-        <h1>▸ Vidra Editor</h1>
-        <span class="status" id="ws-status">Connecting…</span>
-    </header>
-    <main>
-        <div class="panel left">
-            <div class="panel-title">Project</div>
-            <div id="project-info">Loading…</div>
-        </div>
-        <div class="panel center">
-            <canvas id="preview" width="640" height="360"></canvas>
-            <div style="margin-top:12px;font-size:12px;color:#8b949e" id="frame-label">Frame 0</div>
-        </div>
-        <div class="panel right">
-            <div class="panel-title">Properties</div>
-            <div id="props-panel" style="font-size:13px;color:#8b949e">Select a layer to inspect.</div>
-        </div>
-    </main>
-</div>
-<script>
-const canvas = document.getElementById('preview');
-const ctx = canvas.getContext('2d');
-const wsStatus = document.getElementById('ws-status');
-const errorBar = document.getElementById('error-bar');
-const frameLabel = document.getElementById('frame-label');
-const infoEl = document.getElementById('project-info');
-let ws, meta = null, frame = 0;
+#[derive(rust_embed::RustEmbed)]
+#[folder = "../../packages/vidra-editor/dist/"]
+struct Asset;
 
-function connect() {
-    ws = new WebSocket(`ws://${location.host}/ws`);
-    ws.binaryType = 'arraybuffer';
-    ws.onopen = () => { wsStatus.textContent = 'Connected'; wsStatus.className = 'status connected'; };
-    ws.onclose = () => { wsStatus.textContent = 'Disconnected'; wsStatus.className = 'status error';
-                         setTimeout(connect, 2000); };
-    ws.onmessage = (ev) => {
-        if (typeof ev.data === 'string') {
-            const msg = JSON.parse(ev.data);
-            if (msg.type === 'METADATA') {
-                meta = msg;
-                canvas.width = msg.width; canvas.height = msg.height;
-                infoEl.innerHTML = `
-                    <div class="info-row"><span class="info-key">Resolution</span><span class="info-val">${msg.width}×${msg.height}</span></div>
-                    <div class="info-row"><span class="info-key">FPS</span><span class="info-val">${msg.fps}</span></div>
-                    <div class="info-row"><span class="info-key">Frames</span><span class="info-val">${msg.total_frames}</span></div>
-                `;
-                errorBar.classList.remove('visible');
-                requestFrame(0);
-            } else if (msg.type === 'ERROR') {
-                errorBar.textContent = msg.message;
-                errorBar.classList.add('visible');
-            }
-        } else {
-            const arr = new Uint8Array(ev.data);
-            // Decode JPEG into canvas
-            const blob = new Blob([arr], { type: 'image/jpeg' });
-            createImageBitmap(blob).then(bmp => { ctx.drawImage(bmp, 0, 0); });
-        }
-    };
-}
-
-function requestFrame(f) {
-    frame = f;
-    frameLabel.textContent = `Frame ${f}`;
-    if (ws && ws.readyState === 1) {
-        ws.send(JSON.stringify({ type: 'REQUEST_FRAME', frame: f }));
+async fn static_handler(uri: axum::extract::OriginalUri) -> impl IntoResponse {
+    let mut path = uri.path().trim_start_matches('/').to_string();
+    if path.is_empty() || path == "index.html" {
+        path = "index.html".to_string();
     }
-}
 
-connect();
-
-// Simple scrubbing with arrow keys
-document.addEventListener('keydown', (e) => {
-    if (!meta) return;
-    if (e.key === 'ArrowRight') requestFrame(Math.min(frame + 1, meta.total_frames - 1));
-    if (e.key === 'ArrowLeft') requestFrame(Math.max(frame - 1, 0));
-});
-</script>
-</body>
-</html>"#,
-    )
+    match Asset::get(&path) {
+        Some(content) => {
+            let mime = mime_guess::from_path(&path).first_or_octet_stream();
+            ([(axum::http::header::CONTENT_TYPE, mime.as_ref())], content.data).into_response()
+        }
+        None => {
+            if path != "index.html" {
+                // SPA fallback for routing
+                if let Some(content) = Asset::get("index.html") {
+                    let mime = mime_guess::from_path("index.html").first_or_text_plain();
+                    return ([(axum::http::header::CONTENT_TYPE, mime.as_ref())], content.data).into_response();
+                }
+            }
+            (StatusCode::NOT_FOUND, "404 Not Found").into_response()
+        }
+    }
 }
 
 // ── WebSocket handler ───────────────────────────────────────────────
