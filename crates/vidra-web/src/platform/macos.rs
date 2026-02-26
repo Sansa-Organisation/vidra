@@ -123,6 +123,7 @@ unsafe fn pump_runloop(seconds: f64) {
 pub struct PlatformWebViewBackend {
     webview: Option<usize>, // Store as usize to be Send-safe (raw ptr value)
     window: Option<usize>,
+    bitmap: Option<usize>,  // Cached NSBitmapImageRep
     config: Option<WebCaptureSessionConfig>,
     viewport_width: u32,
     viewport_height: u32,
@@ -136,6 +137,7 @@ impl PlatformWebViewBackend {
         Self {
             webview: None,
             window: None,
+            bitmap: None,
             config: None,
             viewport_width: 0,
             viewport_height: 0,
@@ -206,7 +208,7 @@ impl WebCaptureBackend for PlatformWebViewBackend {
         let source = config.source.clone();
 
         // All ObjC work dispatched to main thread
-        let (wv_addr, win_addr) = tokio::task::block_in_place(|| {
+        let (wv_addr, win_addr, bmp_addr) = tokio::task::block_in_place(|| {
             dispatch_main_sync(|| unsafe {
                 // Ensure NSApplication exists
                 let cls = objc2::runtime::AnyClass::get(c"NSApplication").unwrap();
@@ -274,12 +276,30 @@ impl WebCaptureBackend for PlatformWebViewBackend {
                     ];
                 }
 
-                (webview as usize, window as usize)
+                // Pre-allocate the bitmap for fast capture (8MB buffer reuse)
+                let bmp_cls = objc2::runtime::AnyClass::get(c"NSBitmapImageRep").unwrap();
+                let bmp_raw: *mut AnyObject = msg_send![bmp_cls, alloc];
+                let bitmap: *mut AnyObject = msg_send![
+                    bmp_raw,
+                    initWithBitmapDataPlanes: std::ptr::null::<*mut u8>()
+                    pixelsWide: vp_w as i64
+                    pixelsHigh: vp_h as i64
+                    bitsPerSample: 8i64
+                    samplesPerPixel: 4i64
+                    hasAlpha: true
+                    isPlanar: false
+                    colorSpaceName: &*NSString::from_str("NSDeviceRGBColorSpace")
+                    bytesPerRow: (vp_w * 4) as i64
+                    bitsPerPixel: 32i64
+                ];
+
+                (webview as usize, window as usize, bitmap as usize)
             })
         });
 
         self.webview = Some(wv_addr);
         self.window = Some(win_addr);
+        self.bitmap = Some(bmp_addr);
         self.config = Some(config);
         self.viewport_width = vp_w;
         self.viewport_height = vp_h;
@@ -310,7 +330,8 @@ impl WebCaptureBackend for PlatformWebViewBackend {
         time_seconds: f64,
         variables: &HashMap<String, f64>,
     ) -> Result<FrameBuffer> {
-        let wv_addr = self.webview.ok_or_else(|| anyhow!("Session not started"))?;
+        let wv_addr = self.webview.unwrap();
+        let bmp_addr = self.bitmap.unwrap();
         let cfg = self.config.as_ref().ok_or_else(|| anyhow!("No config"))?;
         let vp_w = self.viewport_width;
         let vp_h = self.viewport_height;
@@ -328,6 +349,7 @@ impl WebCaptureBackend for PlatformWebViewBackend {
         let frame_data: Vec<u8> = tokio::task::block_in_place(|| {
             dispatch_main_sync(|| unsafe {
                 let webview = wv_addr as *mut AnyObject;
+                let bitmap = bmp_addr as *mut AnyObject;
 
                 // Execute JS
                 let ns_js = NSString::from_str(&js);
@@ -337,35 +359,19 @@ impl WebCaptureBackend for PlatformWebViewBackend {
                     completionHandler: std::ptr::null::<AnyObject>()
                 ];
 
-                pump_runloop(0.02);
+                // Reduced pump time for lower per-frame overhead
+                pump_runloop(0.005);
 
-                // Capture bitmap
-                let bmp_cls = objc2::runtime::AnyClass::get(c"NSBitmapImageRep").unwrap();
                 let rect = CGRect {
                     origin: CGPoint { x: 0.0, y: 0.0 },
                     size: CGSize { width: vp_w as f64, height: vp_h as f64 },
                 };
 
-                let bmp_raw: *mut AnyObject = msg_send![bmp_cls, alloc];
-                let bitmap: *mut AnyObject = msg_send![
-                    bmp_raw,
-                    initWithBitmapDataPlanes: std::ptr::null::<*mut u8>()
-                    pixelsWide: vp_w as i64
-                    pixelsHigh: vp_h as i64
-                    bitsPerSample: 8i64
-                    samplesPerPixel: 4i64
-                    hasAlpha: true
-                    isPlanar: false
-                    colorSpaceName: &*NSString::from_str("NSDeviceRGBColorSpace")
-                    bytesPerRow: (vp_w * 4) as i64
-                    bitsPerPixel: 32i64
-                ];
-
                 let gc_cls = objc2::runtime::AnyClass::get(c"NSGraphicsContext").unwrap();
-                let gfx: *mut AnyObject = msg_send![gc_cls, graphicsContextWithBitmapImageRep: bitmap];
+                let gfx_ctx: *mut AnyObject = msg_send![gc_cls, graphicsContextWithBitmapImageRep: bitmap];
                 let old: *mut AnyObject = msg_send![gc_cls, currentContext];
-                let _: () = msg_send![gc_cls, setCurrentContext: gfx];
-                let _: () = msg_send![webview, displayRectIgnoringOpacity: rect inContext: gfx];
+                let _: () = msg_send![gc_cls, setCurrentContext: gfx_ctx];
+                let _: () = msg_send![webview, displayRectIgnoringOpacity: rect, inContext: gfx_ctx];
                 let _: () = msg_send![gc_cls, setCurrentContext: old];
 
                 let data_ptr: *const u8 = msg_send![bitmap, bitmapData];
