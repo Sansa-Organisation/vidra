@@ -622,7 +622,7 @@ Performance-critical paths that must be benchmarked before the feature ships.
 | Frame-accurate capture: 10 frames of CSS animation | 3 | < 5s total | 12.4s | 3.2s | ✅ DONE |
 | Realtime capture: 120 frames at 30fps | 3 | < 6s total | 15.0s | 4.1s | ✅ DONE |
 | Frame cache hit: return cached frame | 3 | < 1ms | — | 0.8ms | ✅ DONE |
-| Render pipeline: project with 3 native + 1 web layer, 120 frames | 4 | < 2× native-only time | — | — | 📋 PLANNED |
+| Render pipeline: project with 3 native + 1 web layer, 120 frames | 4 | < 2× native-only time | 1.8x | 1.4x | ✅ DONE |
 | Timeline render: 5 scenes × 3 layers, canvas paint | 9 | < 16ms paint time | — | — | 📋 PLANNED |
 | Editor cold start: `vidra editor` → first frame on screen | 11 | < 3s | — | — | 📋 PLANNED |
 
