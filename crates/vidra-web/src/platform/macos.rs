@@ -225,8 +225,8 @@ impl WebCaptureBackend for PlatformWebViewBackend {
                 let scr_raw: *mut AnyObject = msg_send![scr_cls, alloc];
                 let script: *mut AnyObject = msg_send![
                     scr_raw,
-                    initWithSource: &*ns_js
-                    injectionTime: 0i64
+                    initWithSource: &*ns_js,
+                    injectionTime: 0i64,
                     forMainFrameOnly: true
                 ];
                 let _: () = msg_send![ucc, addUserScript: script];
@@ -239,7 +239,7 @@ impl WebCaptureBackend for PlatformWebViewBackend {
                 };
                 let wk_raw: *mut AnyObject = msg_send![wk_cls, alloc];
                 let webview: *mut AnyObject = msg_send![
-                    wk_raw, initWithFrame: frame configuration: wk_cfg
+                    wk_raw, initWithFrame: frame, configuration: wk_cfg
                 ];
 
                 // Hidden NSWindow
@@ -247,9 +247,9 @@ impl WebCaptureBackend for PlatformWebViewBackend {
                 let win_raw: *mut AnyObject = msg_send![win_cls, alloc];
                 let window: *mut AnyObject = msg_send![
                     win_raw,
-                    initWithContentRect: frame
-                    styleMask: 0usize
-                    backing: 2usize
+                    initWithContentRect: frame,
+                    styleMask: 0usize,
+                    backing: 2usize,
                     defer: false
                 ];
                 let _: () = msg_send![window, setContentView: webview];
@@ -272,7 +272,7 @@ impl WebCaptureBackend for PlatformWebViewBackend {
                     let ns_d = NSString::from_str(&dir.to_string_lossy());
                     let dir_url: *mut AnyObject = msg_send![url_cls, fileURLWithPath: &*ns_d];
                     let _: *mut AnyObject = msg_send![
-                        webview, loadFileURL: file_url allowingReadAccessToURL: dir_url
+                        webview, loadFileURL: file_url, allowingReadAccessToURL: dir_url
                     ];
                 }
 
@@ -281,15 +281,15 @@ impl WebCaptureBackend for PlatformWebViewBackend {
                 let bmp_raw: *mut AnyObject = msg_send![bmp_cls, alloc];
                 let bitmap: *mut AnyObject = msg_send![
                     bmp_raw,
-                    initWithBitmapDataPlanes: std::ptr::null::<*mut u8>()
-                    pixelsWide: vp_w as i64
-                    pixelsHigh: vp_h as i64
-                    bitsPerSample: 8i64
-                    samplesPerPixel: 4i64
-                    hasAlpha: true
-                    isPlanar: false
-                    colorSpaceName: &*NSString::from_str("NSDeviceRGBColorSpace")
-                    bytesPerRow: (vp_w * 4) as i64
+                    initWithBitmapDataPlanes: std::ptr::null::<*mut u8>(),
+                    pixelsWide: vp_w as i64,
+                    pixelsHigh: vp_h as i64,
+                    bitsPerSample: 8i64,
+                    samplesPerPixel: 4i64,
+                    hasAlpha: true,
+                    isPlanar: false,
+                    colorSpaceName: &*NSString::from_str("NSDeviceRGBColorSpace"),
+                    bytesPerRow: (vp_w * 4) as i64,
                     bitsPerPixel: 32i64
                 ];
 
@@ -355,7 +355,7 @@ impl WebCaptureBackend for PlatformWebViewBackend {
                 let ns_js = NSString::from_str(&js);
                 let _: () = msg_send![
                     webview,
-                    evaluateJavaScript: &*ns_js
+                    evaluateJavaScript: &*ns_js,
                     completionHandler: std::ptr::null::<AnyObject>()
                 ];
 

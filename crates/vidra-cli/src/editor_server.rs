@@ -17,7 +17,7 @@ use axum::{
         Multipart, State, WebSocketUpgrade,
     },
     http::{header, StatusCode},
-    response::{Html, IntoResponse, Json, Response},
+    response::{IntoResponse, Json, Response},
     routing::{delete, get, post},
     Router,
 };
