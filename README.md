@@ -226,12 +226,14 @@ The editor provides:
 
 | Panel | Description |
 |-------|-------------|
-| **Canvas** | Server-rendered GPU preview — frames streamed as JPEG over WebSocket |
+| **Canvas** | Server-rendered GPU preview — frames streamed as JPEG over WebSocket, pan and zoom enabled |
 | **Timeline** | Scrub through frames, play/pause, visual frame counter |
 | **Scene Graph** | Expandable tree of all scenes and layers with selection |
 | **Properties** | Live inspector for the selected layer — edit position, scale, opacity, content |
-| **Code Editor** | Inline `.vidra` source editing with live compilation |
-| **Toolbar** | Undo/redo, save, export to MP4 |
+| **AI Chat** | Built-in AI assistant to generate scenes, modify layers, or plan projects |
+| **MCP Console** | Manually trigger Model Context Protocol remote function calls against the project |
+| **Code Editor** | Inline `.vidra` source editing with live compilation via Monaco |
+| **Toolbar** | Undo/redo, layout toggle, export to MP4 |
 
 The editor is a React app embedded directly into the Rust CLI binary — no separate Node.js runtime required to use it. Changes edit the `.vidra` source file on disk. The file watcher recompiles and pushes updated frames to all connected clients in real-time.
 
