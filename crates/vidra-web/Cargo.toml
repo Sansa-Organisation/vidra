@@ -24,3 +24,10 @@ objc2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["NSData", "NSString", "NSURL", "NSURLRequest", "NSThread"] }
 objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSWindow", "NSView", "NSImage", "NSBitmapImageRep", "NSGraphicsContext", "NSRunningApplication"] }
 objc2-web-kit = { version = "0.3", features = ["WKWebView", "WKWebViewConfiguration", "WKUserContentController", "WKUserScript", "WKSnapshotConfiguration", "WKNavigation"] }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports", "async_tokio"] }
+
+[[bench]]
+name = "capture_benches"
+harness = false

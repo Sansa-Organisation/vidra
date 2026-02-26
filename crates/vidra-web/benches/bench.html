@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { margin: 0; background: red; width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; color: white; font-family: sans-serif; }
+        .box { width: 100px; height: 100px; background: blue; transition: transform 0.1s; }
+    </style>
+</head>
+<body>
+    <div class="box" id="box">Bench</div>
+    <script>
+        window.__vidra_advance_frame = function(params) {
+            document.getElementById('box').style.transform = `rotate(${params.time * 90}deg)`;
+        };
+    </script>
+</body>
+</html>
