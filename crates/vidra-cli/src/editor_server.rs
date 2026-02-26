@@ -148,6 +148,13 @@ pub async fn run_editor_server(file: PathBuf, port: u16, open: bool) -> Result<(
         .route("/api/assets", get(list_assets))
         .route("/api/assets/upload", post(upload_asset))
         .route("/api/assets/{id}", delete(delete_asset))
+        // Serve local assets dir explicitly
+        .nest_service(
+            "/assets_local",
+            tower_http::services::ServeDir::new(
+                std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join("assets")
+            )
+        )
         // LLM proxy stub (8.8)
         .route("/api/ai/chat", post(ai_chat))
         .with_state(app_state)

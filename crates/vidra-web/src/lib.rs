@@ -16,7 +16,7 @@ pub fn create_backend(preference: Option<&str>) -> Box<dyn WebCaptureBackend> {
     match preference.unwrap_or("auto") {
         "playwright" => Box::new(PlaywrightBackend::new()),
         "platform" | "auto" => {
-            let wants_platform = preference.unwrap_or("auto") == "platform";
+            let _wants_platform = preference.unwrap_or("auto") == "platform";
             
             #[cfg(target_os = "macos")]
             {
