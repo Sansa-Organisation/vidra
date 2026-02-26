@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>D3 Web Chart for Vidra</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: transparent;
+            color: #c9d1d9;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+        }
+        .bar {
+            fill: #58a6ff;
+        }
+        .bar-label {
+            fill: #fff;
+            font-size: 24px;
+            font-weight: 600;
+            text-anchor: middle;
+        }
+        .axis text {
+            fill: #8b949e;
+            font-size: 24px;
+        }
+        .axis path,
+        .axis line {
+            stroke: #30363d;
+        }
+    </style>
+</head>
+<body>
+    <div id="chart"></div>
+
+    <script>
+        // Use deterministic time provided by Vidra engine if available
+        let currentTime = 0;
+        let chartRendered = false;
+
+        const data = [
+            { label: 'Q1', value: 120 },
+            { label: 'Q2', value: 200 },
+            { label: 'Q3', value: 150 },
+            { label: 'Q4', value: 340 }
+        ];
+
+        const width = 1200;
+        const height = 600;
+        const margin = { top: 40, right: 40, bottom: 60, left: 80 };
+        const innerWidth = width - margin.left - margin.right;
+        const innerHeight = height - margin.top - margin.bottom;
+
+        const svg = d3.select('#chart')
+            .append('svg')
+            .attr('width', width)
+            .attr('height', height)
+            .append('g')
+            .attr('transform', `translate(${margin.left},${margin.top})`);
+
+        const x = d3.scaleBand()
+            .domain(data.map(d => d.label))
+            .range([0, innerWidth])
+            .padding(0.2);
+
+        const y = d3.scaleLinear()
+            .domain([0, d3.max(data, d => d.value) * 1.1])
+            .range([innerHeight, 0]);
+
+        svg.append('g')
+            .attr('class', 'axis')
+            .attr('transform', `translate(0,${innerHeight})`)
+            .call(d3.axisBottom(x));
+
+        svg.append('g')
+            .attr('class', 'axis')
+            .call(d3.axisLeft(y).ticks(5));
+
+        const bars = svg.selectAll('.bar')
+            .data(data)
+            .enter().append('rect')
+            .attr('class', 'bar')
+            .attr('x', d => x(d.label))
+            .attr('width', x.bandwidth())
+            .attr('y', innerHeight)
+            .attr('height', 0);
+
+        const labels = svg.selectAll('.bar-label')
+            .data(data)
+            .enter().append('text')
+            .attr('class', 'bar-label')
+            .attr('x', d => x(d.label) + x.bandwidth() / 2)
+            .attr('y', innerHeight - 10)
+            .text('');
+
+        function renderFrame() {
+            // Vidra plays time linearly starting at 0
+            // We want animation to take exactly 2000ms
+            const durationMs = 2000;
+            const t = Math.min(1.0, Math.max(0, currentTime / durationMs));
+            
+            // Easing function (easeOutCubic)
+            const ease = 1 - Math.pow(1 - t, 3);
+
+            bars.attr('y', d => innerHeight - ((innerHeight - y(d.value)) * ease))
+                .attr('height', d => (innerHeight - y(d.value)) * ease);
+            
+            labels.attr('y', d => innerHeight - ((innerHeight - y(d.value)) * ease) - 10)
+                  .text(d => Math.round(d.value * ease));
+        }
+
+        // Bridge setup: the Vidra capture engine will call '__vidra_advance_frame'
+        // before snapshotting the browser to guarantee deterministic animation output
+        window.__vidra_advance_frame = function(params) {
+            currentTime = params.time * 1000;
+            renderFrame();
+        };
+
+        // Fallback: If opened in a browser manually without Vidra, trigger simple CSS anim loop
+        setTimeout(() => {
+            if (currentTime === 0) {
+                const startTime = Date.now();
+                function tick() {
+                    currentTime = Date.now() - startTime;
+                    renderFrame();
+                    if (currentTime < 3000) requestAnimationFrame(tick);
+                }
+                requestAnimationFrame(tick);
+            }
+        }, 500);
+    </script>
+</body>
+</html>
