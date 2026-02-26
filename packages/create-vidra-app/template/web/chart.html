@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{PROJECT_NAME}} — Web Scene</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            width: 100vw; height: 100vh;
+            background: transparent;
+            display: flex; align-items: center; justify-content: center;
+            font-family: 'Inter', system-ui, sans-serif;
+            overflow: hidden;
+        }
+        .container {
+            text-align: center;
+            color: white;
+        }
+        .bar-chart {
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            gap: 12px;
+            height: 300px;
+            margin-top: 40px;
+        }
+        .bar {
+            width: 60px;
+            border-radius: 8px 8px 0 0;
+            transition: height 0.3s ease;
+        }
+        .label {
+            color: #8b949e;
+            font-size: 14px;
+            margin-top: 8px;
+        }
+        h2 {
+            font-size: 28px;
+            font-weight: 600;
+            color: #e6edf3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Revenue by Quarter</h2>
+        <div class="bar-chart" id="chart"></div>
+    </div>
+
+    <script type="module">
+        import { VidraCapture } from '@sansavision/vidra-web-capture';
+
+        const capture = new VidraCapture();
+        const data = [
+            { label: 'Q1', value: 45, color: '#58a6ff' },
+            { label: 'Q2', value: 72, color: '#3fb950' },
+            { label: 'Q3', value: 58, color: '#d2a8ff' },
+            { label: 'Q4', value: 91, color: '#f0883e' },
+        ];
+
+        const chart = document.getElementById('chart');
+
+        // Create bars
+        data.forEach(d => {
+            const col = document.createElement('div');
+            col.innerHTML = `
+                <div class="bar" style="background: ${d.color}; height: 0px;"></div>
+                <div class="label">${d.label}</div>
+            `;
+            chart.appendChild(col);
+        });
+
+        const bars = chart.querySelectorAll('.bar');
+
+        function render() {
+            const { time } = capture.getState();
+
+            // Animate bars growing over 2 seconds
+            const progress = Math.min(time / 2, 1);
+            const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
+
+            data.forEach((d, i) => {
+                const delay = i * 0.15;
+                const t = Math.max(0, Math.min((time - delay) / 1.5, 1));
+                const barEased = 1 - Math.pow(1 - t, 3);
+                bars[i].style.height = `${barEased * d.value * 3}px`;
+            });
+
+            requestAnimationFrame(render);
+        }
+
+        render();
+    </script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+{
+    "name": "@sansavision/create-vidra-app",
+    "version": "0.1.7-alpha.0",
+    "description": "Scaffold a new Vidra video project — SDK, Player, Web Capture ready to go",
+    "bin": {
+        "create-vidra-app": "./index.js"
+    },
+    "type": "module",
+    "files": [
+        "index.js",
+        "template/**/*"
+    ],
+    "keywords": [
+        "vidra",
+        "video",
+        "create",
+        "scaffold",
+        "motion-graphics",
+        "programmatic-video"
+    ],
+    "author": "Sansa Vision",
+    "license": "MIT",
+    "publishConfig": {
+        "access": "public"
+    }
+}

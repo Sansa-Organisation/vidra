@@ -1,0 +1,81 @@
+// ─── {{PROJECT_NAME}} — VidraScript ─────────────────────────────────
+//
+// This is the same project defined in src/video.js, but written in
+// VidraScript DSL. Render it with the Vidra CLI:
+//
+//   vidra render video.vidra -o output.mp4
+//   vidra dev video.vidra           # live preview with hot reload
+
+project(1920, 1080, 30) {
+    scene("intro", 4s) {
+        layer("bg") {
+            solid(#0d1117)
+        }
+
+        layer("title") {
+            text("Welcome to {{PROJECT_NAME}}", font: "Inter", size: 72, color: #e6edf3)
+            position(960, 480)
+            animation(opacity, from: 0, to: 1, duration: 0.8s, easing: easeOut)
+        }
+
+        layer("subtitle") {
+            text("Built with Vidra SDK", font: "Inter", size: 32, color: #8b949e)
+            position(960, 560)
+            animation(opacity, from: 0, to: 1, duration: 0.8s, easing: easeOut)
+        }
+
+        layer("accent") {
+            shape(rect, width: 200, height: 4, radius: 2, fill: #58a6ff)
+            position(960, 620)
+            animation(opacity, from: 0, to: 1, duration: 0.6s, easing: easeOut)
+        }
+    }
+
+    scene("content", 4s) {
+        layer("bg2") {
+            solid(#161b22)
+        }
+
+        layer("heading") {
+            text("Programmatic Video", font: "Inter", size: 56, color: #e6edf3)
+            position(960, 300)
+            animation(opacity, from: 0, to: 1, duration: 0.6s, easing: easeOut)
+        }
+
+        layer("bullet1") {
+            text("TypeScript SDK", font: "Inter", size: 36, color: #58a6ff)
+            position(960, 450)
+            animation(opacity, from: 0, to: 1, duration: 0.5s, easing: easeOut)
+        }
+
+        layer("bullet2") {
+            text("GPU-accelerated rendering", font: "Inter", size: 36, color: #58a6ff)
+            position(960, 520)
+            animation(opacity, from: 0, to: 1, duration: 0.5s, easing: easeOut)
+        }
+
+        layer("bullet3") {
+            text("Web scenes with React & D3", font: "Inter", size: 36, color: #58a6ff)
+            position(960, 590)
+            animation(opacity, from: 0, to: 1, duration: 0.5s, easing: easeOut)
+        }
+    }
+
+    scene("outro", 3s) {
+        layer("bg3") {
+            solid(#0d1117)
+        }
+
+        layer("cta") {
+            text("Start building with Vidra", font: "Inter", size: 48, color: #ffffff)
+            position(960, 500)
+            animation(opacity, from: 0, to: 1, duration: 0.8s, easing: easeOut)
+        }
+
+        layer("url") {
+            text("github.com/Sansa-Organisation/vidra", font: "Inter", size: 24, color: #8b949e)
+            position(960, 580)
+            animation(opacity, from: 0, to: 1, duration: 0.6s, easing: easeOut)
+        }
+    }
+}
