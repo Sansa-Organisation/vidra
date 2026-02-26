@@ -16,14 +16,22 @@ pub fn create_backend(preference: Option<&str>) -> Box<dyn WebCaptureBackend> {
     match preference.unwrap_or("auto") {
         "playwright" => Box::new(PlaywrightBackend::new()),
         "platform" | "auto" => {
-            #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+            let wants_platform = preference.unwrap_or("auto") == "platform";
+            
+            #[cfg(target_os = "macos")]
             {
                 Box::new(platform::PlatformWebViewBackend::new())
             }
-            #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+            #[cfg(not(target_os = "macos"))]
             {
-                tracing::warn!("No platform webview available, falling back to Playwright");
-                Box::new(PlaywrightBackend::new())
+                if wants_platform {
+                    // Forced platform mode, return stub which will error
+                    Box::new(platform::PlatformWebViewBackend::new())
+                } else {
+                    // Auto mode — fallback to playwright until Windows/Linux backends are done
+                    tracing::info!("Platform webview not available on this OS, falling back to Playwright");
+                    Box::new(PlaywrightBackend::new())
+                }
             }
         }
         other => {
