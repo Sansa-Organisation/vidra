@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Three.js Globe Demo for Vidra</title>
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; background: transparent; }
+        canvas { display: block; }
+    </style>
+    <!-- Import three.js via CDN -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.js"
+            }
+        }
+    </script>
+</head>
+<body>
+    <script type="module">
+        import * as THREE from 'three';
+
+        // Scene Setup
+        const scene = new THREE.Scene();
+        // Keep background fully transparent to composite over native vidra layers natively
+        
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 2.5;
+
+        const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        // Core visual building block: Globe wireframe
+        const geometry = new THREE.SphereGeometry(1, 32, 32);
+        
+        // Custom neon-blue material
+        const material = new THREE.MeshBasicMaterial({ 
+            color: 0x58a6ff, 
+            wireframe: true,
+            transparent: true,
+            opacity: 0.8
+        });
+        
+        const globe = new THREE.Mesh(geometry, material);
+        scene.add(globe);
+
+        // Deterministic rendering loop hook for Vidra's headless Chromium capture
+        window.__vidra_advance_frame = function(params) {
+            // Vidra passes the exact deterministic time (e.g. 0.0s, 0.016s, 0.033s)
+            // We lock the rotation precisely to this time to guarantee bit-perfect MP4 exports
+            // One full rotation every 10 seconds = (time / 10) * 2PI
+            globe.rotation.y = (params.time / 10) * Math.PI * 2;
+            
+            // Slow tilt on X axis
+            globe.rotation.x = 0.2 + Math.sin(params.time * 0.5) * 0.1;
+
+            renderer.render(scene, camera);
+        };
+
+        // Fallback for realtime mode or manual browser inspection (when outside of vidra capture engine)
+        if (!window.__vidra) {
+            const clock = new THREE.Clock();
+            function animate() {
+                requestAnimationFrame(animate);
+                const time = clock.getElapsedTime();
+                
+                globe.rotation.y = (time / 10) * Math.PI * 2;
+                globe.rotation.x = 0.2 + Math.sin(time * 0.5) * 0.1;
+                
+                renderer.render(scene, camera);
+            }
+            animate();
+        }
+
+        // Handle browser window resize dynamically
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
