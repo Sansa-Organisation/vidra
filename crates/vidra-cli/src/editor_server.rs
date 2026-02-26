@@ -729,14 +729,67 @@ async fn ai_chat(State(state): State<AppState>, Json(body): Json<AiChatBody>) ->
         }
     };
 
-    // For now, return a stub response; full LLM integration is out-of-scope for this phase.
+    let base_url = std::env::var("VIDRA_AI_BASE_URL")
+        .unwrap_or_else(|_| "https://api.openai.com/v1/chat/completions".to_string());
+
+    let mut messages = body.messages.clone();
+    
+    // Inject system context
+    let system_prompt = format!(
+        "You are the Vidra Editor AI assistant. Your job is to help the user build video and web scenes. \
+        You have access to MCP tools to mutate the Vidra project. When appropriate, output tool calls \
+        as plain JSON blocks matching the MCP tool schema. Examples: vidra-add_scene, vidra-add_layer, \
+        vidra-update_layer, vidra-generate_web_code.\n\nContext:\n{}",
+        project_ctx
+    );
+
+    messages.insert(0, serde_json::json!({
+        "role": "system",
+        "content": system_prompt
+    }));
+
+    let request_body = serde_json::json!({
+        "model": body.model,
+        "messages": messages,
+    });
+
+    let client = reqwest::Client::new();
+    let res = client.post(&base_url)
+        .header("Authorization", format!("Bearer {}", api_key.unwrap()))
+        .json(&request_body)
+        .send()
+        .await;
+
+    match res {
+        Ok(response) => {
+            if response.status().is_success() {
+                if let Ok(json) = response.json::<serde_json::Value>().await {
+                    if let Some(content) = json["choices"][0]["message"]["content"].as_str() {
+                        return (
+                            StatusCode::OK,
+                            Json(serde_json::json!({ "response": content, "model": body.model })),
+                        );
+                    }
+                }
+            } else {
+                let error_text = response.text().await.unwrap_or_default();
+                return (
+                    StatusCode::BAD_GATEWAY,
+                    Json(serde_json::json!({ "error": format!("Downstream AI Error: {}", error_text) })),
+                );
+            }
+        },
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": format!("Failed to contact AI provider: {}", e) })),
+            );
+        }
+    }
+
     (
-        StatusCode::OK,
-        Json(serde_json::json!({
-            "response": format!("AI chat stub. {} messages received. Project context: {}. Model: {}",
-                body.messages.len(), project_ctx, body.model),
-            "model": body.model,
-        })),
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(serde_json::json!({ "error": "Invalid response format from AI provider." })),
     )
 }
 
