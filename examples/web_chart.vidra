@@ -19,22 +19,21 @@ project(1920, 1080, 30) {
         layer("title") {
             text("Q4 Revenue Report", font: "Inter", size: 56, color: #e6edf3)
             position(960, 120)
-            animation(opacity, from: 0, to: 1, duration: 0.8s, easing: ease-out)
+            animation(opacity, from: 0, to: 1, duration: 0.8s, easing: easeOut)
         }
 
         // Subtitle
         layer("subtitle") {
             text("Powered by Vidra Web Scenes", font: "Inter", size: 24, color: #8b949e)
             position(960, 180)
-            animation(opacity, from: 0, to: 1, duration: 0.8s, easing: ease-out)
+            animation(opacity, from: 0, to: 1, duration: 0.8s, easing: easeOut)
         }
 
         // D3 chart rendered as a web layer
         layer("chart") {
-            web("web/chart.html", viewport: 1200x600, variables: { year: 2025, currency: "USD" })
+            web("web/chart.html", viewport: "1200x600")
             position(960, 580)
-            animation(opacity, from: 0, to: 1, duration: 1s, easing: ease-out)
-            animation(position_y, from: 620, to: 580, duration: 1s, easing: ease-out)
+            animation(opacity, from: 0, to: 1, duration: 1s, easing: easeOut)
         }
 
         // Decorative gradient overlay at the bottom
