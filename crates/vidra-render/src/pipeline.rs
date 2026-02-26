@@ -21,7 +21,7 @@ use crate::video_decoder::VideoDecoder;
 
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use vidra_web::{PlaywrightBackend, WebCaptureSession, WebCaptureSessionConfig};
+use vidra_web::{WebCaptureSession, WebCaptureSessionConfig};
 
 /// Context for rendering a single frame.
 pub struct RenderContext {
@@ -1043,9 +1043,10 @@ impl RenderPipeline {
                             fps: ctx.fps as f64,
                             format: vidra_core::frame::PixelFormat::Rgba8,
                         };
+                        let web_backend_pref = std::env::var("VIDRA_WEB_BACKEND").ok();
                         Arc::new(Mutex::new(WebCaptureSession::new(
                             config,
-                            Box::new(PlaywrightBackend::new()),
+                            vidra_web::create_backend(web_backend_pref.as_deref()),
                         )))
                     })
                     .value()

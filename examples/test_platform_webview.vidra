@@ -1,0 +1,14 @@
+// Platform WebView backend test
+// Renders a simple web page using the native OS webview
+
+project(800, 600, 30) {
+    scene("webview_test", 2s) {
+        layer("bg") {
+            solid(#1a1a2e)
+        }
+        layer("web_content") {
+            web("web/test_platform.html", viewport: "800x600", mode: "realtime")
+            position(400, 300)
+        }
+    }
+}
