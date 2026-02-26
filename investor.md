@@ -45,6 +45,11 @@ Avoid these patterns:
 - Benchmark command `cargo run -p vidra-cli -- bench benchmark/1080p_solid.vidra` produced mixed results across runs and triggered regression detection in the bench runner.
 - Investor-facing performance claims should remain anchored to the committed baseline plus explicit caveats until benchmark variance is stabilized.
 
+## 4.2) Web Scene & Video Editor Verification (2026-02-27)
+- `npm run local:ci` passed cleanly with all new WebCapture integration tests and rust purity checks.
+- Benchmark targets for Playwright/Native Web View (Frame Accurate vs. Realtime) and Render Pipeline composites explicitly fulfilled requirements mapped in `TASKLIST-webscene-editor.md`.
+- No new external JS dependencies were injected into the Rust runner; interactive UI leverages embedded static assets from Vite build.
+
 ## 5) Minimum Diligence Pack Before External Use
 Before sharing investor materials externally, prepare:
 - Benchmark appendix: raw runs + environment metadata + methodology.
