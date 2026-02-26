@@ -3961,6 +3961,7 @@ dependencies = [
  "vidra-lang",
  "vidra-lsp",
  "vidra-render",
+ "vidra-web",
  "zip",
 ]
 

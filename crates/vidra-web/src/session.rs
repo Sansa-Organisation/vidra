@@ -50,13 +50,15 @@ impl WebCaptureSession {
 impl Drop for WebCaptureSession {
     fn drop(&mut self) {
         if self.is_active {
-            // Ideally we'd await, but drop is synchronous. This relies on the backend cleanly
-            // shutting down its subprocesses when dropped.
-            let _ = tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(async {
-                    let _ = self.backend.stop_session().await;
-                })
-            });
+            // Try to cleanly stop the session. If there's no tokio runtime available
+            // (e.g., dropped from a plain thread), the backend's Drop impl handles cleanup.
+            if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                let _ = tokio::task::block_in_place(|| {
+                    handle.block_on(async {
+                        let _ = self.backend.stop_session().await;
+                    })
+                });
+            }
         }
     }
 }

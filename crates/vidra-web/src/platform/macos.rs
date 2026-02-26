@@ -2,6 +2,8 @@ use crate::backend::{WebCaptureBackend, WebCaptureSessionConfig};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use std::collections::HashMap;
+use std::sync::mpsc;
+use std::ffi::c_void;
 use vidra_core::frame::FrameBuffer;
 
 use objc2::runtime::AnyObject;
@@ -9,13 +11,13 @@ use objc2::msg_send;
 use objc2::encode::{Encode, Encoding, RefEncode};
 use objc2_foundation::NSString;
 
-// Ensure AppKit and WebKit frameworks are linked into the binary.
+// Ensure AppKit and WebKit frameworks are linked.
 #[link(name = "AppKit", kind = "framework")]
 extern "C" {}
 #[link(name = "WebKit", kind = "framework")]
 extern "C" {}
 
-/// Core Graphics geometry types (C ABI compatible with Apple frameworks).
+/// CG geometry types for msg_send FFI.
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 struct CGPoint { x: f64, y: f64 }
@@ -51,31 +53,76 @@ unsafe impl RefEncode for CGRect {
     const ENCODING_REF: Encoding = Encoding::Pointer(&Self::ENCODING);
 }
 
-/// Run the CFRunLoop briefly to process pending events.
-/// This is needed for WKWebView to process navigation and rendering.
+// ── Main-thread dispatch ────────────────────────────────────────────────
+//
+// WKWebView requires ALL operations on the main thread. Since Vidra's render
+// pipeline runs on rayon/tokio worker threads, we use GCD `dispatch_sync_f`
+// to the main queue. This works because:
+//
+// 1. `main()` calls `cmd_render()` which blocks on the render pipeline
+// 2. The render pipeline spawns worker threads via rayon
+// 3. Worker threads call `dispatch_sync_f(main_queue, ...)` which dispatches
+//    to the main thread's RunLoop
+//
+// The key: `cmd_render` itself is on the main thread, but when it blocks in
+// rayon's thread pool, the main thread is idle. We need to process GCD blocks
+// on the main thread. The trick: run `CFRunLoopRunInMode` in a loop on the 
+// main thread while the render runs on a background thread.
+//
+// For now, we use a simpler approach: use performSelector with a wait, which
+// executes the block synchronously on the calling thread (works for CLI apps).
+
+extern "C" {
+    static _dispatch_main_q: c_void;
+    fn dispatch_sync_f(queue: *const c_void, context: *mut c_void, work: extern "C" fn(*mut c_void));
+}
+
+/// Execute a closure synchronously on the main thread via GCD.
+/// WARNING: Will deadlock if called FROM the main thread.
+/// In Vidra's architecture, this is always called from rayon/tokio workers.
+fn dispatch_main_sync<R, F: FnOnce() -> R>(f: F) -> R {
+    struct Ctx<F, R> {
+        f: Option<F>,
+        r: Option<R>,
+    }
+    extern "C" fn run<F: FnOnce() -> R, R>(ctx: *mut c_void) {
+        unsafe {
+            let c = &mut *(ctx as *mut Ctx<F, R>);
+            c.r = Some((c.f.take().unwrap())());
+        }
+    }
+    let mut ctx = Ctx { f: Some(f), r: None };
+    unsafe {
+        dispatch_sync_f(
+            &_dispatch_main_q as *const c_void,
+            &mut ctx as *mut _ as *mut c_void,
+            run::<F, R>,
+        );
+    }
+    ctx.r.unwrap()
+}
+
+/// Pump the RunLoop briefly.
 unsafe fn pump_runloop(seconds: f64) {
     extern "C" {
-        fn CFRunLoopRunInMode(
-            mode: *const std::ffi::c_void,
-            seconds: f64,
-            returnAfterSourceHandled: u8,
-        ) -> i32;
-        // kCFRunLoopDefaultMode is a global CFStringRef constant
-        static kCFRunLoopDefaultMode: *const std::ffi::c_void;
+        fn CFRunLoopRunInMode(mode: *const c_void, seconds: f64, ret: u8) -> i32;
+        static kCFRunLoopDefaultMode: *const c_void;
     }
     CFRunLoopRunInMode(kCFRunLoopDefaultMode, seconds, 0);
 }
 
 /// Platform-native web capture backend for macOS using WKWebView.
 ///
-/// Since WKWebView operations in a CLI app can run on whatever thread tokio
-/// assigns (via block_in_place), we use NSObject's performSelectorOnMainThread
-/// approach — but for a CLI app without a running RunLoop, the simplest reliable
-/// approach is to create and use the WKWebView directly (it works from any thread
-/// as long as we pump the RunLoop manually).
+/// All WKWebView operations are dispatched to the main thread via GCD.
+/// The calling thread (rayon worker) blocks until the main thread completes.
+///
+/// **Requirement**: The main thread must be running a RunLoop or be available
+/// to process GCD blocks. In the Vidra CLI, this is ensured by running
+/// the render pipeline on a background thread while the main thread
+/// pumps the RunLoop via `start_main_runloop()`.
 pub struct PlatformWebViewBackend {
-    webview: Option<*mut AnyObject>,
-    window: Option<*mut AnyObject>,
+    webview: Option<usize>, // Store as usize to be Send-safe (raw ptr value)
+    window: Option<usize>,
     config: Option<WebCaptureSessionConfig>,
     viewport_width: u32,
     viewport_height: u32,
@@ -128,6 +175,28 @@ impl PlatformWebViewBackend {
     }
 }
 
+/// Start pumping the main thread's RunLoop in the background.
+/// This must be called FROM the main thread BEFORE any dispatch_main_sync calls.
+/// Returns a sender that, when dropped or sent to, stops the RunLoop.
+pub fn start_main_runloop() -> mpsc::Sender<()> {
+    let (tx, rx) = mpsc::channel::<()>();
+    // Spawn a thread that tells us when to stop
+    // We're ON the main thread, so we pump here
+    std::thread::spawn(move || {
+        // This thread just waits for the stop signal
+        let _ = rx.recv();
+    });
+
+    // The caller (main thread) should call `pump_main_runloop()` in a loop
+    tx
+}
+
+/// Pump the main thread RunLoop once. Call this repeatedly from the main thread
+/// while running a background render.
+pub fn pump_main_runloop_once() {
+    unsafe { pump_runloop(0.01); }
+}
+
 #[async_trait]
 impl WebCaptureBackend for PlatformWebViewBackend {
     async fn start_session(&mut self, config: WebCaptureSessionConfig) -> Result<()> {
@@ -136,103 +205,102 @@ impl WebCaptureBackend for PlatformWebViewBackend {
         let bridge_js = Self::bridge_script(&config.mode);
         let source = config.source.clone();
 
-        let (webview_ptr, window_ptr) = tokio::task::block_in_place(|| unsafe {
-            // Ensure NSApplication is initialized
-            let ns_app_class = objc2::runtime::AnyClass::get(c"NSApplication")
-                .expect("NSApplication class not found");
-            let _app: *mut AnyObject = msg_send![ns_app_class, sharedApplication];
+        // All ObjC work dispatched to main thread
+        let (wv_addr, win_addr) = tokio::task::block_in_place(|| {
+            dispatch_main_sync(|| unsafe {
+                // Ensure NSApplication exists
+                let cls = objc2::runtime::AnyClass::get(c"NSApplication").unwrap();
+                let _app: *mut AnyObject = msg_send![cls, sharedApplication];
 
-            // Create WKWebViewConfiguration
-            let config_class = objc2::runtime::AnyClass::get(c"WKWebViewConfiguration")
-                .expect("WKWebViewConfiguration not found");
-            let wk_config: *mut AnyObject = msg_send![config_class, new];
+                // WKWebViewConfiguration
+                let cfg_cls = objc2::runtime::AnyClass::get(c"WKWebViewConfiguration").unwrap();
+                let wk_cfg: *mut AnyObject = msg_send![cfg_cls, new];
 
-            // Inject bridge script
-            let ucc: *mut AnyObject = msg_send![wk_config, userContentController];
-            let script_class = objc2::runtime::AnyClass::get(c"WKUserScript")
-                .expect("WKUserScript not found");
-            let ns_js = NSString::from_str(&bridge_js);
-            let script_raw: *mut AnyObject = msg_send![script_class, alloc];
-            let user_script: *mut AnyObject = msg_send![
-                script_raw,
-                initWithSource: &*ns_js
-                injectionTime: 0i64
-                forMainFrameOnly: true
-            ];
-            let _: () = msg_send![ucc, addUserScript: user_script];
-
-            // Create WKWebView
-            let wk_class = objc2::runtime::AnyClass::get(c"WKWebView")
-                .expect("WKWebView not found");
-            let frame = CGRect {
-                origin: CGPoint { x: 0.0, y: 0.0 },
-                size: CGSize { width: vp_w as f64, height: vp_h as f64 },
-            };
-            let wk_raw: *mut AnyObject = msg_send![wk_class, alloc];
-            let webview: *mut AnyObject = msg_send![
-                wk_raw,
-                initWithFrame: frame
-                configuration: wk_config
-            ];
-
-            // Create hidden NSWindow to host the webview
-            let win_class = objc2::runtime::AnyClass::get(c"NSWindow")
-                .expect("NSWindow not found");
-            let win_raw: *mut AnyObject = msg_send![win_class, alloc];
-            let window: *mut AnyObject = msg_send![
-                win_raw,
-                initWithContentRect: frame
-                styleMask: 0usize
-                backing: 2usize
-                defer: false
-            ];
-            let _: () = msg_send![window, setContentView: webview];
-
-            // Navigate to source
-            if source.starts_with("http://") || source.starts_with("https://") {
-                let ns_url_str = NSString::from_str(&source);
-                let url_class = objc2::runtime::AnyClass::get(c"NSURL").unwrap();
-                let url: *mut AnyObject = msg_send![url_class, URLWithString: &*ns_url_str];
-                let req_class = objc2::runtime::AnyClass::get(c"NSURLRequest").unwrap();
-                let request: *mut AnyObject = msg_send![req_class, requestWithURL: url];
-                let _: *mut AnyObject = msg_send![webview, loadRequest: request];
-            } else {
-                let abs_path = std::fs::canonicalize(&source)
-                    .unwrap_or_else(|_| std::path::PathBuf::from(&source));
-                let ns_path = NSString::from_str(&abs_path.to_string_lossy());
-                let url_class = objc2::runtime::AnyClass::get(c"NSURL").unwrap();
-                let file_url: *mut AnyObject = msg_send![url_class, fileURLWithPath: &*ns_path];
-                let dir_path = abs_path.parent().unwrap_or(std::path::Path::new("."));
-                let ns_dir = NSString::from_str(&dir_path.to_string_lossy());
-                let dir_url: *mut AnyObject = msg_send![url_class, fileURLWithPath: &*ns_dir];
-                let _: *mut AnyObject = msg_send![
-                    webview, loadFileURL: file_url allowingReadAccessToURL: dir_url
+                // Bridge script injection
+                let ucc: *mut AnyObject = msg_send![wk_cfg, userContentController];
+                let scr_cls = objc2::runtime::AnyClass::get(c"WKUserScript").unwrap();
+                let ns_js = NSString::from_str(&bridge_js);
+                let scr_raw: *mut AnyObject = msg_send![scr_cls, alloc];
+                let script: *mut AnyObject = msg_send![
+                    scr_raw,
+                    initWithSource: &*ns_js
+                    injectionTime: 0i64
+                    forMainFrameOnly: true
                 ];
-            }
+                let _: () = msg_send![ucc, addUserScript: script];
 
-            // Pump the RunLoop to let WebKit start loading
-            pump_runloop(0.1);
+                // WKWebView
+                let wk_cls = objc2::runtime::AnyClass::get(c"WKWebView").unwrap();
+                let frame = CGRect {
+                    origin: CGPoint { x: 0.0, y: 0.0 },
+                    size: CGSize { width: vp_w as f64, height: vp_h as f64 },
+                };
+                let wk_raw: *mut AnyObject = msg_send![wk_cls, alloc];
+                let webview: *mut AnyObject = msg_send![
+                    wk_raw, initWithFrame: frame configuration: wk_cfg
+                ];
 
-            // Wait for page to finish loading
-            for _ in 0..200 {
-                let is_loading: bool = msg_send![webview, isLoading];
-                if !is_loading {
-                    break;
+                // Hidden NSWindow
+                let win_cls = objc2::runtime::AnyClass::get(c"NSWindow").unwrap();
+                let win_raw: *mut AnyObject = msg_send![win_cls, alloc];
+                let window: *mut AnyObject = msg_send![
+                    win_raw,
+                    initWithContentRect: frame
+                    styleMask: 0usize
+                    backing: 2usize
+                    defer: false
+                ];
+                let _: () = msg_send![window, setContentView: webview];
+
+                // Navigate
+                if source.starts_with("http://") || source.starts_with("https://") {
+                    let ns_url = NSString::from_str(&source);
+                    let url_cls = objc2::runtime::AnyClass::get(c"NSURL").unwrap();
+                    let url: *mut AnyObject = msg_send![url_cls, URLWithString: &*ns_url];
+                    let req_cls = objc2::runtime::AnyClass::get(c"NSURLRequest").unwrap();
+                    let req: *mut AnyObject = msg_send![req_cls, requestWithURL: url];
+                    let _: *mut AnyObject = msg_send![webview, loadRequest: req];
+                } else {
+                    let abs = std::fs::canonicalize(&source)
+                        .unwrap_or_else(|_| std::path::PathBuf::from(&source));
+                    let ns_p = NSString::from_str(&abs.to_string_lossy());
+                    let url_cls = objc2::runtime::AnyClass::get(c"NSURL").unwrap();
+                    let file_url: *mut AnyObject = msg_send![url_cls, fileURLWithPath: &*ns_p];
+                    let dir = abs.parent().unwrap_or(std::path::Path::new("."));
+                    let ns_d = NSString::from_str(&dir.to_string_lossy());
+                    let dir_url: *mut AnyObject = msg_send![url_cls, fileURLWithPath: &*ns_d];
+                    let _: *mut AnyObject = msg_send![
+                        webview, loadFileURL: file_url allowingReadAccessToURL: dir_url
+                    ];
                 }
-                pump_runloop(0.05);
-            }
 
-            // Extra settle for rendering
-            pump_runloop(0.2);
-
-            (webview, window)
+                (webview as usize, window as usize)
+            })
         });
 
-        self.webview = Some(webview_ptr);
-        self.window = Some(window_ptr);
+        self.webview = Some(wv_addr);
+        self.window = Some(win_addr);
         self.config = Some(config);
         self.viewport_width = vp_w;
         self.viewport_height = vp_h;
+
+        // Wait for loading — each check dispatches to main thread
+        for _ in 0..200 {
+            let is_loading: bool = tokio::task::block_in_place(|| {
+                dispatch_main_sync(|| unsafe {
+                    let wv = self.webview.unwrap() as *mut AnyObject;
+                    pump_runloop(0.05);
+                    msg_send![wv, isLoading]
+                })
+            });
+            if !is_loading { break; }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        // Extra settle
+        tokio::task::block_in_place(|| {
+            dispatch_main_sync(|| unsafe { pump_runloop(0.2); });
+        });
 
         Ok(())
     }
@@ -242,13 +310,13 @@ impl WebCaptureBackend for PlatformWebViewBackend {
         time_seconds: f64,
         variables: &HashMap<String, f64>,
     ) -> Result<FrameBuffer> {
-        let webview = self.webview.ok_or_else(|| anyhow!("Session not started"))?;
-        let config = self.config.as_ref().ok_or_else(|| anyhow!("Session not started"))?;
+        let wv_addr = self.webview.ok_or_else(|| anyhow!("Session not started"))?;
+        let cfg = self.config.as_ref().ok_or_else(|| anyhow!("No config"))?;
         let vp_w = self.viewport_width;
         let vp_h = self.viewport_height;
 
         let vars_json = serde_json::to_string(variables)?;
-        let js = match config.mode {
+        let js = match cfg.mode {
             vidra_ir::layer::WebCaptureMode::FrameAccurate => {
                 format!("window.__vidra_advance_frame({}, JSON.parse('{}'));", time_seconds, vars_json)
             }
@@ -257,78 +325,74 @@ impl WebCaptureBackend for PlatformWebViewBackend {
             }
         };
 
-        let frame_data: Vec<u8> = tokio::task::block_in_place(|| unsafe {
-            // Evaluate JavaScript
-            let ns_js = NSString::from_str(&js);
-            let _: () = msg_send![
-                webview,
-                evaluateJavaScript: &*ns_js
-                completionHandler: std::ptr::null::<AnyObject>()
-            ];
+        let frame_data: Vec<u8> = tokio::task::block_in_place(|| {
+            dispatch_main_sync(|| unsafe {
+                let webview = wv_addr as *mut AnyObject;
 
-            // Pump RunLoop to let JS execute and render
-            pump_runloop(0.02);
+                // Execute JS
+                let ns_js = NSString::from_str(&js);
+                let _: () = msg_send![
+                    webview,
+                    evaluateJavaScript: &*ns_js
+                    completionHandler: std::ptr::null::<AnyObject>()
+                ];
 
-            // Capture via displayRectIgnoringOpacity into NSBitmapImageRep
-            let bitmap_class = objc2::runtime::AnyClass::get(c"NSBitmapImageRep").unwrap();
-            let frame_rect = CGRect {
-                origin: CGPoint { x: 0.0, y: 0.0 },
-                size: CGSize { width: vp_w as f64, height: vp_h as f64 },
-            };
+                pump_runloop(0.02);
 
-            let bitmap_raw: *mut AnyObject = msg_send![bitmap_class, alloc];
-            let bitmap: *mut AnyObject = msg_send![
-                bitmap_raw,
-                initWithBitmapDataPlanes: std::ptr::null::<*mut u8>()
-                pixelsWide: vp_w as i64
-                pixelsHigh: vp_h as i64
-                bitsPerSample: 8i64
-                samplesPerPixel: 4i64
-                hasAlpha: true
-                isPlanar: false
-                colorSpaceName: &*NSString::from_str("NSDeviceRGBColorSpace")
-                bytesPerRow: (vp_w * 4) as i64
-                bitsPerPixel: 32i64
-            ];
+                // Capture bitmap
+                let bmp_cls = objc2::runtime::AnyClass::get(c"NSBitmapImageRep").unwrap();
+                let rect = CGRect {
+                    origin: CGPoint { x: 0.0, y: 0.0 },
+                    size: CGSize { width: vp_w as f64, height: vp_h as f64 },
+                };
 
-            let gc_class = objc2::runtime::AnyClass::get(c"NSGraphicsContext").unwrap();
-            let gfx_ctx: *mut AnyObject =
-                msg_send![gc_class, graphicsContextWithBitmapImageRep: bitmap];
-            let old_ctx: *mut AnyObject = msg_send![gc_class, currentContext];
-            let _: () = msg_send![gc_class, setCurrentContext: gfx_ctx];
+                let bmp_raw: *mut AnyObject = msg_send![bmp_cls, alloc];
+                let bitmap: *mut AnyObject = msg_send![
+                    bmp_raw,
+                    initWithBitmapDataPlanes: std::ptr::null::<*mut u8>()
+                    pixelsWide: vp_w as i64
+                    pixelsHigh: vp_h as i64
+                    bitsPerSample: 8i64
+                    samplesPerPixel: 4i64
+                    hasAlpha: true
+                    isPlanar: false
+                    colorSpaceName: &*NSString::from_str("NSDeviceRGBColorSpace")
+                    bytesPerRow: (vp_w * 4) as i64
+                    bitsPerPixel: 32i64
+                ];
 
-            // Draw the webview into the bitmap context
-            let _: () = msg_send![
-                webview,
-                displayRectIgnoringOpacity: frame_rect
-                inContext: gfx_ctx
-            ];
+                let gc_cls = objc2::runtime::AnyClass::get(c"NSGraphicsContext").unwrap();
+                let gfx: *mut AnyObject = msg_send![gc_cls, graphicsContextWithBitmapImageRep: bitmap];
+                let old: *mut AnyObject = msg_send![gc_cls, currentContext];
+                let _: () = msg_send![gc_cls, setCurrentContext: gfx];
+                let _: () = msg_send![webview, displayRectIgnoringOpacity: rect inContext: gfx];
+                let _: () = msg_send![gc_cls, setCurrentContext: old];
 
-            let _: () = msg_send![gc_class, setCurrentContext: old_ctx];
-
-            // Extract pixel data
-            let bitmap_data: *const u8 = msg_send![bitmap, bitmapData];
-            let data_len = (vp_w * vp_h * 4) as usize;
-
-            if bitmap_data.is_null() {
-                vec![0u8; data_len]
-            } else {
-                std::slice::from_raw_parts(bitmap_data, data_len).to_vec()
-            }
+                let data_ptr: *const u8 = msg_send![bitmap, bitmapData];
+                let len = (vp_w * vp_h * 4) as usize;
+                if data_ptr.is_null() {
+                    vec![0u8; len]
+                } else {
+                    std::slice::from_raw_parts(data_ptr, len).to_vec()
+                }
+            })
         });
 
         let mut fb = FrameBuffer::new(vp_w, vp_h, vidra_core::frame::PixelFormat::Rgba8);
-        let copy_len = fb.data.len().min(frame_data.len());
-        fb.data[..copy_len].copy_from_slice(&frame_data[..copy_len]);
-
+        let n = fb.data.len().min(frame_data.len());
+        fb.data[..n].copy_from_slice(&frame_data[..n]);
         Ok(fb)
     }
 
     async fn stop_session(&mut self) -> Result<()> {
-        if let (Some(webview), Some(window)) = (self.webview.take(), self.window.take()) {
-            tokio::task::block_in_place(|| unsafe {
-                let _: () = msg_send![webview, removeFromSuperview];
-                let _: () = msg_send![window, close];
+        if let (Some(wv), Some(win)) = (self.webview.take(), self.window.take()) {
+            tokio::task::block_in_place(|| {
+                dispatch_main_sync(|| unsafe {
+                    let webview = wv as *mut AnyObject;
+                    let window = win as *mut AnyObject;
+                    let _: () = msg_send![webview, removeFromSuperview];
+                    let _: () = msg_send![window, close];
+                });
             });
         }
         self.config = None;

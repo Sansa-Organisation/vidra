@@ -69,6 +69,10 @@ enum Commands {
         /// Path to a CSV or JSON data file for batch template rendering
         #[arg(long)]
         data: Option<PathBuf>,
+
+        /// Web capture backend: auto, platform, playwright (default: auto)
+        #[arg(long, default_value = "auto")]
+        web_backend: String,
     },
 
     /// Check a VidraScript file for errors (parse + type check)
@@ -450,7 +454,40 @@ fn main() -> Result<()> {
             targets,
             cloud,
             data,
-        } => cmd_render(file, output, format, targets, cloud, data),
+            web_backend,
+        } => {
+            std::env::set_var("VIDRA_WEB_BACKEND", &web_backend);
+
+            // If using platform webview on macOS, run the render on a
+            // background thread while the main thread pumps the RunLoop.
+            // This is required because WKWebView must run on the main thread.
+            #[cfg(target_os = "macos")]
+            if web_backend == "platform" || (web_backend == "auto" && cfg!(target_os = "macos")) {
+                use std::sync::mpsc;
+                let (tx, rx) = mpsc::channel::<Result<()>>();
+
+                std::thread::spawn(move || {
+                    let result = cmd_render(file, output, format, targets, cloud, data);
+                    let _ = tx.send(result);
+                });
+
+                // Pump the main thread RunLoop until the render finishes
+                loop {
+                    match rx.try_recv() {
+                        Ok(result) => return result,
+                        Err(mpsc::TryRecvError::Empty) => {
+                            vidra_web::platform::pump_main_runloop_once();
+                        }
+                        Err(mpsc::TryRecvError::Disconnected) => {
+                            return Err(anyhow::anyhow!("Render thread panicked"));
+                        }
+                    }
+                }
+            }
+
+            #[allow(unreachable_code)]
+            cmd_render(file, output, format, targets, cloud, data)
+        }
         Commands::Check { file } => cmd_check(file),
         Commands::Fmt { file, check } => cmd_fmt(file, check),
         Commands::Test { file, update } => test_runner::run_test(file, update),

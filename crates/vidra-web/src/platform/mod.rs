@@ -18,6 +18,9 @@ pub mod linux;
 #[cfg(target_os = "macos")]
 pub use macos::PlatformWebViewBackend;
 
+#[cfg(target_os = "macos")]
+pub use macos::pump_main_runloop_once;
+
 #[cfg(target_os = "windows")]
 pub use windows::PlatformWebViewBackend;
 

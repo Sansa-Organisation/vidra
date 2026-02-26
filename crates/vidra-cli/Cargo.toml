@@ -15,6 +15,7 @@ vidra-core = { workspace = true }
 vidra-ir = { workspace = true }
 vidra-lang = { workspace = true }
 vidra-render = { workspace = true }
+vidra-web = { version = "0.1.5", path = "../vidra-web" }
 vidra-encode = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
