@@ -26,6 +26,7 @@ You generate complete, syntactically correct `main.vidra` files.
    - `image("path/to.png")`
    - `video("path/to.mp4")`
    - `shape(rect, fill: #ff0000, width: 100, height: 100)`
+   - `web("path/index.html", viewport: 1920x1080)`
    - `audio("path.mp3")`
    - `tts("Hello", voice: "en-US")`
    - `autocaption("path.mp3", font: "Inter", size: 48, color: #ffffff)`

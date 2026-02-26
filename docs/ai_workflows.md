@@ -43,11 +43,12 @@ You can now use conversational prompts to generate and edit video:
 * *"Change the `hero_text` layer's font to 'Inter' and color to red."*
 * *"Generate a storyboard for a cinematic sci-fi intro."*
 * *"Add a TTS layer to my second scene that says 'Welcome to the future' using the `en-US-Journey-F` voice."*
+* *"Create a React data-viz chart and embed it using a web scene layer."*
 * *"Render a preview of my current project and give me the link."*
 
 ### Supported Tools
 
-When you run `vidra mcp`, it exposed 12 tools for AI agents:
+When you run `vidra mcp`, it exposed 15 tools for AI agents:
 
 1.  `vidra.create_project` - Scaffolds a complete project (VidraScript + config).
 2.  `vidra.add_scene` - Injects a new scene block into an existing timeline.
@@ -61,6 +62,9 @@ When you run `vidra mcp`, it exposed 12 tools for AI agents:
 10. `vidra.add_resource` - Download and install components from Vidra Commons.
 11. `vidra.list_resources` - Search Vidra Commons.
 12. `vidra.share` - Generates a public URL for the current project state.
+13. `vidra.generate_web_code` - Save HTML/React files to `web/` for embedding.
+14. `vidra.add_web_scene` - Add a web layer to a given scene.
+15. `vidra.edit_web_scene` - Edit viewport, source, variables, etc of a web layer.
 
 ## Conversational Editing & Copilots
 

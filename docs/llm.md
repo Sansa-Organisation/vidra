@@ -66,6 +66,7 @@ Every layer must define exactly **one** primitive content type OR component call
 - `video(path: str)`
 - `audio(path: str, volume: float)`
 - `shape(type: rect|circle, fill: DefaultNone, stroke: DefaultNone, width: float, height: float)`
+- `web(source: str, viewport: WxH, mode: "capture"|"realtime", wait_for: str, variables: {k:v})`
 
 **AI Primitives:**
 - `tts(text: str, voice: str, volume: float)`
@@ -142,8 +143,15 @@ layout rules {
 
 ## Advanced AI Operations (MCP Specs)
 If you act as an automated developer loop, utilize Vidra's MCP server (`vidra mcp`).
-- If asked to *create a quick draft*, use `vidra.storyboard(prompt)`. It skips manual scripting and generates a layout automatically.
-- If asked to *modify* an existing project, do NOT rewrite the file. Issue JSON patches via `vidra.edit_layer(path: "project.scenes[main].layers[title].content.color", value: "#000000")`.
+1.  `vidra.storyboard` - Takes a text prompt ("A sci-fi title intro") and converts it into a populated scene grid.
+2.  `vidra.list_templates` - Browse built-in starter kits.
+3.  `vidra.add_resource` - Download and install components from Vidra Commons.
+4.  `vidra.list_resources` - Search Vidra Commons.
+5.  `vidra.share` - Generates a public URL for the current project state.
+6.  `vidra.generate_web_code` - Save HTML/React code to the `web/` directory for use in web scenes.
+7.  `vidra.add_web_scene` - Injects a new web-based layer scene.
+8.  `vidra.edit_web_scene` - Mutates web layer properties like viewport or variables.
+9.  `vidra.edit_layer` - Issue JSON patches via `vidra.edit_layer(path: "project.scenes[main].layers[title].content.color", value: "#000000")`.
 
 ## Performance Constraints
 - Text rendering is expensive. Componentize complex scenes.

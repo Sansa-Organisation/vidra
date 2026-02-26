@@ -104,6 +104,7 @@ The fundamental renderable unit.
 | `AutoCaption`  | `asset_id`, `font_family`, `font_size`, `color`         |
 | `Shape`        | `shape`, `fill`, `stroke`, `stroke_width`               |
 | `Solid`        | `color`                                                 |
+| `Web`          | `source`, `viewport_width`, `viewport_height`, `mode`, `wait_for`, `variables` |
 | `Empty`        | *(used for grouping / component instances)*              |
 
 ### 2.5 Animation
