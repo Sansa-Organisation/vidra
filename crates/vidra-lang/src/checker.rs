@@ -287,6 +287,9 @@ impl TypeChecker {
                         "fill" => self.expect_color(&arg.value, &arg.span),
                         "stroke" => self.expect_color(&arg.value, &arg.span),
                         "strokeWidth" => self.expect_number(&arg.value, &arg.span),
+                        "width" | "height" | "radius" | "rx" | "ry" => {
+                            self.expect_number(&arg.value, &arg.span)
+                        }
                         _ => self.type_error(
                             format!("unknown property '{}' for shape {}", arg.name, shape_type),
                             &arg.span,
