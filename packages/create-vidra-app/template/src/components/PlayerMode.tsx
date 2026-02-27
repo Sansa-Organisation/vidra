@@ -1,82 +1,73 @@
 import { useState, useEffect, useRef } from 'react';
+import { Play, Pause, RotateCcw, MonitorPlay, AlertCircle } from 'lucide-react';
 import { VidraEngine } from '@sansavision/vidra-player';
 
-interface PlayerModeProps {
-    isActive: boolean;
-}
+interface PlayerModeProps { isActive: boolean; }
 
 export default function PlayerMode({ isActive }: PlayerModeProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const engineRef = useRef<VidraEngine | null>(null);
-    const rafRef = useRef<number>();
 
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
+    const [duration, setDuration] = useState(1);
     const [error, setError] = useState<string | null>(null);
-    const [irJSON, setIrJSON] = useState<string>('');
 
     useEffect(() => {
-        // Only initialize if we're the active tab and haven't initialized yet
         if (!isActive || engineRef.current || !canvasRef.current) return;
-
         let mounted = true;
 
         async function init() {
             try {
-                // Fetch project JSON
                 const res = await fetch('/project.json');
-                if (!res.ok) throw new Error("Could not find project.json. Did you run 'npm run build:video'?");
+                if (!res.ok) throw new Error("Missing project.json. Run 'npm run build:video'");
                 const jsonText = await res.text();
                 if (!mounted) return;
-                setIrJSON(jsonText);
 
-                // Initialize engine
                 const engine = new VidraEngine(canvasRef.current!);
+
+                // Use events instead of a manual requestAnimationFrame loop
+                // engine.events = {
+                //   onFrame: () => setCurrentTime(engine.getCurrentTime()),
+                //   onError: (err) => setError(err)
+                // };
+
                 await engine.init();
-                engine.loadIR(jsonText);
+                const info = engine.loadIR(jsonText);
+                setDuration(info.totalDuration || 1);
 
-                if (!mounted) {
-                    // Cleanup if unmounted during init
-                    return;
-                }
-
+                if (!mounted) return;
                 engineRef.current = engine;
                 engine.play();
                 setIsPlaying(true);
 
-                // Render loop
+                // Temp loop until events are fully wired
                 const loop = () => {
                     if (!mounted) return;
                     if (engineRef.current) {
-                        engineRef.current.renderCurrentFrame();
                         setCurrentTime(engineRef.current.getCurrentTime());
                     }
-                    rafRef.current = requestAnimationFrame(loop);
+                    requestAnimationFrame(loop);
                 };
-                rafRef.current = requestAnimationFrame(loop);
+                requestAnimationFrame(loop);
 
             } catch (err: any) {
                 if (mounted) setError(err.message);
             }
         }
-
         init();
 
         return () => {
             mounted = false;
-            if (rafRef.current) cancelAnimationFrame(rafRef.current);
-            // Clean up engine if VidraEngine supports cleanup/destroy in the future.
+            engineRef.current?.pause();
             engineRef.current = null;
         };
     }, [isActive]);
 
     const togglePlay = () => {
         if (!engineRef.current) return;
-        if (isPlaying) {
-            engineRef.current.pause();
-        } else {
-            engineRef.current.play();
-        }
+        if (isPlaying) engineRef.current.pause();
+        else engineRef.current.play();
         setIsPlaying(!isPlaying);
     };
 
@@ -87,44 +78,70 @@ export default function PlayerMode({ isActive }: PlayerModeProps) {
         setIsPlaying(true);
     };
 
-    return (
-        <div className="max-w-5xl mx-auto flex flex-col gap-6">
-            <div className="bg-vd-panel border border-vd-border rounded-lg p-6">
-                <h2 className="text-xl font-bold mb-2 text-vd-accent">Vidra WASM Player</h2>
-                <p className="text-vd-dim mb-4">
-                    This mode uses <code>@sansavision/vidra-player</code> to natively render the project timeline in your browser via WebAssembly and WebGL.
-                </p>
+    const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!engineRef.current) return;
+        const t = parseFloat(e.target.value);
+        engineRef.current.seekToTime(t);
+        setCurrentTime(t);
+    };
 
-                <div className="flex items-center gap-3">
-                    <button
-                        onClick={togglePlay}
-                        disabled={!!error}
-                        className="px-4 py-2 bg-vd-accent hover:bg-vd-accent-hover text-white rounded font-medium disabled:opacity-50"
-                    >
-                        {isPlaying ? 'Pause' : 'Play'}
-                    </button>
-                    <button
-                        onClick={restart}
-                        disabled={!!error}
-                        className="px-4 py-2 bg-transparent border border-vd-border hover:border-vd-dim rounded font-medium disabled:opacity-50"
-                    >
-                        Restart
-                    </button>
-                    <span className="font-mono text-vd-dim ml-2 w-20">
-                        {error ? 'Error' : `${currentTime.toFixed(2)}s`}
-                    </span>
-                    {error && <span className="text-red-400 text-sm ml-2">{error}</span>}
-                </div>
+    return (
+        <div className="h-full flex flex-col justify-center max-w-5xl mx-auto pt-4 relative">
+
+            {/* Player Frame */}
+            <div className="bg-black rounded-lg overflow-hidden border border-[#30363d] shadow-2xl relative aspect-video flex-shrink-0 group ring-1 ring-white/5">
+                {error ? (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-red-400 bg-[#0d1117] p-8 text-center ring-1 ring-red-500/20">
+                        <AlertCircle className="w-12 h-12 mb-4 text-red-500/80" />
+                        <p className="font-mono text-sm">{error}</p>
+                    </div>
+                ) : (
+                    <canvas
+                        ref={canvasRef}
+                        width="1920"
+                        height="1080"
+                        className="w-full h-full object-contain block"
+                    />
+                )}
             </div>
 
-            <div className="bg-black rounded-lg overflow-hidden border border-vd-border shadow-2xl relative aspect-video flex-shrink-0">
-                <canvas
-                    ref={canvasRef}
-                    id="vidra-canvas"
-                    width="1920"
-                    height="1080"
-                    className="w-full h-full object-contain block"
-                ></canvas>
+            {/* Sleek Controls */}
+            <div className="mt-6 bg-[#161b22] border border-[#30363d] rounded-xl p-4 flex items-center gap-4 shadow-lg">
+                <button
+                    onClick={togglePlay}
+                    disabled={!!error}
+                    className="w-10 h-10 rounded-full bg-blue-600 hover:bg-blue-500 flex items-center justify-center text-white transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+                >
+                    {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 ml-1 fill-current" />}
+                </button>
+
+                <button
+                    onClick={restart}
+                    disabled={!!error}
+                    className="w-10 h-10 rounded-full bg-[#0d1117] border border-[#30363d] hover:border-[#8b949e] flex items-center justify-center text-vd-text transition-all disabled:opacity-50"
+                >
+                    <RotateCcw className="w-4 h-4" />
+                </button>
+
+                <div className="flex-1 flex items-center gap-3">
+                    <span className="font-mono text-xs text-vd-dim w-12 text-right">
+                        {(currentTime).toFixed(1)}s
+                    </span>
+
+                    <input
+                        type="range"
+                        min="0"
+                        max={duration}
+                        step="0.01"
+                        value={currentTime}
+                        onChange={handleSeek}
+                        className="flex-1 h-2 bg-[#0d1117] rounded-lg appearance-none cursor-pointer accent-blue-500"
+                    />
+
+                    <span className="font-mono text-xs text-vd-dim w-12">
+                        {(duration).toFixed(1)}s
+                    </span>
+                </div>
             </div>
         </div>
     );

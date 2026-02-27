@@ -13,6 +13,7 @@
         "@sansavision/vidra-player": "^0.1.11-alpha.0",
         "@sansavision/vidra-sdk": "^0.1.11-alpha.0",
         "@sansavision/vidra-web-capture": "^0.1.11-alpha.0",
+        "lucide-react": "^0.344.0",
         "react": "^18.2.0",
         "react-dom": "^18.2.0"
     },
