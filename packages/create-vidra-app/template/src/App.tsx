@@ -12,7 +12,7 @@ function App() {
             <header className="border-b border-vd-border p-4 flex flex-col gap-4">
                 <div>
                     <h1 className="text-xl font-bold flex items-center gap-2">
-                        🎬 {{ PROJECT_NAME }}
+                        🎬 {"{{PROJECT_NAME}}"}
                     </h1>
                     <p className="text-sm text-vd-dim mt-1">Vidra Interactive Development Environment</p>
                 </div>
@@ -22,8 +22,8 @@ function App() {
                     <button
                         onClick={() => setActiveTab('player')}
                         className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'player'
-                                ? 'border-vd-accent text-vd-accent'
-                                : 'border-transparent text-vd-dim hover:text-vd-text'
+                            ? 'border-vd-accent text-vd-accent'
+                            : 'border-transparent text-vd-dim hover:text-vd-text'
                             }`}
                     >
                         ▶️ Player Mode
@@ -31,8 +31,8 @@ function App() {
                     <button
                         onClick={() => setActiveTab('sdk')}
                         className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'sdk'
-                                ? 'border-vd-accent text-vd-accent'
-                                : 'border-transparent text-vd-dim hover:text-vd-text'
+                            ? 'border-vd-accent text-vd-accent'
+                            : 'border-transparent text-vd-dim hover:text-vd-text'
                             }`}
                     >
                         ⚙️ SDK / Render IR
@@ -40,8 +40,8 @@ function App() {
                     <button
                         onClick={() => setActiveTab('web')}
                         className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'web'
-                                ? 'border-vd-accent text-vd-accent'
-                                : 'border-transparent text-vd-dim hover:text-vd-text'
+                            ? 'border-vd-accent text-vd-accent'
+                            : 'border-transparent text-vd-dim hover:text-vd-text'
                             }`}
                     >
                         🌐 Web Scene

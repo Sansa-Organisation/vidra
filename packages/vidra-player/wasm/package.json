@@ -1,0 +1,20 @@
+{
+  "name": "vidra-wasm",
+  "type": "module",
+  "collaborators": [
+    "Vidra Team"
+  ],
+  "description": "Vidra WASM module — browser-side video rendering",
+  "version": "0.1.5",
+  "license": "MIT",
+  "files": [
+    "vidra_wasm_bg.wasm",
+    "vidra_wasm.js",
+    "vidra_wasm.d.ts"
+  ],
+  "main": "vidra_wasm.js",
+  "types": "vidra_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

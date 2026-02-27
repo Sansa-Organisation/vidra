@@ -1,6 +1,6 @@
 {
     "name": "@sansavision/vidra-player",
-    "version": "0.1.8-alpha.0",
+    "version": "0.1.11-alpha.0",
     "description": "Real-time Vidra video player for the browser — powered by WebAssembly",
     "type": "module",
     "main": "dist/index.js",
@@ -17,7 +17,8 @@
     "files": [
         "dist",
         "wasm",
-        "README.md"
+        "README.md",
+        "src"
     ],
     "scripts": {
         "build": "tsc",
