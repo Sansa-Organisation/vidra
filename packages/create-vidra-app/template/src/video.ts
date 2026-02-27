@@ -1,116 +1,131 @@
-// ─── {{PROJECT_NAME}} — Video Project (SDK) ────────────────────────
-//
-// This file uses the Vidra SDK to build a video project programmatically.
-// Run it with: npm run build:video
-//
-// It outputs the Vidra IR as JSON to stdout. To render to video,
-// use the VidraScript file instead: npx @sansavision/vidra render video.vidra -o output.mp4
+// ─── {{PROJECT_NAME}} — Video Project ───────────────────────────────
+// Edit this file to describe your video programmatically.
+// Run `npm run build:video` to compile → public/project.json
+// Then the Player tab renders it live in the browser.
 
-import {
-  Project,
-  Scene,
-  Layer,
-  Easing,
-} from "@sansavision/vidra-sdk";
-
-// ── Initialization ──────────────────────────────────────────────────
+import { Project, Scene, Layer, Easing } from "@sansavision/vidra-sdk";
 
 const project = new Project({ width: 1920, height: 1080, fps: 30 });
 
-// We define commonly used assets. By registering them here,
-// we receive a strongly-typed string ID that is referenced by downstream layers.
-const IMG_LOGO: string = "img_logo";
-const VIDEO_BG: string = "video_bg";
-const AUDIO_TRACK: string = "audio_track";
-
+// ── Scene 1: Vibrant Intro ──────────────────────────────────────────
 project.addScene(
   new Scene("intro", 4)
-    // Dark gradient background
-    .addLayer(new Layer("bg").solid("#0d1117"))
+    .addLayer(new Layer("bg").solid("#1e3a5f"))
 
-    // Main title — fades in and slides up
+    // Big blue accent circle
+    .addLayer(
+      new Layer("circle")
+        .shape("circle", { radius: 200, fill: "#58a6ff" })
+        .position(960, 540)
+        .animate("opacity", 0, 0.8, 1.5, Easing.EaseOut)
+        .animate("ScaleX", 0.2, 1, 1.5, Easing.CubicOut)
+        .animate("ScaleY", 0.2, 1, 1.5, Easing.CubicOut)
+    )
+
+    // Title text
     .addLayer(
       new Layer("title")
-        .text("Welcome to {{PROJECT_NAME}}", "Inter", 72, "#e6edf3")
+        .text("Welcome to Vidra", "Inter", 72, "#ffffff")
         .position(960, 480)
-        .animate("opacity", 0, 1, 0.8, Easing.EaseOut)
+        .animate("opacity", 0, 1, 0.8, Easing.EaseOut, 0.5)
     )
 
     // Subtitle
     .addLayer(
       new Layer("subtitle")
-        .text("Built with Vidra SDK", "Inter", 32, "#8b949e")
+        .text("Programmatic Video, Made Simple", "Inter", 32, "#b0d4f1")
         .position(960, 560)
-        .animate("opacity", 0, 1, 0.8, Easing.EaseOut, 0.3)
+        .animate("opacity", 0, 1, 0.8, Easing.EaseOut, 0.8)
     )
 
-    // Decorative shape
+    // Accent bar
     .addLayer(
-      new Layer("accent")
-        .shape("rect", { width: 200, height: 4, radius: 2, fill: "#58a6ff" })
+      new Layer("bar")
+        .shape("rect", { width: 300, height: 6, radius: 3, fill: "#f0883e" })
         .position(960, 620)
-        .animate("opacity", 0, 1, 0.6, Easing.EaseOut, 0.6)
+        .animate("opacity", 0, 1, 0.6, Easing.EaseOut, 1.0)
     )
-)
+);
 
-// Scene 2: Content
+// ── Scene 2: Feature Showcase ───────────────────────────────────────
 project.addScene(
-  new Scene("content", 4)
-    .addLayer(new Layer("bg2").solid("#161b22"))
+  new Scene("features", 4)
+    .addLayer(new Layer("bg2").solid("#0f2942"))
 
     .addLayer(
       new Layer("heading")
-        .text("Programmatic Video", "Inter", 56, "#e6edf3")
-        .position(960, 300)
+        .text("Build Videos with Code", "Inter", 56, "#ffffff")
+        .position(960, 260)
         .animate("opacity", 0, 1, 0.6, Easing.EaseOut)
     )
 
+    // Colored feature boxes
     .addLayer(
-      new Layer("bullet1")
-        .text("✦ TypeScript SDK", "Inter", 36, "#58a6ff")
-        .position(960, 450)
+      new Layer("box1")
+        .shape("rect", { width: 340, height: 160, radius: 16, fill: "#238636" })
+        .position(380, 500)
         .animate("opacity", 0, 1, 0.5, Easing.EaseOut, 0.2)
     )
-
     .addLayer(
-      new Layer("bullet2")
-        .text("✦ GPU-accelerated rendering", "Inter", 36, "#58a6ff")
-        .position(960, 520)
+      new Layer("box2")
+        .shape("rect", { width: 340, height: 160, radius: 16, fill: "#1f6feb" })
+        .position(960, 500)
         .animate("opacity", 0, 1, 0.5, Easing.EaseOut, 0.4)
     )
-
     .addLayer(
-      new Layer("bullet3")
-        .text("✦ Web scenes (React, D3, Three.js)", "Inter", 36, "#58a6ff")
-        .position(960, 590)
+      new Layer("box3")
+        .shape("rect", { width: 340, height: 160, radius: 16, fill: "#8b5cf6" })
+        .position(1540, 500)
         .animate("opacity", 0, 1, 0.5, Easing.EaseOut, 0.6)
     )
-)
 
-// Scene 3: Outro
+    .addLayer(
+      new Layer("label1")
+        .text("TypeScript SDK", "Inter", 28, "#ffffff")
+        .position(380, 500)
+        .animate("opacity", 0, 1, 0.5, Easing.EaseOut, 0.3)
+    )
+    .addLayer(
+      new Layer("label2")
+        .text("WASM Rendering", "Inter", 28, "#ffffff")
+        .position(960, 500)
+        .animate("opacity", 0, 1, 0.5, Easing.EaseOut, 0.5)
+    )
+    .addLayer(
+      new Layer("label3")
+        .text("Web Scenes", "Inter", 28, "#ffffff")
+        .position(1540, 500)
+        .animate("opacity", 0, 1, 0.5, Easing.EaseOut, 0.7)
+    )
+);
+
+// ── Scene 3: Call to Action ─────────────────────────────────────────
 project.addScene(
   new Scene("outro", 3)
-    .addLayer(new Layer("bg3").solid("#0d1117"))
+    .addLayer(new Layer("bg3").solid("#0d1b2a"))
+
+    .addLayer(
+      new Layer("cta_circle")
+        .shape("circle", { radius: 120, fill: "#f0883e" })
+        .position(960, 440)
+        .animate("opacity", 0, 1, 1, Easing.EaseOut)
+    )
 
     .addLayer(
       new Layer("cta")
-        .text("Start building with Vidra", "Inter", 48, "#ffffff")
-        .position(960, 500)
-        .animate("opacity", 0, 1, 0.8, Easing.EaseOut)
+        .text("Start Building", "Inter", 52, "#ffffff")
+        .position(960, 580)
+        .animate("opacity", 0, 1, 0.8, Easing.EaseOut, 0.3)
     )
 
     .addLayer(
       new Layer("url")
-        .text("github.com/Sansa-Organisation/vidra", "Inter", 24, "#8b949e")
-        .position(960, 580)
-        .animate("opacity", 0, 1, 0.6, Easing.EaseOut, 0.4)
+        .text("github.com/Sansa-Organisation/vidra", "Inter", 22, "#8b949e")
+        .position(960, 650)
+        .animate("opacity", 0, 1, 0.6, Easing.EaseOut, 0.6)
     )
 );
 
 // ── Output ──────────────────────────────────────────────────────────
-
 const ir = project.toJSON();
-const json = JSON.stringify(ir, null, 2);
-
-// Write to stdout (pipe to file: node src/video.js > project.json)
-console.log(json);
+console.log(JSON.stringify(ir, null, 2));

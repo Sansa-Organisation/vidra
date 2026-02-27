@@ -316,10 +316,20 @@ export class Scene {
 export class Project {
     private _project: ProjectIR;
 
-    constructor(width: number, height: number, fps: number) {
+    constructor(widthOrOpts: number | { width: number; height: number; fps: number }, height?: number, fps?: number) {
+        let w: number, h: number, f: number;
+        if (typeof widthOrOpts === "object") {
+            w = widthOrOpts.width;
+            h = widthOrOpts.height;
+            f = widthOrOpts.fps;
+        } else {
+            w = widthOrOpts;
+            h = height!;
+            f = fps!;
+        }
         this._project = {
             id: uuidv4(),
-            settings: { width, height, fps, background: { r: 0, g: 0, b: 0, a: 255 } },
+            settings: { width: w, height: h, fps: f, background: { r: 0, g: 0, b: 0, a: 255 } },
             assets: { assets: {} },
             scenes: [],
         };
