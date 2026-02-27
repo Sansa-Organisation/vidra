@@ -4,16 +4,19 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "dev": "npx vite",
-        "build": "npx vite build",
-        "build:video": "node src/video.js",
+        "dev": "npm run build:video && npx vite",
+        "build": "npm run build:video && npx vite build",
+        "build:video": "mkdir -p public && node src/video.js > public/project.json",
         "preview": "npx vite preview"
     },
     "dependencies": {
-        "@sansavision/vidra-sdk": "^0.1.7-alpha.0",
-        "@sansavision/vidra-web-capture": "^0.1.7-alpha.0"
+        "@sansavision/vidra-player": "^0.1.8-alpha.0",
+        "@sansavision/vidra-sdk": "^0.1.8-alpha.0",
+        "@sansavision/vidra-web-capture": "^0.1.8-alpha.0"
     },
     "devDependencies": {
-        "vite": "^7.3.1"
+        "vite": "^5.0.0",
+        "vite-plugin-top-level-await": "^1.4.1",
+        "vite-plugin-wasm": "^3.3.0"
     }
 }

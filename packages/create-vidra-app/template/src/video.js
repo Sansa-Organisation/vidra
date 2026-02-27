@@ -104,7 +104,7 @@ const project = new Project({ width: 1920, height: 1080, fps: 30 })
 
 // ── Output ──────────────────────────────────────────────────────────
 
-const ir = project.build();
+const ir = project.toJSON();
 const json = JSON.stringify(ir, null, 2);
 
 // Write to stdout (pipe to file: node src/video.js > project.json)

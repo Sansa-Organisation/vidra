@@ -1,6 +1,6 @@
 {
     "name": "@sansavision/create-vidra-app",
-    "version": "0.1.9-alpha.0",
+    "version": "0.1.10-alpha.0",
     "description": "Scaffold a new Vidra video project — SDK, Player, Web Capture ready to go",
     "bin": {
         "create-vidra-app": "./index.js"

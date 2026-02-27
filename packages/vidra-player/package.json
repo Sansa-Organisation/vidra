@@ -1,6 +1,6 @@
 {
     "name": "@sansavision/vidra-player",
-    "version": "0.1.7-alpha.0",
+    "version": "0.1.8-alpha.0",
     "description": "Real-time Vidra video player for the browser — powered by WebAssembly",
     "type": "module",
     "main": "dist/index.js",
@@ -10,7 +10,9 @@
             "import": "./dist/index.js",
             "types": "./dist/index.d.ts"
         },
-        "./wasm": "./wasm/vidra_wasm.js"
+        "./wasm": "./wasm/vidra_wasm.js",
+        "./wasm/vidra_wasm.js": "./wasm/vidra_wasm.js",
+        "./wasm/*": "./wasm/*"
     },
     "files": [
         "dist",
@@ -19,7 +21,7 @@
     ],
     "scripts": {
         "build": "tsc",
-        "build:wasm": "cd ../.. && wasm-pack build crates/vidra-wasm --target web --out-dir ../../packages/vidra-player/wasm",
+        "build:wasm": "cd ../.. && wasm-pack build crates/vidra-wasm --target web --out-dir ../../packages/vidra-player/wasm && rm -f packages/vidra-player/wasm/.gitignore",
         "build:all": "npm run build:wasm && npm run build",
         "demo": "npm run build && npx -y serve . --cors -l 3456",
         "dev": "npm run demo"

@@ -1,0 +1,227 @@
+:root {
+    --bg-color: #0d1117;
+    --panel-bg: #161b22;
+    --border-color: #30363d;
+    --text-primary: #e6edf3;
+    --text-secondary: #8b949e;
+    --accent: #58a6ff;
+    --accent-hover: #1f6feb;
+    --success: #238636;
+    --success-hover: #2ea043;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    background: var(--bg-color);
+    color: var(--text-primary);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+/* Header */
+.app-header {
+    border-bottom: 1px solid var(--border-color);
+    padding: 30px 40px 0;
+    background: var(--panel-bg);
+}
+
+.header-content h1 {
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.subtitle {
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin-bottom: 24px;
+}
+
+/* Tabs */
+.mode-tabs {
+    display: flex;
+    gap: 24px;
+}
+
+.tab-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 15px;
+    font-weight: 500;
+    padding: 12px 4px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+}
+
+.tab-btn:hover {
+    color: var(--text-primary);
+}
+
+.tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+
+/* Content Area */
+.app-content {
+    flex: 1;
+    padding: 40px;
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Panels */
+.panel {
+    background: var(--panel-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 24px;
+    margin-bottom: 24px;
+}
+
+.instructions h3 {
+    color: var(--accent);
+    margin-bottom: 12px;
+    font-size: 18px;
+}
+
+.instructions p {
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin-bottom: 12px;
+}
+
+.instructions code {
+    background: var(--bg-color);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: monospace;
+}
+
+.terminal-instructions {
+    background: var(--bg-color);
+    padding: 16px;
+    border-radius: 6px;
+    margin-top: 16px;
+}
+
+.terminal-instructions code {
+    display: block;
+    color: var(--accent);
+    margin-top: 8px;
+}
+
+/* Player Controls */
+.controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 20px;
+}
+
+button {
+    background: var(--panel-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+button:hover {
+    background: var(--border-color);
+}
+
+button.primary, button.active {
+    background: var(--success);
+    border-color: var(--success);
+}
+
+button.primary:hover {
+    background: var(--success-hover);
+}
+
+.time-display {
+    font-family: monospace;
+    font-size: 16px;
+    color: var(--text-secondary);
+    margin-left: 12px;
+    min-width: 60px;
+}
+
+/* Canvases and iFrames */
+.canvas-container {
+    background: #000;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    border: 1px solid var(--border-color);
+    display: flex;
+    justify-content: center;
+}
+
+canvas {
+    max-width: 100%;
+    height: auto;
+    display: block;
+}
+
+.iframe-container {
+    background: #000;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    height: 600px;
+}
+
+iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+
+/* Code Viewer */
+.code-container {
+    padding: 0;
+    overflow: hidden;
+}
+
+.code-header {
+    background: var(--border-color);
+    padding: 8px 16px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-family: monospace;
+}
+
+pre {
+    padding: 20px;
+    max-height: 500px;
+    overflow-y: auto;
+    font-family: monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #a5d6ff;
+}
