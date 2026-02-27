@@ -12,11 +12,12 @@ pub use session::WebCaptureSession;
 /// - `"platform"` — Use OS-native webview (WKWebView / WebView2 / WebKitGTK)
 /// - `"playwright"` — Use Playwright Node.js subprocess (legacy)
 /// - `"auto"` or `None` — Try platform webview first, fall back to Playwright
+#[allow(unused_variables)]
 pub fn create_backend(preference: Option<&str>) -> Box<dyn WebCaptureBackend> {
     match preference.unwrap_or("auto") {
         "playwright" => Box::new(PlaywrightBackend::new()),
         "platform" | "auto" => {
-            let _wants_platform = preference.unwrap_or("auto") == "platform";
+            let wants_platform = preference.unwrap_or("auto") == "platform";
             
             #[cfg(target_os = "macos")]
             {

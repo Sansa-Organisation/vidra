@@ -58,6 +58,13 @@ stage_targz aarch64-apple-darwin "$PKG_DARWIN_ARM64"
 stage_targz x86_64-apple-darwin "$PKG_DARWIN_X64"
 stage_targz x86_64-unknown-linux-musl "$PKG_LINUX_X64"
 stage_targz aarch64-unknown-linux-musl "$PKG_LINUX_ARM64"
-stage_zip_windows x86_64-pc-windows-msvc "$PKG_WIN32_X64"
+
+# Windows is optional (requires CI or Windows machine to build)
+WIN_ARCHIVE="$DIST_DIR/${TOOL_NAME}-v${VERSION}-x86_64-pc-windows-msvc.zip"
+if [[ -f "$WIN_ARCHIVE" ]]; then
+  stage_zip_windows x86_64-pc-windows-msvc "$PKG_WIN32_X64"
+else
+  echo "SKIP: Windows archive not found ($WIN_ARCHIVE), skipping win32-x64-msvc" >&2
+fi
 
 echo "OK: staged platform packages" >&2
