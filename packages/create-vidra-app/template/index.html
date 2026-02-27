@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{PROJECT_NAME}} — Preview</title>
+    <title>{{PROJECT_NAME}} — Vidra Project</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -22,6 +22,7 @@
             margin-bottom: 8px;
             background: linear-gradient(135deg, #58a6ff, #d2a8ff);
             -webkit-background-clip: text;
+            background-clip: text;
             -webkit-text-fill-color: transparent;
         }
         .subtitle {
@@ -29,56 +30,12 @@
             font-size: 14px;
             margin-bottom: 32px;
         }
-        .canvas-wrapper {
-            position: relative;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 0 0 1px rgba(240,246,252,0.1), 0 16px 48px rgba(0,0,0,0.4);
-        }
-        canvas {
-            display: block;
-            background: #000;
-        }
-        .controls {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-top: 20px;
-            padding: 12px 20px;
-            background: #161b22;
-            border-radius: 10px;
-            border: 1px solid #30363d;
-        }
-        button {
-            background: #238636;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            padding: 8px 20px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background 0.15s;
-        }
-        button:hover { background: #2ea043; }
-        button.secondary {
-            background: #21262d;
-            border: 1px solid #30363d;
-        }
-        button.secondary:hover { background: #30363d; }
-        .frame-display {
-            font-family: 'SF Mono', 'JetBrains Mono', monospace;
-            font-size: 13px;
-            color: #8b949e;
-            min-width: 100px;
-            text-align: center;
-        }
         .info-grid {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(2, 1fr);
             gap: 16px;
-            margin-top: 24px;
-            max-width: 800px;
+            margin-top: 16px;
+            max-width: 700px;
             width: 100%;
         }
         .info-card {
@@ -106,157 +63,108 @@
             font-size: 13px;
             color: #58a6ff;
         }
+        .web-scene-wrapper {
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 0 0 1px rgba(240,246,252,0.1), 0 16px 48px rgba(0,0,0,0.4);
+            max-width: 700px;
+            width: 100%;
+            margin-top: 24px;
+        }
+        .web-scene-wrapper h3 {
+            font-size: 13px;
+            color: #8b949e;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 12px 16px;
+            background: #161b22;
+            border-bottom: 1px solid #30363d;
+        }
+        iframe {
+            width: 100%;
+            height: 400px;
+            border: none;
+            background: #000;
+        }
+        .status {
+            margin-top: 24px;
+            padding: 16px 24px;
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 10px;
+            max-width: 700px;
+            width: 100%;
+        }
+        .status h3 {
+            font-size: 13px;
+            color: #8b949e;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+        }
+        .status pre {
+            font-family: 'SF Mono', 'JetBrains Mono', monospace;
+            font-size: 13px;
+            color: #58a6ff;
+            white-space: pre-wrap;
+            line-height: 1.6;
+        }
     </style>
 </head>
 <body>
     <h1>🎬 {{PROJECT_NAME}}</h1>
-    <p class="subtitle">Vidra Video Project — Browser Preview</p>
-
-    <div class="canvas-wrapper">
-        <canvas id="preview" width="960" height="540"></canvas>
-    </div>
-
-    <div class="controls">
-        <button id="playBtn" onclick="togglePlay()">▶ Play</button>
-        <button class="secondary" onclick="seekStart()">⏮ Start</button>
-        <div class="frame-display" id="frameDisplay">Frame 0 / 0</div>
-        <button class="secondary" onclick="seekEnd()">⏭ End</button>
-    </div>
+    <p class="subtitle">Vidra Video Project</p>
 
     <div class="info-grid">
         <div class="info-card">
-            <h3>SDK Video</h3>
-            <p>Edit <code>src/video.js</code> to build your video programmatically using the Vidra SDK.</p>
+            <h3>Build Video IR</h3>
+            <p>Run <code>npm run build:video</code> to build the SDK project in <code>src/video.js</code> into Vidra JSON IR.</p>
+        </div>
+        <div class="info-card">
+            <h3>Render to MP4</h3>
+            <p>Run <code>npx @sansavision/vidra render video.vidra -o output.mp4</code> to render the VidraScript project.</p>
+        </div>
+        <div class="info-card">
+            <h3>Visual Editor</h3>
+            <p>Run <code>npx @sansavision/vidra editor video.vidra</code> to open the browser-based visual editor.</p>
         </div>
         <div class="info-card">
             <h3>Web Scene</h3>
-            <p>Edit <code>web/chart.html</code> to create interactive web scenes using the capture bridge.</p>
-        </div>
-        <div class="info-card">
-            <h3>Render</h3>
-            <p>Run <code>vidra render video.vidra</code> to export your project as an MP4 file.</p>
+            <p>The <code>web/chart.html</code> file uses <code>@sansavision/vidra-web-capture</code> to sync with the video timeline.</p>
         </div>
     </div>
 
+    <div class="web-scene-wrapper">
+        <h3>Live Web Scene Preview — web/chart.html</h3>
+        <iframe src="web/chart.html"></iframe>
+    </div>
+
+    <div class="status" id="status">
+        <h3>SDK Output Preview</h3>
+        <pre id="output">Loading SDK project...</pre>
+    </div>
+
     <script type="module">
-        // This preview page demonstrates how @sansavision/vidra-player
-        // would render a project in the browser. For now, it shows a
-        // placeholder with the project structure info.
+        // Import the real SDK and build the project to show the IR output
+        import { Project, Scene, Layer, Easing } from "@sansavision/vidra-sdk";
 
-        const canvas = document.getElementById('preview');
-        const ctx = canvas.getContext('2d');
-        const frameDisplay = document.getElementById('frameDisplay');
-        const playBtn = document.getElementById('playBtn');
+        const project = new Project({ width: 1920, height: 1080, fps: 30 })
+            .addScene(
+                new Scene("intro", 4)
+                    .addLayer(new Layer("bg").solid("#0d1117"))
+                    .addLayer(
+                        new Layer("title")
+                            .text("Welcome to {{PROJECT_NAME}}", "Inter", 72, "#e6edf3")
+                            .position(960, 480)
+                            .animate("opacity", 0, 1, 0.8, Easing.EaseOut)
+                    )
+            );
 
-        const FPS = 30;
-        const TOTAL_FRAMES = 330; // 11 seconds at 30fps
-        let currentFrame = 0;
-        let playing = false;
-        let lastTime = 0;
-
-        function drawFrame(frame) {
-            const time = frame / FPS;
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            // Background
-            ctx.fillStyle = '#0d1117';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            if (time < 4) {
-                // Scene 1: Intro
-                const t = Math.min(time / 0.8, 1);
-                const eased = 1 - Math.pow(1 - t, 3);
-
-                ctx.globalAlpha = eased;
-                ctx.fillStyle = '#e6edf3';
-                ctx.font = 'bold 36px Inter, system-ui';
-                ctx.textAlign = 'center';
-                ctx.fillText('Welcome to {{PROJECT_NAME}}', canvas.width / 2, canvas.height / 2 - 20);
-
-                const t2 = Math.max(0, Math.min((time - 0.3) / 0.8, 1));
-                ctx.globalAlpha = 1 - Math.pow(1 - t2, 3);
-                ctx.fillStyle = '#8b949e';
-                ctx.font = '16px Inter, system-ui';
-                ctx.fillText('Built with Vidra SDK', canvas.width / 2, canvas.height / 2 + 30);
-
-                // Accent line
-                const t3 = Math.max(0, Math.min((time - 0.6) / 0.6, 1));
-                ctx.globalAlpha = 1 - Math.pow(1 - t3, 3);
-                const lineWidth = t3 * 100;
-                ctx.fillStyle = '#58a6ff';
-                ctx.fillRect(canvas.width / 2 - lineWidth, canvas.height / 2 + 60, lineWidth * 2, 2);
-
-            } else if (time < 8) {
-                // Scene 2: Content
-                const st = time - 4;
-                ctx.fillStyle = '#161b22';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                const t1 = Math.min(st / 0.6, 1);
-                ctx.globalAlpha = 1 - Math.pow(1 - t1, 3);
-                ctx.fillStyle = '#e6edf3';
-                ctx.font = 'bold 28px Inter, system-ui';
-                ctx.textAlign = 'center';
-                ctx.fillText('Programmatic Video', canvas.width / 2, 150);
-
-                const bullets = ['✦ TypeScript SDK', '✦ GPU-accelerated rendering', '✦ Web scenes (React, D3, Three.js)'];
-                bullets.forEach((txt, i) => {
-                    const bt = Math.max(0, Math.min((st - 0.2 - i * 0.2) / 0.5, 1));
-                    ctx.globalAlpha = 1 - Math.pow(1 - bt, 3);
-                    ctx.fillStyle = '#58a6ff';
-                    ctx.font = '18px Inter, system-ui';
-                    ctx.fillText(txt, canvas.width / 2, 230 + i * 50);
-                });
-
-            } else {
-                // Scene 3: Outro
-                const st = time - 8;
-                ctx.globalAlpha = Math.min(st / 0.8, 1);
-                ctx.fillStyle = '#ffffff';
-                ctx.font = 'bold 24px Inter, system-ui';
-                ctx.textAlign = 'center';
-                ctx.fillText('Start building with Vidra', canvas.width / 2, canvas.height / 2 - 10);
-
-                const t2 = Math.max(0, Math.min((st - 0.4) / 0.6, 1));
-                ctx.globalAlpha = t2;
-                ctx.fillStyle = '#8b949e';
-                ctx.font = '12px Inter, system-ui';
-                ctx.fillText('github.com/Sansa-Organisation/vidra', canvas.width / 2, canvas.height / 2 + 30);
-            }
-
-            ctx.globalAlpha = 1;
-            frameDisplay.textContent = `Frame ${frame} / ${TOTAL_FRAMES}`;
-        }
-
-        function animate(timestamp) {
-            if (!playing) return;
-            if (!lastTime) lastTime = timestamp;
-            const delta = timestamp - lastTime;
-            if (delta >= 1000 / FPS) {
-                lastTime = timestamp;
-                currentFrame++;
-                if (currentFrame >= TOTAL_FRAMES) {
-                    currentFrame = 0;
-                }
-                drawFrame(currentFrame);
-            }
-            requestAnimationFrame(animate);
-        }
-
-        window.togglePlay = () => {
-            playing = !playing;
-            playBtn.textContent = playing ? '⏸ Pause' : '▶ Play';
-            if (playing) {
-                lastTime = 0;
-                requestAnimationFrame(animate);
-            }
-        };
-
-        window.seekStart = () => { currentFrame = 0; drawFrame(0); };
-        window.seekEnd = () => { currentFrame = TOTAL_FRAMES - 1; drawFrame(currentFrame); };
-
-        // Initial render
-        drawFrame(0);
+        const ir = project.build();
+        const output = document.getElementById("output");
+        output.textContent = JSON.stringify(ir, null, 2).slice(0, 600) + "\n...";
     </script>
 </body>
 </html>

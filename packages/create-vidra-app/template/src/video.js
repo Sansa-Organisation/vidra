@@ -3,8 +3,8 @@
 // This file uses the Vidra SDK to build a video project programmatically.
 // Run it with: npm run build:video
 //
-// The output is a JSON IR that can be rendered by the Vidra CLI:
-//   vidra render --ir output.json -o video.mp4
+// It outputs the Vidra IR as JSON to stdout. To render to video,
+// use the VidraScript file instead: npx @sansavision/vidra render video.vidra -o output.mp4
 
 import {
   Project,
